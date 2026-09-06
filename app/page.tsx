@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ArrowRight, ChevronDown, Compass, MapPin, Plane, Sparkles } from 'lucide-react';
+import { ArrowRight, ChevronDown, Compass, MapPin, Plane } from 'lucide-react';
 import type { PlanSummary } from '@/components/plan-library';
 
 type Season = {
@@ -58,7 +58,6 @@ export default function HomePage() {
             {!plans.length && <p className="plan-hover-empty">아직 저장된 계획이 없어요.</p>}
           </div>}
         </div>
-        <a className="landing-new-link" href="/plan/new?mode=domestic"><span>새 계획 세우기</span><Sparkles /></a>
       </nav>
     </header>
 
@@ -68,8 +67,8 @@ export default function HomePage() {
       <p className="landing-lede">{season.message}<br /><span>오늘의 마음이 가는 곳으로.</span></p>
       <div className="departure-question"><span>어디로 떠나시나요?</span><small>여행의 첫 장면을 골라보세요</small></div>
       <div className="departure-choices">
-        <a className="departure-card domestic-card" href="/plan/new?mode=domestic"><span className="departure-icon"><Compass /></span><span className="departure-copy"><strong>국내로!</strong><small>지금의 지도를 펼쳐볼게요</small></span><ArrowRight className="departure-arrow" /><span className="sparkle-burst" aria-hidden="true">✦　✿　✧</span></a>
-        <button type="button" className="departure-card overseas-card" onClick={() => setOverseasMessage(true)}><span className="departure-icon"><Plane /></span><span className="departure-copy"><strong>해외로!</strong><small>새로운 나라를 준비 중이에요</small></span><ArrowRight className="departure-arrow" /><span className="plane-trail" aria-hidden="true">✈　·　·　·</span></button>
+        <a className="departure-card domestic-card" href="/plan/new?mode=domestic"><span className="departure-icon"><Compass /></span><span className="departure-copy"><strong>국내로!</strong><small>지금의 지도를 펼쳐볼게요</small></span><ArrowRight className="departure-arrow" /><span className="sparkle-burst" aria-hidden="true">✦　✿　✧　❀　✦　❋</span></a>
+        <button type="button" className="departure-card overseas-card" onClick={() => setOverseasMessage(true)}><span className="departure-icon"><Plane /></span><span className="departure-copy"><strong>해외로!</strong><small>새로운 나라를 준비 중이에요</small></span><ArrowRight className="departure-arrow" /><span className="plane-trail" aria-hidden="true">·　·　·　✈</span></button>
       </div>
       {overseasMessage && <button className="overseas-toast" type="button" onClick={() => setOverseasMessage(false)}><Plane /> 해외 여행 플래너는 준비 중이에요 ㅠㅠ <span>닫기</span></button>}
       {hasDraft && <a className="draft-pill" href="/plan/new?draft=1"><span><small>이 기기에 남은 초안</small><strong>{draftTitle}</strong></span><span className="draft-pill-action">계속 쓰기<ArrowRight /></span></a>}
