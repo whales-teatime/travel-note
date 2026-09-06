@@ -211,6 +211,9 @@ function NaverMap({stops,clientId,destination,onSelect,placeResults,onPlaceSelec
   const orderedDays=useMemo(()=>Object.keys(dateLabels),[dateLabels]);
   const [status,setStatus]=useState<'idle'|'loading'|'ready'|'error'>(clientId?'loading':'idle');
   const [cityCenter,setCityCenter]=useState(DEFAULT_MAP_CENTER);
+  const [legendExpanded,setLegendExpanded]=useState(false);
+  const visibleLegendDays=useMemo(()=>{if(orderedDays.length<=6||legendExpanded)return orderedDays;const first=orderedDays.slice(0,5);return first.includes(activeDay)?first:[...first,activeDay]},[orderedDays,legendExpanded,activeDay]);
+  useEffect(()=>{if(orderedDays.length<=6)setLegendExpanded(false)},[orderedDays.length]);
   useEffect(()=>{
     if(!clientId||!containerRef.current)return;
     let cancelled=false; setStatus('loading');
@@ -319,7 +322,7 @@ function NaverMap({stops,clientId,destination,onSelect,placeResults,onPlaceSelec
       {status==='loading'?<><div className="loading-orbit"/><strong>네이버 지도를 연결하는 중</strong><span>잠시만 기다려주세요.</span></>:status==='error'?<><CircleAlert/><strong>네이버 지도 인증에 실패했습니다</strong><span>Maps 앱의 10자 Client ID와 등록된 웹 서비스 URL을 확인해주세요.</span></>:<><Map className="text-[#03c75a]"/><strong>네이버 지도 연결이 필요합니다</strong><span>설정에서 Maps Client ID를 입력하면 실제 지도가 열립니다.</span></>}
     </div></div>}
     <button type="button" className="map-home-button" onClick={fitItinerary} aria-label={stops.length?'전체 동선 한눈에 보기':'여행지 전체 보기'} title={stops.length?'전체 동선 한눈에 보기':'여행지 전체 보기'}><House/></button>
-    <div className="map-legend">{orderedDays.map(day=><button type="button" key={day} className={`map-date-button ${activeDay===day?'is-active':''}`} aria-pressed={activeDay===day} onClick={()=>onDayChange(day)}><i style={{background:dayColor(day,orderedDays)}}/>{formatTripDate(dateLabels[day])}</button>)}</div>
+    <div className="map-legend"><div className="map-legend-days">{visibleLegendDays.map(day=><button type="button" key={day} className={`map-date-button ${activeDay===day?'is-active':''}`} aria-pressed={activeDay===day} onClick={()=>onDayChange(day)}><i style={{background:dayColor(day,orderedDays)}}/>{formatTripDate(dateLabels[day])}</button>)}</div>{orderedDays.length>6&&<button type="button" className="map-legend-toggle" onClick={()=>setLegendExpanded(current=>!current)} aria-expanded={legendExpanded}>{legendExpanded?<><ChevronUp/>접기</>:<><ChevronDown/>+{orderedDays.length-visibleLegendDays.length}일</>}</button>}</div>
     {customPinMode&&<div className="map-location-editor"><strong>지도에서 위치를 정하세요</strong><span>지도를 클릭하거나 초록 핀을 끌어 옮긴 뒤 계속하세요.</span><Button onClick={onCustomPinContinue} disabled={!customPin}>이 위치로 계속</Button></div>}
     {editableStopId&&<div className="map-location-editor"><strong>위치 수정 중</strong><span>선택한 장소의 핀을 드래그해 위치를 바꾸세요.</span><Button variant="outline" onClick={onCancelStopPositionEdit}>취소</Button></div>}
   </div>
