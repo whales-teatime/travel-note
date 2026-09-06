@@ -218,7 +218,7 @@ function loadNaverMaps(clientId: string) {
   return window.__naverMapsLoading;
 }
 
-function NaverMap({stops,clientId,destination,onSelect,placeResults,onPlaceSelect,dateLabels,activeDay,onDayChange,editableStopId,onStopPositionChange,onCancelStopPositionEdit,customPin,customPinMode,onCustomLocationChange,onCustomAddressChange,onCustomPinContinue,onMapInteract,mapFocused,onToggleMapFocus}:{stops:Stop[];clientId:string;destination:string;onSelect:(stop:Stop)=>void;placeResults:SearchPlace[];onPlaceSelect:(place:SearchPlace)=>void;dateLabels:Record<DayKey,string>;activeDay:DayKey;onDayChange:(day:DayKey)=>void;editableStopId:string|null;onStopPositionChange:(id:string,lat:number,lng:number)=>void;onCancelStopPositionEdit:()=>void;customPin:{lat:number;lng:number}|null;customPinMode:boolean;onCustomLocationChange:(point:{lat:number;lng:number})=>void;onCustomAddressChange:(address:string)=>void;onCustomPinContinue:()=>void;onMapInteract:()=>void;mapFocused:boolean;onToggleMapFocus:()=>void}) {
+function NaverMap({stops,clientId,destination,onSelect,placeResults,onPlaceSelect,dateLabels,activeDay,onDayChange,editableStopId,onStopPositionChange,onCancelStopPositionEdit,customPin,customPinMode,onCustomLocationChange,onCustomAddressChange,onCustomPinContinue,onMapTap,mapFocused,onToggleMapFocus}:{stops:Stop[];clientId:string;destination:string;onSelect:(stop:Stop)=>void;placeResults:SearchPlace[];onPlaceSelect:(place:SearchPlace)=>void;dateLabels:Record<DayKey,string>;activeDay:DayKey;onDayChange:(day:DayKey)=>void;editableStopId:string|null;onStopPositionChange:(id:string,lat:number,lng:number)=>void;onCancelStopPositionEdit:()=>void;customPin:{lat:number;lng:number}|null;customPinMode:boolean;onCustomLocationChange:(point:{lat:number;lng:number})=>void;onCustomAddressChange:(address:string)=>void;onCustomPinContinue:()=>void;onMapTap:()=>void;mapFocused:boolean;onToggleMapFocus:()=>void}) {
   const containerRef=useRef<HTMLDivElement>(null), mapRef=useRef<any>(null), overlaysRef=useRef<any[]>([]), placeOverlaysRef=useRef<any[]>([]), customOverlayRef=useRef<any>(null);
   const orderedDays=useMemo(()=>Object.keys(dateLabels),[dateLabels]);
   const [status,setStatus]=useState<'idle'|'loading'|'ready'|'error'>(clientId?'loading':'idle');
@@ -242,15 +242,15 @@ function NaverMap({stops,clientId,destination,onSelect,placeResults,onPlaceSelec
   useEffect(()=>{
     const canvas=containerRef.current,stage=canvas?.parentElement;
     if(!stage)return;
-    const handlePointerDown=(event:PointerEvent)=>{
+    const handleClick=(event:MouseEvent)=>{
+      if(!window.matchMedia('(max-width: 820px)').matches)return;
       const target=event.target as Element|null;
       if(target?.closest('button,a,input,textarea,select'))return;
-      if(!window.matchMedia('(max-width: 820px)').matches)return;
-      onMapInteract();
+      onMapTap();
     };
-    stage.addEventListener('pointerdown',handlePointerDown,{passive:true});
-    return()=>stage.removeEventListener('pointerdown',handlePointerDown);
-  },[onMapInteract]);
+    stage.addEventListener('click',handleClick);
+    return()=>stage.removeEventListener('click',handleClick);
+  },[onMapTap]);
   useEffect(()=>{
     const map=mapRef.current,naver=window.naver;
     if(!map||!naver?.maps||status!=='ready')return;
@@ -481,7 +481,6 @@ export default function Home(){
   const dayCostSummary=useMemo(()=>dayStops.reduce((summary,stop)=>{const cost=costValues(stop,peopleCount);return {personal:summary.personal+cost.personal,total:summary.total+cost.total}},{personal:0,total:0}),[dayStops,peopleCount]);
   const tripCostSummary=useMemo(()=>stops.reduce((summary,stop)=>{const cost=costValues(stop,peopleCount);return {personal:summary.personal+cost.personal,total:summary.total+cost.total}},{personal:0,total:0}),[stops,peopleCount]);
   const selectStop=useCallback((stop:Stop)=>setSelected(stop),[]);
-  const focusMap=useCallback(()=>setMapFocused(true),[]);
   const toggleMapFocus=useCallback(()=>setMapFocused(current=>!current),[]);
   const selectMapCandidate=useCallback((place:SearchPlace)=>setMapCandidate(place),[]);
   const updateCustomPin=useCallback((point:{lat:number;lng:number})=>setCustomPin(point),[]);
@@ -679,7 +678,7 @@ export default function Home(){
       <section className="map-panel">
         <div className="map-toolbar"><div><Sparkles/><span><strong>DAY {Math.max(1,dayKeys.indexOf(activeDay)+1)}</strong></span></div><span className="naver-badge"><b>N</b>NAVER 지도</span></div>
         <div className="map-place-search"><PlacePicker query={mapQuery} onQueryChange={(value,userInput)=>{setMapQuery(value);if(userInput){setMapPicked(null);setMapCandidate(null);setMapResultPlaces([])}}} results={mapSuggestions.results} value={mapPicked} onPick={place=>{setMapPicked(place);setMapCandidate(place);setMapResultPlaces(mapSuggestions.results.slice(0,8));if(place)setMapQuery(cleanTitle(place.title))}} onEnter={commitMapSearch} searching={mapSuggestions.searching} placeholder={`${tripSettings.destination} 장소 검색`} selected={Boolean(mapPicked)}/></div>
-        <NaverMap stops={dayStops} clientId={clientId} destination={tripSettings.destination} onSelect={selectStop} placeResults={mapResultPlaces} onPlaceSelect={selectMapCandidate} dateLabels={dayDates} activeDay={activeDay} onDayChange={setActiveDay} editableStopId={locationEditingId} onStopPositionChange={updateStopPosition} onCancelStopPositionEdit={()=>setLocationEditingId(null)} customPin={customPin} customPinMode={customPinMode} onCustomLocationChange={updateCustomPin} onCustomAddressChange={setCustomAddress} onCustomPinContinue={continueCustomPin} onMapInteract={focusMap} mapFocused={mapFocused} onToggleMapFocus={toggleMapFocus}/>
+        <NaverMap stops={dayStops} clientId={clientId} destination={tripSettings.destination} onSelect={selectStop} placeResults={mapResultPlaces} onPlaceSelect={selectMapCandidate} dateLabels={dayDates} activeDay={activeDay} onDayChange={setActiveDay} editableStopId={locationEditingId} onStopPositionChange={updateStopPosition} onCancelStopPositionEdit={()=>setLocationEditingId(null)} customPin={customPin} customPinMode={customPinMode} onCustomLocationChange={updateCustomPin} onCustomAddressChange={setCustomAddress} onCustomPinContinue={continueCustomPin} onMapTap={toggleMapFocus} mapFocused={mapFocused} onToggleMapFocus={toggleMapFocus}/>
         {mapCandidate&&<div className="map-place-card"><button className="map-card-close" onClick={()=>setMapCandidate(null)} aria-label="장소 정보 닫기">×</button><span>{mapCandidate.category}</span><strong>{cleanTitle(mapCandidate.title)}</strong><p>{mapCandidate.roadAddress||mapCandidate.address}</p><div><a href={naverPlaceUrl({name:cleanTitle(mapCandidate.title),address:mapCandidate.roadAddress||mapCandidate.address})} target="_blank" rel="noreferrer">네이버지도에서 상세보기</a><Button onClick={prepareMapCandidate}><Plus/>이 장소로 결정</Button></div></div>}
       </section>
     </section>
