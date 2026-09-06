@@ -24,7 +24,7 @@ import {
 
 type DayKey = '9/19' | '9/20';
 type PlaceType = '교통' | '식사' | '카페' | '관광' | '야시장' | '기타';
-type Stop = { id: string; day: DayKey; time: string; name: string; category: PlaceType; memo: string; address: string; lat: number; lng: number };
+type Stop = { id: string; day: DayKey; time: string; name: string; category: PlaceType; memo: string; address: string; lat: number; lng: number; customLocation?: boolean };
 type SearchPlace = { title: string; category: string; address: string; roadAddress: string; mapx: string; mapy: string };
 type TripSettings = { title: string; destination: string; startDate: string; endDate: string; people: number };
 
@@ -90,8 +90,20 @@ function PlacePicker({query,onQueryChange,results,value,onPick,searching,placeho
   </Combobox>
 }
 
+function isValidTime(value:string){return /^([01]\d|2[0-3]):[0-5]\d$/.test(value)}
+function normalizeTimeInput(raw:string){
+  const value=raw.replace(/[^0-9:]/g,'');
+  const colon=value.indexOf(':');
+  let hours='',minutes='';
+  if(colon>=0){hours=value.slice(0,colon).replace(/:/g,'').slice(0,2);minutes=value.slice(colon+1).replace(/:/g,'').slice(0,2)}
+  else {const digits=value.replace(/:/g,'').slice(0,4);hours=digits.slice(0,2);minutes=digits.slice(2)}
+  if(hours.length===2){hours=String(Math.min(23,Number(hours))).padStart(2,'0')}
+  if(minutes.length===2){minutes=String(Math.min(59,Number(minutes))).padStart(2,'0')}
+  return hours.length>2?hours.slice(0,2):minutes.length?`${hours.padStart(2,'0')}:${minutes}`:hours;
+}
 function Time24Input({value,onChange}:{value:string;onChange:(value:string)=>void}){
-  return <Input type="text" inputMode="numeric" autoComplete="off" maxLength={5} placeholder="00:00" value={value} onChange={event=>onChange(event.target.value.replace(/[^0-9:]/g,'').slice(0,5))} aria-label="시간(24시간)"/>;
+  const invalid=value.length>0&&!isValidTime(value);
+  return <Input type="text" inputMode="numeric" autoComplete="off" maxLength={5} placeholder="00:00" value={value} onChange={event=>onChange(normalizeTimeInput(event.target.value))} aria-label="시간(24시간)" aria-invalid={invalid}/>;
 }
 function distanceKm(a: Stop, b: Stop) {
   const r = 6371, rad = (v: number) => v * Math.PI / 180;
@@ -107,6 +119,20 @@ function insertStopByTime(current:Stop[],stop:Stop){
   return index<0?[...current,stop]:[...current.slice(0,index),stop,...current.slice(index)];
 }
 function naverPlaceUrl(stop: Pick<Stop,'name'|'address'>) { return `https://map.naver.com/p/search/${encodeURIComponent(`${stop.name} ${stop.address}`)}` }
+function geocodeAddress(query:string):Promise<{lat:number;lng:number;address:string}> {
+  return new Promise((resolve,reject)=>{
+    const service=window.naver?.maps?.Service;
+    if(!service?.geocode){reject(new Error('주소 검색을 사용할 수 없습니다.'));return}
+    service.geocode({query},(status:any,response:any)=>{
+      const ok=status===window.naver.maps.Service.Status.OK||status==='OK';
+      const item=response?.v2?.addresses?.[0]||response?.result?.items?.[0];
+      if(!ok||!item){reject(new Error('주소를 찾지 못했습니다.'));return}
+      const lat=Number(item.y),lng=Number(item.x);
+      if(!Number.isFinite(lat)||!Number.isFinite(lng)){reject(new Error('주소 좌표를 확인하지 못했습니다.'));return}
+      resolve({lat,lng,address:item.roadAddress||item.jibunAddress||item.address||query});
+    });
+  });
+}
 
 function loadNaverMaps(clientId: string) {
   if (window.naver?.maps) return Promise.resolve();
@@ -128,8 +154,8 @@ function loadNaverMaps(clientId: string) {
   return window.__naverMapsLoading;
 }
 
-function NaverMap({stops,clientId,onSelect,placeResults,onPlaceSelect,dateLabels}:{stops:Stop[];clientId:string;onSelect:(stop:Stop)=>void;placeResults:SearchPlace[];onPlaceSelect:(place:SearchPlace)=>void;dateLabels:Record<DayKey,string>}) {
-  const containerRef=useRef<HTMLDivElement>(null), mapRef=useRef<any>(null), overlaysRef=useRef<any[]>([]), placeOverlaysRef=useRef<any[]>([]);
+function NaverMap({stops,clientId,onSelect,placeResults,onPlaceSelect,dateLabels,editableStopId,onStopPositionChange,onCancelStopPositionEdit,customPin,customPinMode,onCustomLocationChange,onCustomPinContinue}:{stops:Stop[];clientId:string;onSelect:(stop:Stop)=>void;placeResults:SearchPlace[];onPlaceSelect:(place:SearchPlace)=>void;dateLabels:Record<DayKey,string>;editableStopId:string|null;onStopPositionChange:(id:string,lat:number,lng:number)=>void;onCancelStopPositionEdit:()=>void;customPin:{lat:number;lng:number}|null;customPinMode:boolean;onCustomLocationChange:(point:{lat:number;lng:number})=>void;onCustomPinContinue:()=>void}) {
+  const containerRef=useRef<HTMLDivElement>(null), mapRef=useRef<any>(null), overlaysRef=useRef<any[]>([]), placeOverlaysRef=useRef<any[]>([]), customOverlayRef=useRef<any>(null);
   const [status,setStatus]=useState<'idle'|'loading'|'ready'|'error'>(clientId?'loading':'idle');
   useEffect(()=>{
     if(!clientId||!containerRef.current)return;
@@ -151,13 +177,36 @@ function NaverMap({stops,clientId,onSelect,placeResults,onPlaceSelect,dateLabels
     const bounds=new naver.maps.LatLngBounds();
     stops.forEach((stop,index)=>{
       const position=new naver.maps.LatLng(stop.lat,stop.lng), color=DAY_COLOR[stop.day];
-      const marker=new naver.maps.Marker({map,position,title:stop.name,clickable:true,zIndex:100+index,icon:{content:`<button type="button" class="naver-marker" style="--pin:${color}" aria-label="${escapeHtml(stop.name)} 정보 보기"><span>${index+1}</span></button>`,anchor:new naver.maps.Point(20,45)}});
-      naver.maps.Event.addListener(marker,'click',()=>onSelect(stop)); overlaysRef.current.push(marker); bounds.extend(position);
+      const marker=new naver.maps.Marker({map,position,title:stop.name,clickable:true,draggable:editableStopId===stop.id,zIndex:100+index,icon:{content:`<button type="button" class="naver-marker" style="--pin:${color}" aria-label="${escapeHtml(stop.name)} 정보 보기"><span>${index+1}</span></button>`,anchor:new naver.maps.Point(20,45)}});
+      naver.maps.Event.addListener(marker,'click',()=>onSelect(stop));
+      if(editableStopId===stop.id){naver.maps.Event.addListener(marker,'dragend',()=>{const point=marker.getPosition();onStopPositionChange(stop.id,point.lat(),point.lng())})}
+      overlaysRef.current.push(marker); bounds.extend(position);
     });
     if(stops.length>1){const line=new naver.maps.Polyline({map,path:stops.map(s=>new naver.maps.LatLng(s.lat,s.lng)),strokeColor:DAY_COLOR[stops[0].day],strokeWeight:5,strokeOpacity:.7,strokeStyle:'shortdash',zIndex:20});overlaysRef.current.push(line)}
     if(stops.length===1)map.setCenter(bounds.getCenter());
     if(stops.length>1)map.fitBounds(bounds,{top:80,right:80,bottom:80,left:80});
-  },[stops,status,onSelect]);
+  },[stops,status,onSelect,editableStopId,onStopPositionChange]);
+  useEffect(()=>{
+    const map=mapRef.current,naver=window.naver;
+    if(!map||!naver?.maps||status!=='ready')return;
+    const listener=naver.maps.Event.addListener(map,'click',(event:any)=>{
+      if(!customPinMode)return;
+      const point=event.coord||event.latlng;
+      if(point)onCustomLocationChange({lat:point.lat(),lng:point.lng()});
+    });
+    return()=>naver?.maps?.Event?.removeListener?.(listener);
+  },[customPinMode,status,onCustomLocationChange]);
+  useEffect(()=>{
+    const map=mapRef.current,naver=window.naver;
+    if(!map||!naver?.maps||status!=='ready')return;
+    customOverlayRef.current?.setMap(null);customOverlayRef.current=null;
+    if(!customPin)return;
+    const marker=new naver.maps.Marker({map,position:new naver.maps.LatLng(customPin.lat,customPin.lng),title:'임의 위치',draggable:customPinMode,zIndex:400,icon:{content:'<button type="button" class="custom-pin-marker" aria-label="임의 핀 위치"><span>＋</span></button>',anchor:new naver.maps.Point(18,42)}});
+    naver.maps.Event.addListener(marker,'dragend',()=>{const point=marker.getPosition();onCustomLocationChange({lat:point.lat(),lng:point.lng()})});
+    customOverlayRef.current=marker;
+    if(customPinMode)map.panTo(marker.getPosition());
+    return()=>{marker.setMap(null);if(customOverlayRef.current===marker)customOverlayRef.current=null};
+  },[customPin,status,customPinMode,onCustomLocationChange]);
   useEffect(()=>{
     const map=mapRef.current,naver=window.naver;
     if(!map||!naver?.maps||status!=='ready')return;
@@ -178,6 +227,8 @@ function NaverMap({stops,clientId,onSelect,placeResults,onPlaceSelect,dateLabels
       {status==='loading'?<><div className="loading-orbit"/><strong>네이버 지도를 연결하는 중</strong><span>잠시만 기다려주세요.</span></>:status==='error'?<><CircleAlert/><strong>네이버 지도 인증에 실패했습니다</strong><span>Maps 앱의 10자 Client ID와 등록된 웹 서비스 URL을 확인해주세요.</span></>:<><Map className="text-[#03c75a]"/><strong>네이버 지도 연결이 필요합니다</strong><span>설정에서 Maps Client ID를 입력하면 실제 지도가 열립니다.</span></>}
     </div></div>}
     <div className="map-legend"><span><i style={{background:DAY_COLOR['9/19']}}/>{formatTripDate(dateLabels['9/19'])}</span><span><i style={{background:DAY_COLOR['9/20']}}/>{formatTripDate(dateLabels['9/20'])}</span></div>
+    {customPinMode&&<div className="map-location-editor"><strong>지도에서 위치를 정하세요</strong><span>지도를 클릭하거나 초록 핀을 끌어 옮긴 뒤 계속하세요.</span><Button onClick={onCustomPinContinue} disabled={!customPin}>이 위치로 계속</Button></div>}
+    {editableStopId&&<div className="map-location-editor"><strong>위치 수정 중</strong><span>선택한 장소의 핀을 드래그해 위치를 바꾸세요.</span><Button variant="outline" onClick={onCancelStopPositionEdit}>취소</Button></div>}
   </div>
 }
 
@@ -199,6 +250,8 @@ export default function Home(){
   const [editing,setEditing]=useState<Stop|null>(null), [editDraft,setEditDraft]=useState<Stop|null>(null), [editQuery,setEditQuery]=useState(''), [editPlaceLinked,setEditPlaceLinked]=useState(true);
   const [query,setQuery]=useState(''), [picked,setPicked]=useState<SearchPlace|null>(null);
   const [mapQuery,setMapQuery]=useState(''),[mapPicked,setMapPicked]=useState<SearchPlace|null>(null),[mapCandidate,setMapCandidate]=useState<SearchPlace|null>(null),[mapResultPlaces,setMapResultPlaces]=useState<SearchPlace[]>([]);
+  const [customPinMode,setCustomPinMode]=useState(false),[customPin,setCustomPin]=useState<{lat:number;lng:number}|null>(null),[customPinOpen,setCustomPinOpen]=useState(false),[locationEditingId,setLocationEditingId]=useState<string|null>(null);
+  const [customDay,setCustomDay]=useState<DayKey>('9/19'),[customName,setCustomName]=useState(''),[customAddress,setCustomAddress]=useState(''),[customMemo,setCustomMemo]=useState(''),[customTime,setCustomTime]=useState('12:00'),[customCategory,setCustomCategory]=useState<PlaceType>('관광'),[customAddressSearching,setCustomAddressSearching]=useState(false),[customAddressError,setCustomAddressError]=useState('');
   const [newTime,setNewTime]=useState('12:00'), [newCategory,setNewCategory]=useState<PlaceType>('식사'), [newMemo,setNewMemo]=useState(''), [draggedId,setDraggedId]=useState<string|null>(null), [dragOverId,setDragOverId]=useState<string|null>(null), [justMovedId,setJustMovedId]=useState<string|null>(null);
   const addSuggestions=usePlaceSuggestions(query,addOpen,tripSettings.destination),editSuggestions=usePlaceSuggestions(editQuery,Boolean(editing),tripSettings.destination),mapSuggestions=usePlaceSuggestions(mapQuery,true,tripSettings.destination);
   useEffect(()=>{
@@ -220,7 +273,7 @@ export default function Home(){
     void Promise.resolve(context.registerTool({
       name:'add_itinerary_stop',title:'여행 일정에 장소 추가',
       description:'날짜, 시간, 장소와 좌표를 받아 현재 여행 일정과 지도에 새 방문지를 추가합니다.',
-      inputSchema:{type:'object',properties:{day:{type:'string',enum:['9/19','9/20']},time:{type:'string',pattern:'^[0-2][0-9]:[0-5][0-9]$'},name:{type:'string',minLength:1},category:{type:'string',enum:categories},memo:{type:'string'},address:{type:'string',minLength:1},lat:{type:'number'},lng:{type:'number'}},required:['day','time','name','category','address','lat','lng'],additionalProperties:false},
+      inputSchema:{type:'object',properties:{day:{type:'string',enum:['9/19','9/20']},time:{type:'string',pattern:'^([01]\\d|2[0-3]):[0-5]\\d$'},name:{type:'string',minLength:1},category:{type:'string',enum:categories},memo:{type:'string'},address:{type:'string',minLength:1},lat:{type:'number'},lng:{type:'number'}},required:['day','time','name','category','address','lat','lng'],additionalProperties:false},
       annotations:{readOnlyHint:false,untrustedContentHint:false},
       execute(input:unknown){
         const value=input as Partial<Stop>;
@@ -235,16 +288,25 @@ export default function Home(){
   const dayStops=useMemo(()=>stops.filter(s=>s.day===activeDay),[stops,activeDay]);
   const selectStop=useCallback((stop:Stop)=>setSelected(stop),[]);
   const selectMapCandidate=useCallback((place:SearchPlace)=>setMapCandidate(place),[]);
+  const updateCustomPin=useCallback((point:{lat:number;lng:number})=>setCustomPin(point),[]);
+  const updateStopPosition=useCallback((id:string,lat:number,lng:number)=>{setStops(current=>current.map(stop=>stop.id===id?{...stop,lat,lng,customLocation:true}:stop));setLocationEditingId(null)},[]);
   const saveTripSettings=()=>{const next={...settingsDraft,title:settingsDraft.title.trim()||'나의 여행',destination:settingsDraft.destination.trim(),people:Math.max(1,Math.round(Number(settingsDraft.people)||1))};setTripSettings(next);setSettingsDraft(next);localStorage.setItem('route-note-trip-settings',JSON.stringify(next));setSettingsOpen(false)};
   const addStop=()=>{if(!picked)return;const stop:Stop={id:`${Date.now()}`,day:activeDay,time:newTime,name:cleanTitle(picked.title),category:newCategory,memo:newMemo.trim(),address:picked.roadAddress||picked.address,lat:Number(picked.mapy)/1e7,lng:Number(picked.mapx)/1e7};setStops(current=>insertStopByTime(current,stop));setAddOpen(false);setQuery('');setPicked(null);setNewMemo('')};
   const openEdit=(stop:Stop)=>{setEditing(stop);setEditDraft({...stop});setEditQuery(stop.name);setEditPlaceLinked(true)};
-  const saveEdit=()=>{if(!editing||!editDraft)return;const updated={...editDraft,name:editDraft.name.trim()||editing.name,memo:editDraft.memo.trim()};setStops(current=>current.map(stop=>stop.id===editing.id?updated:stop));if(selected?.id===editing.id)setSelected(updated);setEditing(null);setEditDraft(null)};
+  const saveEdit=()=>{if(!editing||!editDraft||!isValidTime(editDraft.time))return;const updated={...editDraft,name:editDraft.name.trim()||editing.name,memo:editDraft.memo.trim()};setStops(current=>current.map(stop=>stop.id===editing.id?updated:stop));if(selected?.id===editing.id)setSelected(updated);setEditing(null);setEditDraft(null)};
   const moveStop=(id:string,direction:-1|1)=>setStops(current=>{const items=current.filter(s=>s.day===activeDay),i=items.findIndex(s=>s.id===id),t=i+direction;if(i<0||t<0||t>=items.length)return current;const next=[...items];[next[i],next[t]]=[next[t],next[i]];let cursor=0;return current.map(s=>s.day===activeDay?next[cursor++]:s)});
   const reorderByDrop=(targetId:string)=>{if(!draggedId||draggedId===targetId){setDraggedId(null);setDragOverId(null);return}const movedId=draggedId;setStops(current=>{const items=current.filter(s=>s.day===activeDay),from=items.findIndex(s=>s.id===movedId),to=items.findIndex(s=>s.id===targetId);if(from<0||to<0)return current;const next=[...items],[moved]=next.splice(from,1);next.splice(to,0,moved);let cursor=0;return current.map(s=>s.day===activeDay?next[cursor++]:s)});setJustMovedId(movedId);window.setTimeout(()=>setJustMovedId(current=>current===movedId?null:current),380);setDraggedId(null);setDragOverId(null)};
   const removeSelected=()=>{if(!selected)return;setStops(c=>c.filter(s=>s.id!==selected.id));setSelected(null)};
   const removeStop=(id:string)=>setStops(current=>current.filter(stop=>stop.id!==id));
   const commitMapSearch=()=>{setMapResultPlaces(mapSuggestions.results.slice(0,8));setMapPicked(null);setMapCandidate(null)};
   const prepareMapCandidate=()=>{if(!mapCandidate)return;setPicked(mapCandidate);setQuery(cleanTitle(mapCandidate.title));setMapCandidate(null);setAddOpen(true)};
+  const openCustomPin=()=>{setCustomDay(activeDay);setCustomPin(null);setCustomName('');setCustomAddress('');setCustomMemo('');setCustomTime('12:00');setCustomCategory('관광');setCustomAddressError('');setCustomPinMode(false);setCustomPinOpen(true)};
+  const startCustomPinPlacement=()=>{setCustomPinMode(true);setCustomPinOpen(false)};
+  const continueCustomPin=()=>{if(customPin){setCustomPinMode(false);setCustomPinOpen(true)}};
+  const cancelCustomPin=()=>{setCustomPinMode(false);setCustomPin(null);setCustomPinOpen(false);setCustomAddressError('')};
+  const findCustomAddress=async()=>{const value=customAddress.trim();if(!value)return;setCustomAddressSearching(true);setCustomAddressError('');try{const point=await geocodeAddress(value);setCustomPin({lat:point.lat,lng:point.lng});setCustomAddress(point.address)}catch(error){setCustomAddressError(error instanceof Error?error.message:'주소를 찾지 못했습니다.')}finally{setCustomAddressSearching(false)}};
+  const addCustomStop=()=>{if(!customPin||!customName.trim()||!isValidTime(customTime))return;const stop:Stop={id:`custom-${Date.now()}`,day:customDay,time:customTime,name:customName.trim(),category:customCategory,memo:customMemo.trim(),address:customAddress.trim()||'지도에서 직접 지정한 위치',lat:customPin.lat,lng:customPin.lng,customLocation:true};setStops(current=>insertStopByTime(current,stop));setActiveDay(customDay);cancelCustomPin()};
+  const startLocationEdit=()=>{if(!selected)return;setLocationEditingId(selected.id);setSelected(null)};
 
   const dayDates:Record<DayKey,string>={'9/19':tripSettings.startDate,'9/20':tripSettings.endDate};
 
@@ -269,7 +331,24 @@ export default function Home(){
         {addSuggestions.error&&query.trim().length>=2&&<div className="inline-notice"><CircleAlert/>{addSuggestions.error}</div>}
         {picked&&<div className="linked-place"><MapPin/><span><strong>{cleanTitle(picked.title)}</strong><small>{picked.roadAddress||picked.address}</small></span><em>선택됨</em></div>}
         <label className="memo-field">메모 <Textarea value={newMemo} onChange={e=>setNewMemo(e.target.value)} placeholder="메뉴, 예약 시간 등"/></label>
-        <DialogFooter><Button variant="outline" onClick={()=>setAddOpen(false)}>취소</Button><Button onClick={addStop} disabled={!picked}>일정에 추가</Button></DialogFooter>
+        <DialogFooter><Button variant="outline" onClick={()=>setAddOpen(false)}>취소</Button><Button onClick={addStop} disabled={!picked||!isValidTime(newTime)}>일정에 추가</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog open={customPinOpen} onOpenChange={open=>{if(!open)cancelCustomPin()}}>
+      <DialogContent className="custom-dialog sm:max-w-[540px]">
+        <DialogHeader><DialogTitle>지도에 임의 핀 추가</DialogTitle><DialogDescription>검색되지 않는 장소도 직접 일정에 넣을 수 있어요.</DialogDescription></DialogHeader>
+        <label>장소 이름<Input value={customName} onChange={e=>setCustomName(e.target.value)} placeholder="예: 숙소, 친구 추천 맛집"/></label>
+        <div className="form-grid">
+          <label>날짜<select value={customDay} onChange={e=>setCustomDay(e.target.value as DayKey)}><option value="9/19">{formatTripDate(tripSettings.startDate,true)}</option><option value="9/20">{formatTripDate(tripSettings.endDate,true)}</option></select></label>
+          <label>시간(24시간)<Time24Input value={customTime} onChange={setCustomTime}/></label>
+          <label>종류<select value={customCategory} onChange={e=>setCustomCategory(e.target.value as PlaceType)}>{['식사','카페','관광','교통','야시장','기타'].map(t=><option key={t}>{t}</option>)}</select></label>
+        </div>
+        <div className="custom-location-row"><label>주소(선택)<Input value={customAddress} onChange={e=>{setCustomAddress(e.target.value);setCustomAddressError('')}} placeholder="주소를 입력해 위치 찾기"/></label><Button variant="outline" onClick={findCustomAddress} disabled={!customAddress.trim()||customAddressSearching}>{customAddressSearching?'찾는 중…':'주소로 찾기'}</Button></div>
+        {customAddressError&&<div className="inline-notice"><CircleAlert/>{customAddressError}</div>}
+        <div className={`custom-location-status ${customPin?'is-set':''}`}><MapPin/><span>{customPin?(customAddress||'지도에서 지정한 위치'):'아직 위치를 정하지 않았어요.'}</span><Button variant="outline" onClick={startCustomPinPlacement}>{customPin?'지도에서 다시 지정':'지도에서 위치 찍기'}</Button></div>
+        <label className="memo-field">메모 <Textarea value={customMemo} onChange={e=>setCustomMemo(e.target.value)} placeholder="메모를 남겨보세요"/></label>
+        <DialogFooter><Button variant="outline" onClick={cancelCustomPin}>취소</Button><Button onClick={addCustomStop} disabled={!customPin||!customName.trim()||!isValidTime(customTime)}>일정에 추가</Button></DialogFooter>
       </DialogContent>
     </Dialog>
 
@@ -277,20 +356,20 @@ export default function Home(){
       <aside className="planner-panel">
         <div className="day-switch" role="tablist" aria-label="여행 날짜">{(['9/19','9/20'] as DayKey[]).map((day,index)=><button key={day} role="tab" aria-selected={activeDay===day} onClick={()=>setActiveDay(day)}><span>DAY {index+1}</span><strong>{formatTripDate(dayDates[day],true)}</strong></button>)}</div>
         <div className="panel-heading"><div><span><CalendarDays/>방문 순서</span><strong>{dayStops.length}개 장소</strong></div></div>
-        <div className="stop-list">{dayStops.map((stop,index)=>{const previous=dayStops[index-1],gap=previous?distanceKm(previous,stop):null,reverse=previous&&timeMinutes(stop.time)<timeMinutes(previous.time);return <div key={stop.id}>{gap!==null&&<div className="distance-chip"><span/>직선 {gap<1?`${Math.round(gap*1000)}m`:`${gap.toFixed(1)}km`}</div>}<article className={`stop-card ${draggedId===stop.id?'is-dragging':''} ${dragOverId===stop.id&&draggedId!==stop.id?'is-drag-over':''} ${justMovedId===stop.id?'just-moved':''}`} draggable onDragStart={()=>setDraggedId(stop.id)} onDragOver={e=>{e.preventDefault();if(draggedId!==stop.id)setDragOverId(stop.id)}} onDragLeave={()=>setDragOverId(current=>current===stop.id?null:current)} onDrop={()=>reorderByDrop(stop.id)} onDragEnd={()=>{setDraggedId(null);setDragOverId(null)}} onClick={()=>setSelected(stop)}><div className="drag-handle" aria-hidden="true"><GripVertical/></div><div className="order-pin" style={{background:DAY_COLOR[activeDay]}}>{index+1}</div><div className="stop-main"><div className="stop-time"><Clock3/><span className={reverse?'time-warning':''} title={reverse?'앞 장소보다 시간이 이릅니다.':undefined}>{stop.time}</span><span className="stop-category">{stop.category}</span></div><strong>{stop.name}</strong>{stop.memo&&<p>{stop.memo}</p>}</div><div className="card-actions"><div className="move-buttons"><button aria-label={`${stop.name} 위로 이동`} disabled={index===0} onClick={e=>{e.stopPropagation();moveStop(stop.id,-1)}}><ArrowUp/></button><button aria-label={`${stop.name} 아래로 이동`} disabled={index===dayStops.length-1} onClick={e=>{e.stopPropagation();moveStop(stop.id,1)}}><ArrowDown/></button></div><button className="edit-card-button" title="수정" aria-label={`${stop.name} 수정`} onClick={e=>{e.stopPropagation();openEdit(stop)}}><Pencil/></button><button className="remove-card-button" title="삭제" aria-label={`${stop.name} 삭제`} onClick={e=>{e.stopPropagation();removeStop(stop.id)}}><X/></button></div></article></div>})}</div>
-        <Button variant="outline" className="wide-add" onClick={()=>setAddOpen(true)}><Plus/>이 날짜에 장소 추가</Button>
+        <div className="stop-list">{dayStops.map((stop,index)=>{const previous=dayStops[index-1],gap=previous?distanceKm(previous,stop):null,reverse=previous&&timeMinutes(stop.time)<timeMinutes(previous.time);return <div key={stop.id}>{gap!==null&&<div className="distance-chip"><span/>직선 {gap<1?`${Math.round(gap*1000)}m`:`${gap.toFixed(1)}km`}</div>}<article className={`stop-card ${draggedId===stop.id?'is-dragging':''} ${dragOverId===stop.id&&draggedId!==stop.id?'is-drag-over':''} ${justMovedId===stop.id?'just-moved':''}`} draggable onDragStart={()=>setDraggedId(stop.id)} onDragOver={e=>{e.preventDefault();if(draggedId!==stop.id)setDragOverId(stop.id)}} onDragLeave={()=>setDragOverId(current=>current===stop.id?null:current)} onDrop={()=>reorderByDrop(stop.id)} onDragEnd={()=>{setDraggedId(null);setDragOverId(null)}} onClick={()=>setSelected(stop)}><div className="drag-handle" aria-hidden="true"><GripVertical/></div><div className="order-pin" style={{background:DAY_COLOR[activeDay]}}>{index+1}</div><div className="stop-main"><div className="stop-time"><Clock3 className={reverse?'time-warning':''}/><span className={reverse?'time-warning':''} title={reverse?'앞 장소보다 시간이 이릅니다.':undefined}>{stop.time}</span><span className="stop-category">{stop.category}</span></div><strong>{stop.name}</strong>{stop.memo&&<p>{stop.memo}</p>}</div><div className="card-actions"><div className="move-buttons"><button aria-label={`${stop.name} 위로 이동`} disabled={index===0} onClick={e=>{e.stopPropagation();moveStop(stop.id,-1)}}><ArrowUp/></button><button aria-label={`${stop.name} 아래로 이동`} disabled={index===dayStops.length-1} onClick={e=>{e.stopPropagation();moveStop(stop.id,1)}}><ArrowDown/></button></div><button className="edit-card-button" title="수정" aria-label={`${stop.name} 수정`} onClick={e=>{e.stopPropagation();openEdit(stop)}}><Pencil/></button><button className="remove-card-button" title="삭제" aria-label={`${stop.name} 삭제`} onClick={e=>{e.stopPropagation();removeStop(stop.id)}}><X/></button></div></article></div>})}</div>
+        <div className="planner-add-actions"><Button variant="outline" className="wide-add" onClick={()=>setAddOpen(true)}><Plus/>이 날짜에 장소 추가</Button><Button variant="ghost" className="custom-add-button" onClick={openCustomPin}><MapPin/>지도에 임의 핀 추가</Button></div>
       </aside>
       <section className="map-panel">
         <div className="map-toolbar"><div><Sparkles/><span><strong>{activeDay==='9/19'?'첫째 날':'둘째 날'}</strong></span></div><span className="naver-badge"><b>N</b>NAVER 지도</span></div>
         <div className="map-place-search"><PlacePicker query={mapQuery} onQueryChange={(value,userInput)=>{setMapQuery(value);if(userInput){setMapPicked(null);setMapCandidate(null);setMapResultPlaces([])}}} results={mapSuggestions.results} value={mapPicked} onPick={place=>{setMapPicked(place);setMapCandidate(place);setMapResultPlaces(mapSuggestions.results.slice(0,8));if(place)setMapQuery(cleanTitle(place.title))}} onEnter={commitMapSearch} searching={mapSuggestions.searching} placeholder={`${tripSettings.destination} 장소 검색`} selected={Boolean(mapPicked)}/></div>
-        <NaverMap stops={dayStops} clientId={clientId} onSelect={selectStop} placeResults={mapResultPlaces} onPlaceSelect={selectMapCandidate} dateLabels={dayDates}/>
+        <NaverMap stops={dayStops} clientId={clientId} onSelect={selectStop} placeResults={mapResultPlaces} onPlaceSelect={selectMapCandidate} dateLabels={dayDates} editableStopId={locationEditingId} onStopPositionChange={updateStopPosition} onCancelStopPositionEdit={()=>setLocationEditingId(null)} customPin={customPin} customPinMode={customPinMode} onCustomLocationChange={updateCustomPin} onCustomPinContinue={continueCustomPin}/>
         {mapCandidate&&<div className="map-place-card"><button className="map-card-close" onClick={()=>setMapCandidate(null)} aria-label="장소 정보 닫기">×</button><span>{mapCandidate.category}</span><strong>{cleanTitle(mapCandidate.title)}</strong><p>{mapCandidate.roadAddress||mapCandidate.address}</p><div><a href={naverPlaceUrl({name:cleanTitle(mapCandidate.title),address:mapCandidate.roadAddress||mapCandidate.address})} target="_blank" rel="noreferrer">네이버지도</a><Button onClick={prepareMapCandidate}><Plus/>이 장소로 결정</Button></div></div>}
       </section>
     </section>
 
-    <Sheet open={Boolean(selected)} onOpenChange={open=>!open&&setSelected(null)}><SheetContent className="place-sheet sm:max-w-[430px]">{selected&&<><SheetHeader><div className="sheet-eyebrow"><span style={{background:DAY_COLOR[selected.day]}}>{dayStops.findIndex(s=>s.id===selected.id)+1}</span>{formatTripDate(dayDates[selected.day])} · {selected.time} · {selected.category}</div><SheetTitle>{selected.name}</SheetTitle><SheetDescription>{selected.address}</SheetDescription></SheetHeader><div className="sheet-body"><div className="section-title"><span>거리뷰</span><small>네이버 파노라마</small></div><PanoramaView stop={selected} clientId={clientId}/>{selected.memo&&<div className="place-note"><span>메모</span><p>{selected.memo}</p></div>}<a className="naver-link" href={naverPlaceUrl(selected)} target="_blank" rel="noreferrer"><span><b>N</b>네이버지도에서 상세·후기 보기</span><ExternalLink/></a><Button variant="destructive" className="delete-button" onClick={removeSelected}><Trash2/>이 장소 삭제</Button></div></>}</SheetContent></Sheet>
+    <Sheet open={Boolean(selected)} onOpenChange={open=>!open&&setSelected(null)}><SheetContent className="place-sheet sm:max-w-[430px]">{selected&&<><SheetHeader><div className="sheet-eyebrow"><span style={{background:DAY_COLOR[selected.day]}}>{dayStops.findIndex(s=>s.id===selected.id)+1}</span>{formatTripDate(dayDates[selected.day])} · {selected.time} · {selected.category}</div><SheetTitle>{selected.name}</SheetTitle><SheetDescription>{selected.address}</SheetDescription></SheetHeader><div className="sheet-body"><div className="section-title"><span>거리뷰</span><small>네이버 파노라마</small></div><PanoramaView stop={selected} clientId={clientId}/>{selected.memo&&<div className="place-note"><span>메모</span><p>{selected.memo}</p></div>}<a className="naver-link" href={naverPlaceUrl(selected)} target="_blank" rel="noreferrer"><span><b>N</b>네이버지도에서 상세·후기 보기</span><ExternalLink/></a><Button variant="outline" className="location-edit-button" onClick={startLocationEdit}><MapPin/>위치 임의 수정</Button><Button variant="destructive" className="delete-button" onClick={removeSelected}><Trash2/>이 장소 삭제</Button></div></>}</SheetContent></Sheet>
 
-    <Dialog open={Boolean(editing)} onOpenChange={open=>{if(!open){setEditing(null);setEditDraft(null)}}}><DialogContent className="edit-dialog sm:max-w-[500px]">{editDraft&&<><DialogHeader><DialogTitle>장소 수정</DialogTitle><DialogDescription>장소를 바꾸려면 검색 결과에서 선택하세요.</DialogDescription></DialogHeader><div className="edit-grid"><label>장소 <PlacePicker query={editQuery} onQueryChange={(value,userInput)=>{setEditQuery(value);if(userInput)setEditPlaceLinked(false)}} results={editSuggestions.results} value={null} onPick={place=>{if(!place)return;const name=cleanTitle(place.title);setEditQuery(name);setEditPlaceLinked(true);setEditDraft({...editDraft,name,address:place.roadAddress||place.address,lat:Number(place.mapy)/1e7,lng:Number(place.mapx)/1e7})}} searching={editSuggestions.searching} placeholder="장소 검색" selected={editPlaceLinked}/></label>{editSuggestions.error&&editQuery.trim().length>=2&&!editPlaceLinked&&<div className="inline-notice"><CircleAlert/>{editSuggestions.error}</div>}<div className={`linked-place ${editPlaceLinked?'':'unlinked'}`}><MapPin/><span><strong>{editDraft.name}</strong><small>{editDraft.address}</small></span><em>{editPlaceLinked?'선택됨':'장소를 골라주세요'}</em></div><div className="form-grid two"><label>시간(24시간)<Time24Input value={editDraft.time} onChange={time=>setEditDraft({...editDraft,time})}/></label><label>종류<select value={editDraft.category} onChange={e=>setEditDraft({...editDraft,category:e.target.value as PlaceType})}>{['식사','카페','관광','교통','야시장','기타'].map(t=><option key={t}>{t}</option>)}</select></label></div><label>메모<Textarea value={editDraft.memo} onChange={e=>setEditDraft({...editDraft,memo:e.target.value})} placeholder="메모를 남겨보세요"/></label></div><DialogFooter><Button variant="outline" onClick={()=>{setEditing(null);setEditDraft(null)}}>취소</Button><Button onClick={saveEdit} disabled={!editPlaceLinked}>저장</Button></DialogFooter></>}</DialogContent></Dialog>
+    <Dialog open={Boolean(editing)} onOpenChange={open=>{if(!open){setEditing(null);setEditDraft(null)}}}><DialogContent className="edit-dialog sm:max-w-[500px]">{editDraft&&<><DialogHeader><DialogTitle>장소 수정</DialogTitle><DialogDescription>장소를 바꾸려면 검색 결과에서 선택하세요.</DialogDescription></DialogHeader><div className="edit-grid"><label>장소 <PlacePicker query={editQuery} onQueryChange={(value,userInput)=>{setEditQuery(value);if(userInput)setEditPlaceLinked(false)}} results={editSuggestions.results} value={null} onPick={place=>{if(!place)return;const name=cleanTitle(place.title);setEditQuery(name);setEditPlaceLinked(true);setEditDraft({...editDraft,name,address:place.roadAddress||place.address,lat:Number(place.mapy)/1e7,lng:Number(place.mapx)/1e7})}} searching={editSuggestions.searching} placeholder="장소 검색" selected={editPlaceLinked}/></label>{editSuggestions.error&&editQuery.trim().length>=2&&!editPlaceLinked&&<div className="inline-notice"><CircleAlert/>{editSuggestions.error}</div>}<div className={`linked-place ${editPlaceLinked?'':'unlinked'}`}><MapPin/><span><strong>{editDraft.name}</strong><small>{editDraft.address}</small></span><em>{editPlaceLinked?'선택됨':'장소를 골라주세요'}</em></div><div className="form-grid two"><label>시간(24시간)<Time24Input value={editDraft.time} onChange={time=>setEditDraft({...editDraft,time})}/></label><label>종류<select value={editDraft.category} onChange={e=>setEditDraft({...editDraft,category:e.target.value as PlaceType})}>{['식사','카페','관광','교통','야시장','기타'].map(t=><option key={t}>{t}</option>)}</select></label></div><label>메모<Textarea value={editDraft.memo} onChange={e=>setEditDraft({...editDraft,memo:e.target.value})} placeholder="메모를 남겨보세요"/></label></div><DialogFooter><Button variant="outline" onClick={()=>{setEditing(null);setEditDraft(null)}}>취소</Button><Button onClick={saveEdit} disabled={!editPlaceLinked||!isValidTime(editDraft.time)}>저장</Button></DialogFooter></>}</DialogContent></Dialog>
 
     <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}><DialogContent className="settings-dialog sm:max-w-[500px]"><DialogHeader><DialogTitle>여행 일정</DialogTitle><DialogDescription>어디로, 언제 떠날지 정하세요.</DialogDescription></DialogHeader><div className="trip-settings-grid"><label>여행 이름<Input value={settingsDraft.title} onChange={e=>setSettingsDraft({...settingsDraft,title:e.target.value})} placeholder="전주 맛집 여행"/></label><label>여행지<Input value={settingsDraft.destination} onChange={e=>setSettingsDraft({...settingsDraft,destination:e.target.value})} placeholder="전주"/></label><div className="date-fields"><label>출발일<Input type="date" value={settingsDraft.startDate} onChange={e=>setSettingsDraft({...settingsDraft,startDate:e.target.value})}/></label><label>돌아오는 날<Input type="date" min={settingsDraft.startDate} value={settingsDraft.endDate} onChange={e=>setSettingsDraft({...settingsDraft,endDate:e.target.value})}/></label></div><label>인원<div className="people-input"><Users/><Input type="number" min="1" max="99" value={settingsDraft.people} onChange={e=>setSettingsDraft({...settingsDraft,people:Number(e.target.value)})}/><span>명</span></div></label></div>{settingsDraft.startDate>settingsDraft.endDate&&<div className="inline-notice"><CircleAlert/>날짜를 다시 확인해주세요.</div>}<DialogFooter><Button variant="outline" onClick={()=>setSettingsOpen(false)}>취소</Button><Button onClick={saveTripSettings} disabled={!settingsDraft.destination.trim()||!settingsDraft.startDate||!settingsDraft.endDate||settingsDraft.startDate>settingsDraft.endDate}>저장</Button></DialogFooter></DialogContent></Dialog>
   </main>
