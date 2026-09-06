@@ -52,7 +52,7 @@ export async function POST(request: Request, context: Context) {
   let body: Record<string, unknown> = {};
   try { body = await request.json() as Record<string, unknown>; } catch {}
   if (row.deleted_at) return Response.json({ message: '휴지통에 있는 계획입니다.' }, { status: 410 });
-  const password = typeof body.password === 'string' ? body.password.trim().slice(0, 100) : undefined;
+  const password = typeof body.passwordAuth === 'string' ? body.passwordAuth.trim().slice(0, 100) : typeof body.password === 'string' ? body.password.trim().slice(0, 100) : undefined;
   const editPassword = typeof body.editPasswordAuth === 'string' ? body.editPasswordAuth.trim().slice(0, 100) : typeof body.editPassword === 'string' ? body.editPassword.trim().slice(0, 100) : undefined;
   if (!(await hasAccess(request, row, password))) return accessResponse(row);
   if (body.action === 'edit-auth') {
@@ -79,18 +79,20 @@ export async function PUT(request: Request, context: Context) {
   if (row.deleted_at) return Response.json({ message: '휴지통에 있는 계획입니다.' }, { status: 410 });
   let body: Record<string, unknown>;
   try { body = await request.json() as Record<string, unknown>; } catch { return Response.json({ message: '잘못된 요청입니다.' }, { status: 400 }); }
-  const password = typeof body.password === 'string' ? body.password.trim().slice(0, 100) : undefined;
+  const password = typeof body.passwordAuth === 'string' ? body.passwordAuth.trim().slice(0, 100) : typeof body.password === 'string' ? body.password.trim().slice(0, 100) : undefined;
+  const newPassword = typeof body.password === 'string' ? body.password.trim().slice(0, 100) : undefined;
   const editPassword = typeof body.editPasswordAuth === 'string' ? body.editPasswordAuth.trim().slice(0, 100) : typeof body.editPassword === 'string' ? body.editPassword.trim().slice(0, 100) : undefined;
+  const newEditPassword = typeof body.editPassword === 'string' ? body.editPassword.trim().slice(0, 100) : undefined;
   if (!(await hasAccess(request, row, password, true, editPassword))) return Response.json({ message: '편집 권한이 없습니다. 편집 비밀번호 또는 작성자 토큰을 확인해주세요.' }, { status: 403 });
   const plan = sanitizePlan(body);
   if (!plan) return Response.json({ message: '여행 이름, 여행지, 날짜를 입력해주세요.' }, { status: 400 });
   const passwordChanged = Object.prototype.hasOwnProperty.call(body, 'password');
   const editPasswordChanged = Object.prototype.hasOwnProperty.call(body, 'editPassword') || plan.editPolicy !== 'password';
   if (plan.editPolicy === 'password' && (!String(row.edit_password_hash || '') && !editPassword || editPasswordChanged && !editPassword)) return Response.json({ message: '편집 비밀번호를 입력해주세요.' }, { status: 400 });
-  const salt = passwordChanged && password ? randomHex(16) : null;
-  const hash = passwordChanged && password && salt ? await passwordHash(password, salt) : null;
-  const editSalt = editPasswordChanged && plan.editPolicy === 'password' && editPassword ? randomHex(16) : null;
-  const editHash = editPasswordChanged && plan.editPolicy === 'password' && editPassword && editSalt ? await passwordHash(editPassword, editSalt) : null;
+  const salt = passwordChanged && newPassword ? randomHex(16) : null;
+  const hash = passwordChanged && newPassword && salt ? await passwordHash(newPassword, salt) : null;
+  const editSalt = editPasswordChanged && plan.editPolicy === 'password' && newEditPassword ? randomHex(16) : null;
+  const editHash = editPasswordChanged && plan.editPolicy === 'password' && newEditPassword && editSalt ? await passwordHash(newEditPassword, editSalt) : null;
   const now = new Date().toISOString();
   const passwordSql = passwordChanged ? ',password_hash=?,password_salt=?' : '';
   const editPasswordSql = editPasswordChanged ? ',edit_password_hash=?,edit_password_salt=?' : '';
@@ -107,7 +109,7 @@ export async function DELETE(request: Request, context: Context) {
   if (row.deleted_at) return Response.json({ message: '이미 휴지통에 있는 계획입니다.' }, { status: 410 });
   let body: Record<string, unknown> = {};
   try { body = await request.json() as Record<string, unknown>; } catch {}
-  const password = typeof body.password === 'string' ? body.password.trim().slice(0, 100) : undefined;
+  const password = typeof body.passwordAuth === 'string' ? body.passwordAuth.trim().slice(0, 100) : typeof body.password === 'string' ? body.password.trim().slice(0, 100) : undefined;
   const editPassword = typeof body.editPasswordAuth === 'string' ? body.editPasswordAuth.trim().slice(0, 100) : typeof body.editPassword === 'string' ? body.editPassword.trim().slice(0, 100) : undefined;
   if (!(await hasAccess(request, row, password, true, editPassword))) return Response.json({ message: '편집 권한이 없습니다. 편집 비밀번호 또는 작성자 토큰을 확인해주세요.' }, { status: 403 });
   const deletedAt = new Date().toISOString();
