@@ -86,7 +86,7 @@ export async function PUT(request: Request, context: Context) {
   if (!plan) return Response.json({ message: '여행 이름, 여행지, 날짜를 입력해주세요.' }, { status: 400 });
   const passwordChanged = Object.prototype.hasOwnProperty.call(body, 'password');
   const editPasswordChanged = Object.prototype.hasOwnProperty.call(body, 'editPassword') || plan.editPolicy !== 'password';
-  if (plan.editPolicy === 'password' && !String(row.edit_password_hash || '') && !editPassword) return Response.json({ message: '편집 비밀번호를 입력해주세요.' }, { status: 400 });
+  if (plan.editPolicy === 'password' && (!String(row.edit_password_hash || '') && !editPassword || editPasswordChanged && !editPassword)) return Response.json({ message: '편집 비밀번호를 입력해주세요.' }, { status: 400 });
   const salt = passwordChanged && password ? randomHex(16) : null;
   const hash = passwordChanged && password && salt ? await passwordHash(password, salt) : null;
   const editSalt = editPasswordChanged && plan.editPolicy === 'password' && editPassword ? randomHex(16) : null;
