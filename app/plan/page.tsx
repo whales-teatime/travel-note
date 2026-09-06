@@ -244,6 +244,7 @@ function NaverMap({stops,clientId,destination,onSelect,placeResults,onPlaceSelec
     const handlePointerDown=(event:PointerEvent)=>{
       const target=event.target as Element|null;
       if(target?.closest('button,a,input,textarea,select'))return;
+      if(!window.matchMedia('(max-width: 820px)').matches)return;
       onMapInteract();
     };
     stage.addEventListener('pointerdown',handlePointerDown,{passive:true});
