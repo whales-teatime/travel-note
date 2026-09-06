@@ -1,6 +1,8 @@
-import { getDb, passwordHash, publicPlan, purgeExpiredPlans, randomHex, sanitizePlan, sha256 } from '@/lib/plan-store';
+import { bodyTooLarge, checkRateLimit, getDb, passwordHash, publicPlan, purgeExpiredPlans, randomHex, rateLimitResponse, sanitizePlan, sha256 } from '@/lib/plan-store';
 
 export async function GET(request: Request) {
+  const quota = checkRateLimit(request, 'plans-read', 120);
+  if (!quota.allowed) return rateLimitResponse(quota.retryAfter);
   const db = getDb();
   if (!db) return Response.json({ message: '계획 저장소가 아직 연결되지 않았습니다.' }, { status: 503 });
   await purgeExpiredPlans(db);
@@ -10,12 +12,15 @@ export async function GET(request: Request) {
   const pattern = `%${search.replace(/[%_]/g, char => `\\${char}`)}%`;
   const deletedClause = trash ? 'deleted_at IS NOT NULL' : 'deleted_at IS NULL';
   const result = search
-    ? await db.prepare(`SELECT id,title,destination,start_date,end_date,people,edit_policy,(password_hash IS NOT NULL) AS password_protected,(edit_password_hash IS NOT NULL) AS edit_password_protected,created_at,updated_at,deleted_at FROM plans WHERE ${deletedClause} AND (title LIKE ? ESCAPE '\\' OR destination LIKE ? ESCAPE '\\') ORDER BY updated_at DESC LIMIT 100`).bind(pattern, pattern).all()
-    : await db.prepare(`SELECT id,title,destination,start_date,end_date,people,edit_policy,(password_hash IS NOT NULL) AS password_protected,(edit_password_hash IS NOT NULL) AS edit_password_protected,created_at,updated_at,deleted_at FROM plans WHERE ${deletedClause} ORDER BY updated_at DESC LIMIT 100`).all();
+    ? await db.prepare(`SELECT id,title,destination,start_date,end_date,people,edit_policy,(password_hash IS NOT NULL) AS password_protected,(edit_password_hash IS NOT NULL) AS edit_password_protected,created_at,updated_at,deleted_at,version FROM plans WHERE ${deletedClause} AND (title LIKE ? ESCAPE '\\' OR destination LIKE ? ESCAPE '\\') ORDER BY updated_at DESC LIMIT 100`).bind(pattern, pattern).all()
+    : await db.prepare(`SELECT id,title,destination,start_date,end_date,people,edit_policy,(password_hash IS NOT NULL) AS password_protected,(edit_password_hash IS NOT NULL) AS edit_password_protected,created_at,updated_at,deleted_at,version FROM plans WHERE ${deletedClause} ORDER BY updated_at DESC LIMIT 100`).all();
   return Response.json({ items: (result.results || []).map(row => publicPlan(row as Record<string, unknown>)) });
 }
 
 export async function POST(request: Request) {
+  const quota = checkRateLimit(request, 'plans-create', 20);
+  if (!quota.allowed) return rateLimitResponse(quota.retryAfter);
+  if (bodyTooLarge(request)) return Response.json({ message: '계획 데이터가 너무 큽니다.' }, { status: 413 });
   const db = getDb();
   if (!db) return Response.json({ message: '계획 저장소가 아직 연결되지 않았습니다.' }, { status: 503 });
   let body: Record<string, unknown>;
@@ -29,10 +34,10 @@ export async function POST(request: Request) {
   const editToken = randomHex(28);
   const editTokenHash = await sha256(editToken);
   const salt = password ? randomHex(16) : null;
-  const hash = password && salt ? await passwordHash(password, salt) : null;
+  const hash = password && salt ? await passwordHash(password, salt, 'pbkdf2') : null;
   const editSalt = plan.editPolicy === 'password' && editPassword ? randomHex(16) : null;
-  const editHash = plan.editPolicy === 'password' && editPassword && editSalt ? await passwordHash(editPassword, editSalt) : null;
+  const editHash = plan.editPolicy === 'password' && editPassword && editSalt ? await passwordHash(editPassword, editSalt, 'pbkdf2') : null;
   const now = new Date().toISOString();
-  await db.prepare('INSERT INTO plans (id,title,destination,start_date,end_date,people,edit_policy,stops_json,password_hash,password_salt,edit_password_hash,edit_password_salt,edit_token_hash,created_at,updated_at,deleted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(id, plan.title, plan.destination, plan.startDate, plan.endDate, plan.people, plan.editPolicy, JSON.stringify(plan.stops), hash, salt, editHash, editSalt, editTokenHash, now, now, null).run();
-  return Response.json({ id, editToken, plan: { ...plan, passwordProtected: Boolean(password), editPasswordProtected: Boolean(editPassword), createdAt: now, updatedAt: now } }, { status: 201 });
+  await db.prepare('INSERT INTO plans (id,title,destination,start_date,end_date,people,edit_policy,stops_json,password_hash,password_salt,edit_password_hash,edit_password_salt,edit_token_hash,created_at,updated_at,deleted_at,version,password_algo,edit_password_algo) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(id, plan.title, plan.destination, plan.startDate, plan.endDate, plan.people, plan.editPolicy, JSON.stringify(plan.stops), hash, salt, editHash, editSalt, editTokenHash, now, now, null, 1, password ? 'pbkdf2' : 'sha256', editPassword ? 'pbkdf2' : 'sha256').run();
+  return Response.json({ id, editToken, plan: { ...plan, version: 1, passwordProtected: Boolean(password), editPasswordProtected: Boolean(editPassword), createdAt: now, updatedAt: now } }, { status: 201 });
 }

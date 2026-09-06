@@ -1,6 +1,9 @@
+import { checkRateLimit, rateLimitResponse } from '@/lib/plan-store';
+
 type SearchItem = { title?: string; category?: string; address?: string; roadAddress?: string; mapx?: string; mapy?: string; link?: string; description?: string };
 
 const resultCache = new Map<string, { expires: number; items: SearchItem[] }>();
+const MAX_CACHE_ENTRIES = 500;
 
 function searchQueries(query: string, near: string) {
   const wordCount = query.split(/\s+/).filter(Boolean).length;
@@ -19,14 +22,19 @@ function searchQueries(query: string, near: string) {
 }
 
 export async function GET(request: Request) {
+  const quota = checkRateLimit(request, 'place-search', 60);
+  if (!quota.allowed) return rateLimitResponse(quota.retryAfter);
   const url = new URL(request.url);
   const query = url.searchParams.get('q')?.trim();
-  const near = url.searchParams.get('near')?.trim() ?? '';
+  const near = url.searchParams.get('near')?.trim().slice(0, 80) ?? '';
   if (!query) return Response.json({ message: '검색어를 입력해주세요.' }, { status: 400 });
+  if (query.length > 120) return Response.json({ message: '검색어가 너무 깁니다.' }, { status: 400 });
 
   const cacheKey = `${near}|${query}`.toLocaleLowerCase('ko-KR');
+  const now = Date.now();
+  for (const [key, entry] of resultCache) if (entry.expires <= now) resultCache.delete(key);
   const cached = resultCache.get(cacheKey);
-  if (cached && cached.expires > Date.now()) return Response.json({ items: cached.items });
+  if (cached) return Response.json({ items: cached.items }, { headers: { 'Cache-Control': 'private, max-age=60' } });
 
   const clientId = process.env.NAVER_API_HUB_CLIENT_ID;
   const clientSecret = process.env.NAVER_API_HUB_CLIENT_SECRET;
@@ -61,5 +69,6 @@ export async function GET(request: Request) {
     return score(b)-score(a);
   }).slice(0, 10);
   resultCache.set(cacheKey, { expires: Date.now() + 5 * 60 * 1000, items });
-  return Response.json({ items });
+  while (resultCache.size > MAX_CACHE_ENTRIES) resultCache.delete(resultCache.keys().next().value as string);
+  return Response.json({ items }, { headers: { 'Cache-Control': 'private, max-age=60' } });
 }

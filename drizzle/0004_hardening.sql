@@ -1,0 +1,5 @@
+ALTER TABLE plans ADD COLUMN version INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE plans ADD COLUMN password_algo TEXT NOT NULL DEFAULT 'sha256';
+ALTER TABLE plans ADD COLUMN edit_password_algo TEXT NOT NULL DEFAULT 'sha256';
+
+CREATE INDEX IF NOT EXISTS idx_plans_version ON plans(id, version);
