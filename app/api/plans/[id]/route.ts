@@ -122,7 +122,25 @@ export async function PUT(request: Request, context: Context) {
     const copied = { ...row, id, title: conflictTitle, destination: plan.destination, start_date: plan.startDate, end_date: plan.endDate, people: plan.people, edit_policy: plan.editPolicy, stops_json: JSON.stringify(plan.stops), password_hash: passwordChanged ? hash : row.password_hash || null, password_salt: passwordChanged ? salt : row.password_salt || null, edit_password_hash: editPasswordChanged ? editHash : row.edit_password_hash || null, edit_password_salt: editPasswordChanged ? editSalt : row.edit_password_salt || null, edit_token_hash: editTokenHash, created_at: now, updated_at: now, deleted_at: null, password_protected: passwordChanged ? Number(Boolean(hash)) : row.password_protected, edit_password_protected: editPasswordChanged ? Number(Boolean(editHash)) : row.edit_password_protected };
     return Response.json({ id, editToken, conflict: true, message: '동시에 편집한 내용이라 별도 계획으로 저장했어요.', plan: fullPlan(copied) }, { status: 201 });
   }
-  await db.prepare(`UPDATE plans SET title=?,destination=?,start_date=?,end_date=?,people=?,edit_policy=?,stops_json=?${passwordSql}${editPasswordSql},updated_at=? WHERE id=?`).bind(...values).run();
+  const guardedUpdate = baseUpdatedAt
+    ? await db.prepare(`UPDATE plans SET title=?,destination=?,start_date=?,end_date=?,people=?,edit_policy=?,stops_json=?${passwordSql}${editPasswordSql},updated_at=? WHERE id=? AND updated_at=?`).bind(...values, baseUpdatedAt).run()
+    : null;
+  if (baseUpdatedAt && Number(guardedUpdate?.meta?.changes || 0) === 0) {
+    const latestResult = await db.prepare('SELECT id,title,destination,start_date,end_date,people,edit_policy,stops_json,password_hash,password_salt,edit_password_hash,edit_password_salt,edit_token_hash,created_at,updated_at,deleted_at,(password_hash IS NOT NULL) AS password_protected,(edit_password_hash IS NOT NULL) AS edit_password_protected FROM plans WHERE id = ? LIMIT 1').bind(String(row.id)).first();
+    const latest = latestResult as Record<string, unknown> || row;
+    const id = `plan_${Date.now().toString(36)}_${randomHex(5)}`;
+    const editToken = randomHex(28);
+    const editTokenHash = await sha256(editToken);
+    const conflictTitle = `${plan.title} - (${clientIp(request)})`.slice(0, 160);
+    const copiedPasswordHash = passwordChanged ? hash : latest.password_hash || null;
+    const copiedPasswordSalt = passwordChanged ? salt : latest.password_salt || null;
+    const copiedEditHash = editPasswordChanged ? editHash : latest.edit_password_hash || null;
+    const copiedEditSalt = editPasswordChanged ? editSalt : latest.edit_password_salt || null;
+    await db.prepare('INSERT INTO plans (id,title,destination,start_date,end_date,people,edit_policy,stops_json,password_hash,password_salt,edit_password_hash,edit_password_salt,edit_token_hash,created_at,updated_at,deleted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(id, conflictTitle, plan.destination, plan.startDate, plan.endDate, plan.people, plan.editPolicy, JSON.stringify(plan.stops), copiedPasswordHash, copiedPasswordSalt, copiedEditHash, copiedEditSalt, editTokenHash, now, now, null).run();
+    const copied = { ...latest, id, title: conflictTitle, destination: plan.destination, start_date: plan.startDate, end_date: plan.endDate, people: plan.people, edit_policy: plan.editPolicy, stops_json: JSON.stringify(plan.stops), password_hash: copiedPasswordHash, password_salt: copiedPasswordSalt, edit_password_hash: copiedEditHash, edit_password_salt: copiedEditSalt, edit_token_hash: editTokenHash, created_at: now, updated_at: now, deleted_at: null, password_protected: passwordChanged ? Number(Boolean(hash)) : latest.password_protected, edit_password_protected: editPasswordChanged ? Number(Boolean(editHash)) : latest.edit_password_protected };
+    return Response.json({ id, editToken, conflict: true, message: '동시에 편집한 내용이라 별도 계획으로 저장했어요.', plan: fullPlan(copied) }, { status: 201 });
+  }
+  if (!baseUpdatedAt) await db.prepare(`UPDATE plans SET title=?,destination=?,start_date=?,end_date=?,people=?,edit_policy=?,stops_json=?${passwordSql}${editPasswordSql},updated_at=? WHERE id=?`).bind(...values).run();
   const updated = { ...row, title: plan.title, destination: plan.destination, start_date: plan.startDate, end_date: plan.endDate, people: plan.people, edit_policy: plan.editPolicy, stops_json: JSON.stringify(plan.stops), updated_at: now, ...(passwordChanged ? { password_hash: hash, password_salt: salt, password_protected: Number(Boolean(hash)) } : {}), ...(editPasswordChanged ? { edit_password_hash: editHash, edit_password_salt: editSalt, edit_password_protected: Number(Boolean(editHash)) } : {}) };
   return Response.json({ plan: fullPlan(updated) });
 }
