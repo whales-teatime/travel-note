@@ -242,14 +242,26 @@ function NaverMap({stops,clientId,destination,onSelect,placeResults,onPlaceSelec
   useEffect(()=>{
     const canvas=containerRef.current,stage=canvas?.parentElement;
     if(!stage)return;
+    const isControlTarget=(target:Element|null)=>Boolean(target?.closest('button,a,input,textarea,select'));
+    const dismissInputFocus=()=>{
+      const active=document.activeElement;
+      if(active instanceof HTMLElement&&active.matches('input,textarea,select'))active.blur();
+    };
+    const handlePointerDown=(event:PointerEvent)=>{
+      if(!window.matchMedia('(max-width: 820px)').matches)return;
+      if(isControlTarget(event.target as Element|null))return;
+      dismissInputFocus();
+    };
     const handleClick=(event:MouseEvent)=>{
       if(!window.matchMedia('(max-width: 820px)').matches)return;
       const target=event.target as Element|null;
-      if(target?.closest('button,a,input,textarea,select'))return;
+      if(isControlTarget(target))return;
+      dismissInputFocus();
       onMapTap();
     };
+    stage.addEventListener('pointerdown',handlePointerDown,{passive:true});
     stage.addEventListener('click',handleClick);
-    return()=>stage.removeEventListener('click',handleClick);
+    return()=>{stage.removeEventListener('pointerdown',handlePointerDown);stage.removeEventListener('click',handleClick)};
   },[onMapTap]);
   useEffect(()=>{
     const map=mapRef.current,naver=window.naver;
