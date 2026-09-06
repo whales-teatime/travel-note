@@ -79,9 +79,10 @@ function usePlaceSuggestions(query:string,enabled:boolean,context=''){
 }
 function PlacePicker({query,onQueryChange,results,value,onPick,searching,placeholder,selected,onEnter}:{query:string;onQueryChange:(value:string,userInput:boolean)=>void;results:SearchPlace[];value:SearchPlace|null;onPick:(place:SearchPlace|null)=>void;searching:boolean;placeholder:string;selected:boolean;onEnter?:()=>void}){
   const [open,setOpen]=useState(false);
+  const suppressClearRef=useRef(false);
   useEffect(()=>{setOpen(query.trim().length>=2&&!selected)},[query,selected]);
-  return <Combobox<SearchPlace> items={results} filteredItems={results} filter={null} value={value} inputValue={query} open={open} onOpenChange={setOpen} onInputValueChange={(next,details)=>{if(details.reason==='input-change')onQueryChange(next,true)}} onValueChange={place=>{onPick(place);if(place)setOpen(false)}} itemToStringLabel={place=>cleanTitle(place.title)}>
-    <ComboboxInput className="place-combobox-input" placeholder={placeholder} showTrigger={false} onKeyDownCapture={event=>{if(event.key==='Enter'){event.preventDefault();event.stopPropagation();const current=query;window.setTimeout(()=>{onQueryChange(current,false);onEnter?.();setOpen(false)},0)}}}/>
+  return <Combobox<SearchPlace> items={results} filteredItems={results} filter={null} value={value} inputValue={query} open={open} onOpenChange={setOpen} onInputValueChange={(next,details)=>{if(details.reason==='input-change'||(details.reason==='input-clear'&&!suppressClearRef.current))onQueryChange(next,true)}} onValueChange={place=>{onPick(place);if(place)setOpen(false)}} itemToStringLabel={place=>cleanTitle(place.title)}>
+    <ComboboxInput className="place-combobox-input" placeholder={placeholder} showTrigger={false} onKeyDownCapture={event=>{if(event.key==='Enter'){event.preventDefault();event.stopPropagation();suppressClearRef.current=true;onQueryChange(query,false);onEnter?.();setOpen(false);window.setTimeout(()=>{suppressClearRef.current=false},250)}}}/>
     <ComboboxContent className="place-combobox-content">
       <ComboboxEmpty>{searching?'네이버 지도에서 검색 중…':'검색 결과가 없습니다.'}</ComboboxEmpty>
       <ComboboxList>{results.map((place,index)=><ComboboxItem className="place-combobox-item" key={`${place.mapx}-${place.mapy}-${index}`} value={place}><MapPin/><span><strong>{cleanTitle(place.title)}</strong><small>{place.category}</small><em>{place.roadAddress||place.address}</em></span></ComboboxItem>)}</ComboboxList>
@@ -97,6 +98,13 @@ function distanceKm(a: Stop, b: Stop) {
   const dLat = rad(b.lat-a.lat), dLng = rad(b.lng-a.lng), lat1=rad(a.lat), lat2=rad(b.lat);
   const h = Math.sin(dLat/2)**2 + Math.sin(dLng/2)**2*Math.cos(lat1)*Math.cos(lat2);
   return r*2*Math.atan2(Math.sqrt(h), Math.sqrt(1-h));
+}
+function timeMinutes(value:string){const [hours,minutes]=value.split(':').map(Number);return Number.isFinite(hours)&&Number.isFinite(minutes)?hours*60+minutes:Infinity}
+function insertStopByTime(current:Stop[],stop:Stop){
+  const dayItems=current.filter(item=>item.day===stop.day),insertBefore=dayItems.find(item=>timeMinutes(item.time)>timeMinutes(stop.time));
+  if(!insertBefore)return [...current,stop];
+  const index=current.findIndex(item=>item.id===insertBefore.id);
+  return index<0?[...current,stop]:[...current.slice(0,index),stop,...current.slice(index)];
 }
 function naverPlaceUrl(stop: Pick<Stop,'name'|'address'>) { return `https://map.naver.com/p/search/${encodeURIComponent(`${stop.name} ${stop.address}`)}` }
 
@@ -191,7 +199,7 @@ export default function Home(){
   const [editing,setEditing]=useState<Stop|null>(null), [editDraft,setEditDraft]=useState<Stop|null>(null), [editQuery,setEditQuery]=useState(''), [editPlaceLinked,setEditPlaceLinked]=useState(true);
   const [query,setQuery]=useState(''), [picked,setPicked]=useState<SearchPlace|null>(null);
   const [mapQuery,setMapQuery]=useState(''),[mapPicked,setMapPicked]=useState<SearchPlace|null>(null),[mapCandidate,setMapCandidate]=useState<SearchPlace|null>(null),[mapResultPlaces,setMapResultPlaces]=useState<SearchPlace[]>([]);
-  const [newTime,setNewTime]=useState('12:00'), [newCategory,setNewCategory]=useState<PlaceType>('식사'), [newMemo,setNewMemo]=useState(''), [draggedId,setDraggedId]=useState<string|null>(null);
+  const [newTime,setNewTime]=useState('12:00'), [newCategory,setNewCategory]=useState<PlaceType>('식사'), [newMemo,setNewMemo]=useState(''), [draggedId,setDraggedId]=useState<string|null>(null), [dragOverId,setDragOverId]=useState<string|null>(null), [justMovedId,setJustMovedId]=useState<string|null>(null);
   const addSuggestions=usePlaceSuggestions(query,addOpen,tripSettings.destination),editSuggestions=usePlaceSuggestions(editQuery,Boolean(editing),tripSettings.destination),mapSuggestions=usePlaceSuggestions(mapQuery,true,tripSettings.destination);
   useEffect(()=>{
     const ss=localStorage.getItem('route-note-stops'),ts=localStorage.getItem('route-note-trip-settings');
@@ -218,7 +226,7 @@ export default function Home(){
         const value=input as Partial<Stop>;
         if(!value.day||!['9/19','9/20'].includes(value.day)||!value.time||!/^([01]\d|2[0-3]):[0-5]\d$/.test(value.time)||!value.name||!value.address||typeof value.lat!=='number'||typeof value.lng!=='number'||!value.category||!categories.includes(value.category))throw new Error('일정 정보가 올바르지 않습니다.');
         const stop:Stop={id:`tool-${Date.now()}`,day:value.day,time:value.time,name:value.name,category:value.category,memo:value.memo||'',address:value.address,lat:value.lat,lng:value.lng};
-        setStops(current=>[...current,stop]); setActiveDay(stop.day);
+        setStops(current=>insertStopByTime(current,stop)); setActiveDay(stop.day);
         return {added:true,id:stop.id,day:stop.day,name:stop.name};
       }
     },{signal:lifecycle.signal})).catch(()=>{});
@@ -228,11 +236,11 @@ export default function Home(){
   const selectStop=useCallback((stop:Stop)=>setSelected(stop),[]);
   const selectMapCandidate=useCallback((place:SearchPlace)=>setMapCandidate(place),[]);
   const saveTripSettings=()=>{const next={...settingsDraft,title:settingsDraft.title.trim()||'나의 여행',destination:settingsDraft.destination.trim(),people:Math.max(1,Math.round(Number(settingsDraft.people)||1))};setTripSettings(next);setSettingsDraft(next);localStorage.setItem('route-note-trip-settings',JSON.stringify(next));setSettingsOpen(false)};
-  const addStop=()=>{if(!picked)return;const stop:Stop={id:`${Date.now()}`,day:activeDay,time:newTime,name:cleanTitle(picked.title),category:newCategory,memo:newMemo.trim(),address:picked.roadAddress||picked.address,lat:Number(picked.mapy)/1e7,lng:Number(picked.mapx)/1e7};setStops(c=>[...c,stop]);setAddOpen(false);setQuery('');setPicked(null);setNewMemo('')};
+  const addStop=()=>{if(!picked)return;const stop:Stop={id:`${Date.now()}`,day:activeDay,time:newTime,name:cleanTitle(picked.title),category:newCategory,memo:newMemo.trim(),address:picked.roadAddress||picked.address,lat:Number(picked.mapy)/1e7,lng:Number(picked.mapx)/1e7};setStops(current=>insertStopByTime(current,stop));setAddOpen(false);setQuery('');setPicked(null);setNewMemo('')};
   const openEdit=(stop:Stop)=>{setEditing(stop);setEditDraft({...stop});setEditQuery(stop.name);setEditPlaceLinked(true)};
   const saveEdit=()=>{if(!editing||!editDraft)return;const updated={...editDraft,name:editDraft.name.trim()||editing.name,memo:editDraft.memo.trim()};setStops(current=>current.map(stop=>stop.id===editing.id?updated:stop));if(selected?.id===editing.id)setSelected(updated);setEditing(null);setEditDraft(null)};
   const moveStop=(id:string,direction:-1|1)=>setStops(current=>{const items=current.filter(s=>s.day===activeDay),i=items.findIndex(s=>s.id===id),t=i+direction;if(i<0||t<0||t>=items.length)return current;const next=[...items];[next[i],next[t]]=[next[t],next[i]];let cursor=0;return current.map(s=>s.day===activeDay?next[cursor++]:s)});
-  const reorderByDrop=(targetId:string)=>{if(!draggedId||draggedId===targetId)return;setStops(current=>{const items=current.filter(s=>s.day===activeDay),from=items.findIndex(s=>s.id===draggedId),to=items.findIndex(s=>s.id===targetId);if(from<0||to<0)return current;const next=[...items],[moved]=next.splice(from,1);next.splice(to,0,moved);let cursor=0;return current.map(s=>s.day===activeDay?next[cursor++]:s)});setDraggedId(null)};
+  const reorderByDrop=(targetId:string)=>{if(!draggedId||draggedId===targetId){setDraggedId(null);setDragOverId(null);return}const movedId=draggedId;setStops(current=>{const items=current.filter(s=>s.day===activeDay),from=items.findIndex(s=>s.id===movedId),to=items.findIndex(s=>s.id===targetId);if(from<0||to<0)return current;const next=[...items],[moved]=next.splice(from,1);next.splice(to,0,moved);let cursor=0;return current.map(s=>s.day===activeDay?next[cursor++]:s)});setJustMovedId(movedId);window.setTimeout(()=>setJustMovedId(current=>current===movedId?null:current),380);setDraggedId(null);setDragOverId(null)};
   const removeSelected=()=>{if(!selected)return;setStops(c=>c.filter(s=>s.id!==selected.id));setSelected(null)};
   const removeStop=(id:string)=>setStops(current=>current.filter(stop=>stop.id!==id));
   const commitMapSearch=()=>{setMapResultPlaces(mapSuggestions.results.slice(0,8));setMapPicked(null);setMapCandidate(null)};
@@ -269,7 +277,7 @@ export default function Home(){
       <aside className="planner-panel">
         <div className="day-switch" role="tablist" aria-label="여행 날짜">{(['9/19','9/20'] as DayKey[]).map((day,index)=><button key={day} role="tab" aria-selected={activeDay===day} onClick={()=>setActiveDay(day)}><span>DAY {index+1}</span><strong>{formatTripDate(dayDates[day],true)}</strong></button>)}</div>
         <div className="panel-heading"><div><span><CalendarDays/>방문 순서</span><strong>{dayStops.length}개 장소</strong></div></div>
-        <div className="stop-list">{dayStops.map((stop,index)=>{const previous=dayStops[index-1],gap=previous?distanceKm(previous,stop):null;return <div key={stop.id}>{gap!==null&&<div className="distance-chip"><span/>직선 {gap<1?`${Math.round(gap*1000)}m`:`${gap.toFixed(1)}km`}</div>}<article className="stop-card" draggable onDragStart={()=>setDraggedId(stop.id)} onDragOver={e=>e.preventDefault()} onDrop={()=>reorderByDrop(stop.id)} onClick={()=>setSelected(stop)}><div className="drag-handle" aria-hidden="true"><GripVertical/></div><div className="order-pin" style={{background:DAY_COLOR[activeDay]}}>{index+1}</div><div className="stop-main"><div className="stop-time"><Clock3/>{stop.time}<span>{stop.category}</span></div><strong>{stop.name}</strong>{stop.memo&&<p>{stop.memo}</p>}</div><div className="card-actions"><div className="move-buttons"><button aria-label={`${stop.name} 위로 이동`} disabled={index===0} onClick={e=>{e.stopPropagation();moveStop(stop.id,-1)}}><ArrowUp/></button><button aria-label={`${stop.name} 아래로 이동`} disabled={index===dayStops.length-1} onClick={e=>{e.stopPropagation();moveStop(stop.id,1)}}><ArrowDown/></button></div><button className="edit-card-button" title="수정" aria-label={`${stop.name} 수정`} onClick={e=>{e.stopPropagation();openEdit(stop)}}><Pencil/></button><button className="remove-card-button" title="삭제" aria-label={`${stop.name} 삭제`} onClick={e=>{e.stopPropagation();removeStop(stop.id)}}><X/></button></div></article></div>})}</div>
+        <div className="stop-list">{dayStops.map((stop,index)=>{const previous=dayStops[index-1],gap=previous?distanceKm(previous,stop):null,reverse=previous&&timeMinutes(stop.time)<timeMinutes(previous.time);return <div key={stop.id}>{gap!==null&&<div className="distance-chip"><span/>직선 {gap<1?`${Math.round(gap*1000)}m`:`${gap.toFixed(1)}km`}</div>}<article className={`stop-card ${draggedId===stop.id?'is-dragging':''} ${dragOverId===stop.id&&draggedId!==stop.id?'is-drag-over':''} ${justMovedId===stop.id?'just-moved':''}`} draggable onDragStart={()=>setDraggedId(stop.id)} onDragOver={e=>{e.preventDefault();if(draggedId!==stop.id)setDragOverId(stop.id)}} onDragLeave={()=>setDragOverId(current=>current===stop.id?null:current)} onDrop={()=>reorderByDrop(stop.id)} onDragEnd={()=>{setDraggedId(null);setDragOverId(null)}} onClick={()=>setSelected(stop)}><div className="drag-handle" aria-hidden="true"><GripVertical/></div><div className="order-pin" style={{background:DAY_COLOR[activeDay]}}>{index+1}</div><div className="stop-main"><div className="stop-time"><Clock3/>{stop.time}<span>{stop.category}</span>{reverse&&<span className="time-warning" title="앞 장소보다 시간이 이릅니다.">역순</span>}</div><strong>{stop.name}</strong>{stop.memo&&<p>{stop.memo}</p>}</div><div className="card-actions"><div className="move-buttons"><button aria-label={`${stop.name} 위로 이동`} disabled={index===0} onClick={e=>{e.stopPropagation();moveStop(stop.id,-1)}}><ArrowUp/></button><button aria-label={`${stop.name} 아래로 이동`} disabled={index===dayStops.length-1} onClick={e=>{e.stopPropagation();moveStop(stop.id,1)}}><ArrowDown/></button></div><button className="edit-card-button" title="수정" aria-label={`${stop.name} 수정`} onClick={e=>{e.stopPropagation();openEdit(stop)}}><Pencil/></button><button className="remove-card-button" title="삭제" aria-label={`${stop.name} 삭제`} onClick={e=>{e.stopPropagation();removeStop(stop.id)}}><X/></button></div></article></div>})}</div>
         <Button variant="outline" className="wide-add" onClick={()=>setAddOpen(true)}><Plus/>이 날짜에 장소 추가</Button>
       </aside>
       <section className="map-panel">
