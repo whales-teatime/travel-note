@@ -319,7 +319,7 @@ export default function Home(){
   const [activeDay,setActiveDay]=useState<DayKey>('9/19'), [stops,setStops]=useState<Stop[]>(seedStops), [selected,setSelected]=useState<Stop|null>(null);
   const [tripSettings,setTripSettings]=useState<TripSettings>(DEFAULT_TRIP), [settingsDraft,setSettingsDraft]=useState<TripSettings>(DEFAULT_TRIP);
   const [addOpen,setAddOpen]=useState(false), [settingsOpen,setSettingsOpen]=useState(false), [clientId,setClientId]=useState('');
-  const [planId,setPlanId]=useState<string|null>(null), [planLoading,setPlanLoading]=useState(true), [planSaving,setPlanSaving]=useState(false), [planSaveMessage,setPlanSaveMessage]=useState('');
+  const [planId,setPlanId]=useState<string|null>(null), [planLoading,setPlanLoading]=useState(true), [planSaving,setPlanSaving]=useState(false), [planSaveMessage,setPlanSaveMessage]=useState(''), [isLocalDraft,setIsLocalDraft]=useState(true);
   const [planPassword,setPlanPassword]=useState(''), [passwordPromptOpen,setPasswordPromptOpen]=useState(false), [passwordPrompt,setPasswordPrompt]=useState(''), [passwordPromptError,setPasswordPromptError]=useState(''), [protectedPlanId,setProtectedPlanId]=useState<string|null>(null), [protectedPlanTitle,setProtectedPlanTitle]=useState('');
   const [editing,setEditing]=useState<Stop|null>(null), [editDraft,setEditDraft]=useState<Stop|null>(null), [editQuery,setEditQuery]=useState(''), [editPlaceLinked,setEditPlaceLinked]=useState(true);
   const [query,setQuery]=useState(''), [picked,setPicked]=useState<SearchPlace|null>(null);
@@ -330,13 +330,13 @@ export default function Home(){
   const addSuggestions=usePlaceSuggestions(query,addOpen,tripSettings.destination),editSuggestions=usePlaceSuggestions(editQuery,Boolean(editing),tripSettings.destination),mapSuggestions=usePlaceSuggestions(mapQuery,true,tripSettings.destination);
   const applyStoredPlan=useCallback((data:StoredPlan,editToken?:string)=>{
     const settings={title:data.title,destination:data.destination,startDate:data.startDate,endDate:data.endDate,people:data.people};
-    setPlanId(data.id);setTripSettings(settings);setSettingsDraft(settings);setStops((data.stops||[]).map(stop=>({...stop,category:normalizeCategory(String(stop.category))})));setPlanPassword('');setPlanLoading(false);
+    setPlanId(data.id);setIsLocalDraft(false);setTripSettings(settings);setSettingsDraft(settings);setStops((data.stops||[]).map(stop=>({...stop,category:normalizeCategory(String(stop.category))})));setPlanPassword('');setPlanLoading(false);
     if(editToken)localStorage.setItem(`route-note-edit-token-${data.id}`,editToken);
   },[]);
   useEffect(()=>{
     let alive=true;
-    const path=window.location.pathname.split('/').filter(Boolean), routeId=path[0]==='plan'&&path[1]&&path[1]!=='new'?decodeURIComponent(path[1]):null, isDraft=new URLSearchParams(window.location.search).get('draft')==='1';
-    setPlanId(routeId);
+    const path=window.location.pathname.split('/').filter(Boolean), params=new URLSearchParams(window.location.search), routeId=path[0]==='plan'&&path[1]&&path[1]!=='new'?decodeURIComponent(path[1]):null, isDraft=params.get('draft')==='1', mode=params.get('mode');
+    setPlanId(routeId);setIsLocalDraft(!routeId);
     const loadLocalDraft=()=>{
       const ss=localStorage.getItem('route-note-stops'),ts=localStorage.getItem('route-note-trip-settings');
       if(ss){try{const savedStops=JSON.parse(ss) as Stop[];setStops(savedStops.map(stop=>({...stop,category:normalizeCategory(String(stop.category))})))}catch{localStorage.removeItem('route-note-stops')}}
@@ -352,14 +352,23 @@ export default function Home(){
           if(alive)applyStoredPlan(body.plan);
         }catch{if(alive){setPlanLoading(false);setStops([])}}
       }else if(isDraft){loadLocalDraft();if(alive)setPlanLoading(false)}
-      else if(alive){setStops([]);const clean={...DEFAULT_TRIP,title:'나의 여행',destination:'',people:1};setTripSettings(clean);setSettingsDraft(clean);setPlanLoading(false)}
+      else if(alive){setStops([]);const clean={...DEFAULT_TRIP,title:'나의 여행',destination:'',people:1};setTripSettings(clean);setSettingsDraft(clean);setPlanLoading(false);if(mode==='domestic')window.setTimeout(()=>{if(alive)setSettingsOpen(true)},0)}
     };
     void loadRoute();
     const embedded=document.querySelector<HTMLMetaElement>('meta[name="naver-map-client-id"]')?.content;
     if(embedded)setClientId(embedded);else void fetch('/api/config').then(response=>response.json()).then(data=>{if(data.mapClientId&&alive)setClientId(data.mapClientId)}).catch(()=>{});
     return()=>{alive=false};
   },[applyStoredPlan]);
-  useEffect(()=>{if(!planLoading)localStorage.setItem('route-note-stops',JSON.stringify(stops))},[stops,planLoading]);
+  useEffect(()=>{
+    if(planLoading)return;
+    if(isLocalDraft){
+      localStorage.setItem('route-note-stops',JSON.stringify(stops));
+      localStorage.setItem('route-note-trip-settings',JSON.stringify(tripSettings));
+    }else{
+      localStorage.removeItem('route-note-stops');
+      localStorage.removeItem('route-note-trip-settings');
+    }
+  },[stops,tripSettings,planLoading,isLocalDraft]);
   useEffect(()=>{
     const people=Math.max(1,tripSettings.people||1);
     setStops(current=>{
@@ -433,19 +442,26 @@ export default function Home(){
       applyStoredPlan(body.plan);setPlanPassword(passwordPrompt);setPasswordPrompt('');setProtectedPlanId(null);setPasswordPromptOpen(false);
     }catch(error){setPasswordPromptError(error instanceof Error?error.message:'비밀번호가 맞지 않습니다.')}
   };
-  const savePlan=async()=>{
-    if(!tripSettings.destination.trim()||!tripSettings.startDate||!tripSettings.endDate){setPlanSaveMessage('여행지와 날짜를 먼저 입력해주세요.');setSettingsOpen(true);return}
-    setPlanSaving(true);setPlanSaveMessage('');
+  const savePlan=async(silent=false)=>{
+    if(!tripSettings.destination.trim()||!tripSettings.startDate||!tripSettings.endDate){if(!silent){setPlanSaveMessage('여행지와 날짜를 먼저 입력해주세요.');setSettingsOpen(true)}return}
+    if(!silent){setPlanSaving(true);setPlanSaveMessage('')}
     const payload={title:tripSettings.title,destination:tripSettings.destination,startDate:tripSettings.startDate,endDate:tripSettings.endDate,people:tripSettings.people,stops};
     try{
       const existing=Boolean(planId),token=planId?localStorage.getItem(`route-note-edit-token-${planId}`):null;
       const response=await fetch(existing?`/api/plans/${encodeURIComponent(planId as string)}`:'/api/plans',{method:existing?'PUT':'POST',headers:{'Content-Type':'application/json',...(token?{'x-plan-edit-token':token}:{})},body:JSON.stringify({...payload,password:planPassword})}),body=await response.json() as {id?:string;editToken?:string;message?:string;plan?:StoredPlan};
       if(!response.ok)throw new Error(body.message||'계획을 저장하지 못했습니다.');
       if(!existing&&body.id){setPlanId(body.id);if(body.editToken)localStorage.setItem(`route-note-edit-token-${body.id}`,body.editToken);window.history.replaceState({},'',`/plan/${encodeURIComponent(body.id)}`)}
-      setPlanSaveMessage('저장됨');window.setTimeout(()=>setPlanSaveMessage(current=>current==='저장됨'?'':current),1800);
-    }catch(error){setPlanSaveMessage(error instanceof Error?error.message:'계획을 저장하지 못했습니다.')}
+      setIsLocalDraft(false);localStorage.removeItem('route-note-stops');localStorage.removeItem('route-note-trip-settings');
+      if(!silent){setPlanSaveMessage('저장됨');window.setTimeout(()=>setPlanSaveMessage(current=>current==='저장됨'?'':current),1800)}
+    }catch(error){if(!silent)setPlanSaveMessage(error instanceof Error?error.message:'계획을 저장하지 못했습니다.')}
     finally{setPlanSaving(false)}
   };
+
+  useEffect(()=>{
+    if(planLoading)return;
+    const timer=window.setInterval(()=>{void savePlan(true)},300000);
+    return()=>window.clearInterval(timer);
+  },[planId,planLoading,tripSettings,stops,planPassword]);
 
   const dayDates:Record<DayKey,string>={'9/19':tripSettings.startDate,'9/20':tripSettings.endDate};
 

@@ -1,56 +1,38 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { ArrowRight, CalendarDays, LockKeyhole, MapPin, Plus, Search } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ArrowRight, ChevronDown, Compass, MapPin, Plane, Sparkles } from 'lucide-react';
+import type { PlanSummary } from '@/components/plan-library';
 
-type PlanSummary = {
-  id: string;
-  title: string;
-  destination: string;
-  startDate: string;
-  endDate: string;
-  people: number;
-  passwordProtected: boolean;
-  updatedAt: string;
+type Season = {
+  key: 'spring' | 'summer' | 'autumn' | 'winter';
+  label: string;
+  message: string;
 };
 
-function formatDate(value: string) {
-  const date = new Date(`${value}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat('ko-KR', { month: 'numeric', day: 'numeric' }).format(date).replace(/\.\s/g, '. ');
-}
-
-function formatUpdated(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  return new Intl.DateTimeFormat('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(date);
+function currentSeason(): Season {
+  const month = new Date().getMonth() + 1;
+  if (month >= 3 && month <= 5) return { key: 'spring', label: '봄', message: '꽃이 피는 계절, 가볍게 떠나볼까요?' };
+  if (month >= 6 && month <= 8) return { key: 'summer', label: '여름', message: '햇살 좋은 날엔 여행이 제일 잘 어울려요.' };
+  if (month >= 9 && month <= 11) return { key: 'autumn', label: '가을', message: '선선한 바람을 따라 새로운 곳으로.' };
+  return { key: 'winter', label: '겨울', message: '따뜻한 기억을 만들러 떠나볼까요?' };
 }
 
 export default function HomePage() {
+  const season = currentSeason();
   const [plans, setPlans] = useState<PlanSummary[]>([]);
-  const [search, setSearch] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [planMenuOpen, setPlanMenuOpen] = useState(false);
+  const [overseasMessage, setOverseasMessage] = useState(false);
   const [hasDraft, setHasDraft] = useState(false);
   const [draftTitle, setDraftTitle] = useState('이 기기의 여행 초안');
 
-  const loadPlans = useCallback(async (value: string) => {
-    setLoading(true);
-    setError('');
-    try {
-      const response = await fetch(`/api/plans?search=${encodeURIComponent(value.trim())}`, { cache: 'no-store' });
-      const body = await response.json() as { items?: PlanSummary[]; message?: string };
-      if (!response.ok) throw new Error(body.message || '계획 목록을 불러오지 못했어요.');
-      setPlans(body.items || []);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : '계획 목록을 불러오지 못했어요.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
-    void loadPlans('');
+    let alive = true;
+    fetch('/api/plans', { cache: 'no-store' })
+      .then(response => response.json() as Promise<{ items?: PlanSummary[] }>)
+      .then(body => { if (alive) setPlans(body.items || []); })
+      .catch(() => { if (alive) setPlans([]); });
+
     const saved = window.localStorage.getItem('route-note-stops');
     const settings = window.localStorage.getItem('route-note-trip-settings');
     if (saved) {
@@ -60,35 +42,38 @@ export default function HomePage() {
         if (parsed.title) setDraftTitle(parsed.title);
       } catch {}
     }
-  }, [loadPlans]);
+    return () => { alive = false; };
+  }, []);
 
-  useEffect(() => {
-    const timer = window.setTimeout(() => void loadPlans(search), 220);
-    return () => window.clearTimeout(timer);
-  }, [search, loadPlans]);
-
-  return <main className="home-shell">
-    <header className="home-topbar">
-      <a className="home-brand" href="/"><span className="brand-mark"><MapPin/></span><span>여행을 떠나요</span></a>
-      <a className="home-new-button" href="/plan/new"><Plus/><span>새 계획 세우기</span></a>
+  return <main className={`home-landing season-${season.key}`}>
+    <div className="home-season-wash" aria-hidden="true" />
+    <header className="landing-topbar">
+      <a className="landing-brand" href="/"><span className="landing-brand-mark"><MapPin /></span><span>여행을 떠나요<span className="brand-note">♪</span></span></a>
+      <nav className="landing-nav" aria-label="주요 메뉴">
+        <div className="plan-menu-wrap" onMouseEnter={() => setPlanMenuOpen(true)} onMouseLeave={() => setPlanMenuOpen(false)}>
+          <a className="landing-nav-link plan-menu-trigger" href="/plans" aria-haspopup="true" aria-expanded={planMenuOpen}><span>계획 목록</span><ChevronDown /></a>
+          {planMenuOpen && <div className="plan-hover-menu">
+            <div className="plan-hover-heading"><span>최근 여행</span><a href="/plans">전체 보기<ArrowRight /></a></div>
+            {plans.slice(0, 4).map(plan => <a className="plan-hover-item" href={`/plan/${encodeURIComponent(plan.id)}`} key={plan.id}><span><strong>{plan.title}</strong><small>{plan.destination} · {plan.people}명</small></span><ArrowRight /></a>)}
+            {!plans.length && <p className="plan-hover-empty">아직 저장된 계획이 없어요.</p>}
+          </div>}
+        </div>
+        <a className="landing-new-link" href="/plan/new?mode=domestic"><span>새 계획 세우기</span><Sparkles /></a>
+      </nav>
     </header>
 
-    <section className="home-content">
-      <div className="home-intro">
-        <div><span className="home-eyebrow">TRIP PLANS</span><h1>여행 계획을 한곳에</h1><p>새 계획을 만들거나, 공유된 여행을 이어서 확인하세요.</p></div>
-        <a className="home-intro-action" href="/plan/new"><span>새 계획 시작</span><ArrowRight/></a>
+    <section className="landing-hero">
+      <div className="landing-kicker"><span className="kicker-dot" />{season.label}의 여행 노트</div>
+      <h1>여행을 떠나요<span className="hero-note">♪</span></h1>
+      <p className="landing-lede">{season.message}<br /><span>오늘의 마음이 가는 곳으로.</span></p>
+      <div className="departure-question"><span>어디로 떠나시나요?</span><small>여행의 첫 장면을 골라보세요</small></div>
+      <div className="departure-choices">
+        <a className="departure-card domestic-card" href="/plan/new?mode=domestic"><span className="departure-icon"><Compass /></span><span className="departure-copy"><strong>국내로!</strong><small>지금의 지도를 펼쳐볼게요</small></span><ArrowRight className="departure-arrow" /><span className="sparkle-burst" aria-hidden="true">✦　✿　✧</span></a>
+        <button type="button" className="departure-card overseas-card" onClick={() => setOverseasMessage(true)}><span className="departure-icon"><Plane /></span><span className="departure-copy"><strong>해외로!</strong><small>새로운 나라를 준비 중이에요</small></span><ArrowRight className="departure-arrow" /><span className="plane-trail" aria-hidden="true">✈　·　·　·</span></button>
       </div>
-
-      <section className="plan-list-section" aria-labelledby="plan-list-title">
-        <div className="section-heading"><div><span className="section-kicker"><CalendarDays/>여행 계획</span><h2 id="plan-list-title">계획 목록</h2></div><span className="plan-count">{loading ? '불러오는 중' : `${plans.length}개`}</span></div>
-        <label className="plan-search"><Search/><input value={search} onChange={event=>setSearch(event.target.value)} placeholder="여행 이름이나 도시로 검색" aria-label="여행 계획 검색"/></label>
-        {error&&<div className="home-notice">{error}</div>}
-        {hasDraft&&<div className="draft-card"><div><span className="draft-label">이 기기에 남아 있는 초안</span><strong>{draftTitle}</strong><small>아직 공유 저장하지 않은 계획이에요.</small></div><a href="/plan/new?draft=1">계속 작성<ArrowRight/></a></div>}
-        <div className="plan-grid">
-          {!loading&&!plans.length&&!error&&<div className="plans-empty"><CalendarDays/><strong>{search ? '검색 결과가 없어요.' : '아직 저장된 계획이 없어요.'}</strong><span>{search ? '다른 이름이나 도시로 찾아보세요.' : '첫 여행 계획을 만들어 목록에 저장해보세요.'}</span><a href="/plan/new">새 계획 세우기<ArrowRight/></a></div>}
-          {plans.map(plan=><a className="plan-card" href={`/plan/${encodeURIComponent(plan.id)}`} key={plan.id}><div className="plan-card-top"><span className="plan-destination"><MapPin/>{plan.destination}</span>{plan.passwordProtected&&<span className="plan-lock"><LockKeyhole/>비밀번호</span>}</div><h3>{plan.title}</h3><p><CalendarDays/>{formatDate(plan.startDate)} — {formatDate(plan.endDate)}<span>·</span>{plan.people}명</p><div className="plan-card-bottom"><small>최근 수정 {formatUpdated(plan.updatedAt)}</small><ArrowRight/></div></a>)}
-        </div>
-      </section>
+      {overseasMessage && <button className="overseas-toast" type="button" onClick={() => setOverseasMessage(false)}><Plane /> 해외 여행 플래너는 준비 중이에요 ㅠㅠ <span>닫기</span></button>}
+      {hasDraft && <a className="draft-pill" href="/plan/new?draft=1"><span><small>이 기기에 남은 초안</small><strong>{draftTitle}</strong></span><span className="draft-pill-action">계속 쓰기<ArrowRight /></span></a>}
     </section>
+    <footer className="landing-footer"><span>한 장씩 채워가는 우리들의 여행</span><span>TRAVEL NOTE</span></footer>
   </main>;
 }
