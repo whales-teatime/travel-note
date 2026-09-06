@@ -8,6 +8,27 @@ const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
   '00000000-0000-4000-8000-000000000000';
 
 const { d1, r2 } = hostingConfig;
+const independentHosting = process.env.TRAVEL_HOST === 'cloudflare';
+
+// The independent build uses the owner's Cloudflare account and has no Sites
+// middleware. A placeholder permits local verification before account setup.
+const independentBindingConfig = {
+  name: 'travel',
+  main: 'vinext/server/fetch-handler',
+  // Keep local Wrangler compatibility with the currently installed runtime.
+  compatibility_date: '2026-05-22',
+  compatibility_flags: ['nodejs_compat'],
+  workers_dev: true,
+  ...(process.env.CLOUDFLARE_ACCOUNT_ID
+    ? { account_id: process.env.CLOUDFLARE_ACCOUNT_ID }
+    : {}),
+  d1_databases: [{
+    binding: 'DB',
+    database_name: 'travel-note',
+    database_id: process.env.CLOUDFLARE_D1_DATABASE_ID || SITE_CREATOR_PLACEHOLDER_DATABASE_ID,
+    migrations_dir: 'drizzle',
+  }],
+};
 
 // macOS Seatbelt blocks FSEvents, so Codex previews need polling for HMR.
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === 'seatbelt';
@@ -51,10 +72,10 @@ export default defineConfig(async () => {
       : undefined,
     plugins: [
       vinext(),
-      sites(),
+      ...(independentHosting ? [] : [sites()]),
       cloudflare({
         viteEnvironment: { name: 'rsc', childEnvironments: ['ssr'] },
-        config: localBindingConfig,
+        config: independentHosting ? independentBindingConfig : localBindingConfig,
       }),
     ],
   };
