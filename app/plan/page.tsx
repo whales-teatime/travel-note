@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowDown, ArrowUp, CalendarDays, ChevronDown, ChevronUp, CircleAlert, Clock3,
-  Eye, EyeOff, ExternalLink, GripVertical, House, Map, MapPin, Navigation, Plus,
+  Copy, Eye, EyeOff, ExternalLink, GripVertical, House, Map, MapPin, Navigation, Plus,
   Pencil, Save, Sparkles, Trash2, Users, X,
 } from 'lucide-react';
 
@@ -14,6 +14,10 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import {
   Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem,
   ComboboxList,
@@ -344,7 +348,7 @@ export default function Home(){
   const [activeDay,setActiveDay]=useState<DayKey>(firstDefaultDay), [stops,setStops]=useState<Stop[]>(seedStops), [selected,setSelected]=useState<Stop|null>(null);
   const [tripSettings,setTripSettings]=useState<TripSettings>(DEFAULT_TRIP), [settingsDraft,setSettingsDraft]=useState<TripSettings>(DEFAULT_TRIP);
   const [addOpen,setAddOpen]=useState(false), [settingsOpen,setSettingsOpen]=useState(false), [clientId,setClientId]=useState('');
-  const [planId,setPlanId]=useState<string|null>(null), [planLoading,setPlanLoading]=useState(true), [planSaving,setPlanSaving]=useState(false), [planSaveMessage,setPlanSaveMessage]=useState(''), [isLocalDraft,setIsLocalDraft]=useState(true);
+  const [planId,setPlanId]=useState<string|null>(null), [planLoading,setPlanLoading]=useState(true), [planSaving,setPlanSaving]=useState(false), [planSaveMessage,setPlanSaveMessage]=useState(''), [isLocalDraft,setIsLocalDraft]=useState(true), [planAction,setPlanAction]=useState<'duplicate'|'delete'|null>(null), [deleteDialogOpen,setDeleteDialogOpen]=useState(false);
   const [planPassword,setPlanPassword]=useState(''), [passwordConfigured,setPasswordConfigured]=useState(false), [planPasswordTouched,setPlanPasswordTouched]=useState(false), [showPlanPassword,setShowPlanPassword]=useState(false), [passwordPromptOpen,setPasswordPromptOpen]=useState(false), [passwordPrompt,setPasswordPrompt]=useState(''), [passwordPromptError,setPasswordPromptError]=useState(''), [protectedPlanId,setProtectedPlanId]=useState<string|null>(null), [protectedPlanTitle,setProtectedPlanTitle]=useState('');
   const [editing,setEditing]=useState<Stop|null>(null), [editDraft,setEditDraft]=useState<Stop|null>(null), [editQuery,setEditQuery]=useState(''), [editPlaceLinked,setEditPlaceLinked]=useState(true);
   const [query,setQuery]=useState(''), [picked,setPicked]=useState<SearchPlace|null>(null);
@@ -498,6 +502,35 @@ export default function Home(){
     finally{setPlanSaving(false)}
   };
 
+  const duplicatePlan=async()=>{
+    if(!planId||planAction)return;
+    setPlanAction('duplicate');setPlanSaveMessage('');
+    try{
+      const token=localStorage.getItem(`route-note-edit-token-${planId}`),passwordPayload=planPassword?{password:planPassword}:{};
+      const response=await fetch(`/api/plans/${encodeURIComponent(planId)}`,{method:'POST',headers:{'Content-Type':'application/json',...(token?{'x-plan-edit-token':token}:{})},body:JSON.stringify({action:'duplicate',...passwordPayload})});
+      const body=await response.json() as {id?:string;editToken?:string;message?:string};
+      if(!response.ok||!body.id)throw new Error(body.message||'계획을 복제하지 못했습니다.');
+      if(body.editToken)localStorage.setItem(`route-note-edit-token-${body.id}`,body.editToken);
+      setPlanSaveMessage('복제본이 저장목록에 추가됐어요.');
+      window.setTimeout(()=>setPlanSaveMessage(current=>current==='복제본이 저장목록에 추가됐어요.'?'':current),3200);
+    }catch(error){setPlanSaveMessage(error instanceof Error?error.message:'계획을 복제하지 못했습니다.')}
+    finally{setPlanAction(null)}
+  };
+
+  const deletePlan=async()=>{
+    if(!planId||planAction)return;
+    setPlanAction('delete');setPlanSaveMessage('');
+    try{
+      const token=localStorage.getItem(`route-note-edit-token-${planId}`),passwordPayload=planPassword?{password:planPassword}:{};
+      const response=await fetch(`/api/plans/${encodeURIComponent(planId)}`,{method:'DELETE',headers:{'Content-Type':'application/json',...(token?{'x-plan-edit-token':token}:{})},body:JSON.stringify(passwordPayload)});
+      const body=await response.json() as {message?:string};
+      if(!response.ok)throw new Error(body.message||'계획을 휴지통으로 옮기지 못했습니다.');
+      localStorage.removeItem(`route-note-edit-token-${planId}`);
+      window.location.href='/plans?deleted=1';
+    }catch(error){setPlanSaveMessage(error instanceof Error?error.message:'계획을 휴지통으로 옮기지 못했습니다.');setDeleteDialogOpen(false)}
+    finally{setPlanAction(null)}
+  };
+
   useEffect(()=>{
     if(planLoading)return;
     const timer=window.setInterval(()=>{void savePlan(true)},300000);
@@ -512,11 +545,22 @@ export default function Home(){
       <div className="trip-title"><strong>{tripSettings.title}</strong><span>{formatTripDate(tripSettings.startDate)} — {formatTripDate(tripSettings.endDate)} · {tripSettings.people}명</span></div>
       <div className="top-actions">
         <div className="trip-cost-total" aria-label="전체 예상 경비"><span>전체 예상 경비</span><strong>{formatWon(tripCostSummary.personal)} <small>개인별</small> · {formatWon(tripCostSummary.total)} <small>총 비용</small></strong></div>
+        {planId&&<>
+          <Button variant="outline" className="plan-copy-button" onClick={()=>void duplicatePlan()} disabled={Boolean(planAction)||planLoading}><Copy/><span>{planAction==='duplicate'?'복제 중…':'계획 복제'}</span></Button>
+          <Button variant="outline" className="plan-delete-button" onClick={()=>setDeleteDialogOpen(true)} disabled={Boolean(planAction)||planLoading}><Trash2/><span>휴지통</span></Button>
+        </>}
         <Button variant="outline" className={`plan-save-button ${planSaveMessage==='저장됨'?'is-saved':''}`} onClick={()=>void savePlan()} disabled={planSaving||planLoading}><Save/><span>{planSaving?'저장 중…':'계획 저장'}</span></Button>
-        {planSaveMessage&&<span className={`save-feedback ${planSaveMessage==='저장됨'?'is-success':'is-error'}`} role="status" aria-live="polite">{planSaveMessage}</span>}
+        {planSaveMessage&&<span className={`save-feedback ${planSaveMessage==='저장됨'||planSaveMessage==='복제본이 저장목록에 추가됐어요.'?'is-success':'is-error'}`} role="status" aria-live="polite">{planSaveMessage}</span>}
         <Button variant="outline" className="settings-button" onClick={()=>{setSettingsDraft(tripSettings);setSettingsOpen(true)}}><CalendarDays/><span>여행 일정</span></Button>
       </div>
     </header>
+
+    <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+      <AlertDialogContent className="delete-plan-dialog">
+        <AlertDialogHeader><AlertDialogTitle>이 계획을 휴지통으로 옮길까요?</AlertDialogTitle><AlertDialogDescription>계획은 목록에서 바로 숨겨지고 7일 동안 휴지통에 보관된 뒤 자동으로 삭제됩니다.</AlertDialogDescription></AlertDialogHeader>
+        <AlertDialogFooter><AlertDialogCancel disabled={planAction==='delete'}>취소</AlertDialogCancel><AlertDialogAction className="delete-plan-confirm" onClick={()=>void deletePlan()} disabled={planAction==='delete'}>{planAction==='delete'?'옮기는 중…':'휴지통으로 이동'}</AlertDialogAction></AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
 
     <Dialog open={passwordPromptOpen} onOpenChange={open=>{if(!open){setPasswordPromptOpen(false);setPasswordPromptError('')}}}><DialogContent className="password-dialog sm:max-w-[420px]"><DialogHeader><DialogTitle>비밀번호가 있는 계획이에요</DialogTitle><DialogDescription>{protectedPlanTitle}을(를) 열려면 비밀번호를 입력하세요.</DialogDescription></DialogHeader><label>비밀번호<Input type="password" autoFocus value={passwordPrompt} onChange={e=>setPasswordPrompt(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')void unlockPlan()}} placeholder="계획 비밀번호"/></label>{passwordPromptError&&<div className="inline-notice"><CircleAlert/>{passwordPromptError}</div>}<DialogFooter><Button variant="outline" onClick={()=>setPasswordPromptOpen(false)}>취소</Button><Button onClick={unlockPlan} disabled={!passwordPrompt}>계획 열기</Button></DialogFooter></DialogContent></Dialog>
 

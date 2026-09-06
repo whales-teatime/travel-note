@@ -31,6 +31,15 @@ export function getDb() {
   return (env as unknown as { DB?: D1Database }).DB;
 }
 
+export const TRASH_RETENTION_DAYS = 7;
+const TRASH_RETENTION_MS = TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+
+/** Remove soft-deleted plans after their seven-day retention window. */
+export async function purgeExpiredPlans(db: D1Database) {
+  const cutoff = new Date(Date.now() - TRASH_RETENTION_MS).toISOString();
+  await db.prepare('DELETE FROM plans WHERE deleted_at IS NOT NULL AND deleted_at <= ?').bind(cutoff).run();
+}
+
 export function randomHex(byteLength = 18) {
   const bytes = new Uint8Array(byteLength);
   crypto.getRandomValues(bytes);

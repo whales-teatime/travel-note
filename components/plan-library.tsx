@@ -31,6 +31,7 @@ export function PlanLibrary({ compact = false }: { compact?: boolean }) {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
 
   const loadPlans = useCallback(async (value: string) => {
     setLoading(true); setError('');
@@ -46,6 +47,10 @@ export function PlanLibrary({ compact = false }: { compact?: boolean }) {
 
   useEffect(() => { void loadPlans(''); }, [loadPlans]);
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('deleted') === '1') setNotice('계획을 휴지통으로 옮겼어요. 7일 후 자동 삭제됩니다.');
+  }, []);
+  useEffect(() => {
     if (compact) return;
     const timer = window.setTimeout(() => void loadPlans(search), 220);
     return () => window.clearTimeout(timer);
@@ -59,6 +64,7 @@ export function PlanLibrary({ compact = false }: { compact?: boolean }) {
   return <section className="library-panel" aria-labelledby="plan-list-title">
     <div className="library-heading"><div><span className="library-kicker"><CalendarDays /> TRIP PLANS</span><h1 id="plan-list-title">여행 계획 목록</h1><p>함께 만든 여행을 다시 열어보세요.</p></div><span className="library-count">{loading ? '불러오는 중' : `${plans.length}개`}</span></div>
     <label className="library-search"><Search /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="여행 이름이나 도시로 검색" aria-label="여행 계획 검색" /></label>
+    {notice && <div className="library-notice is-success" role="status">{notice}</div>}
     {error && <div className="library-notice">{error}</div>}
     <div className="library-grid">
       {!loading && !plans.length && !error && <div className="library-empty"><CalendarDays /><strong>{search ? '검색 결과가 없어요.' : '아직 저장된 계획이 없어요.'}</strong><span>{search ? '다른 이름이나 도시로 찾아보세요.' : '첫 여행 계획을 만들어 목록에 저장해보세요.'}</span><a href="/plan/new?mode=domestic">새 계획 세우기<ArrowRight /></a></div>}

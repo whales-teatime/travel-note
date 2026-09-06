@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, readFileSync } from 'node:fs';
+import { cpSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -40,6 +40,34 @@ function run(relativePath, args) {
 
 run('../node_modules/vinext/dist/cli.js', ['build']);
 cpSync(new URL('../drizzle/', import.meta.url), new URL('../dist/server/drizzle/', import.meta.url), { recursive: true });
+
+// vinext's stock fetch handler has no scheduled entrypoint. Wrap it so the
+// independent Worker can run the D1 trash cleanup cron without changing the
+// generated application bundle.
+const generatedHandler = new URL('../dist/server/index.js', import.meta.url);
+const wrappedHandler = new URL('../dist/server/vinext-handler.js', import.meta.url);
+if (existsSync(generatedHandler)) {
+  cpSync(generatedHandler, wrappedHandler);
+  writeFileSync(generatedHandler, `import handler from './vinext-handler.js';
+
+const RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+
+async function purgeExpiredPlans(env) {
+  if (!env?.DB) return;
+  const cutoff = new Date(Date.now() - RETENTION_MS).toISOString();
+  await env.DB.prepare('DELETE FROM plans WHERE deleted_at IS NOT NULL AND deleted_at <= ?').bind(cutoff).run();
+}
+
+export default {
+  fetch(request, env, ctx) { return handler.fetch(request, env, ctx); },
+  async scheduled(_controller, env, ctx) {
+    const cleanup = purgeExpiredPlans(env);
+    if (ctx?.waitUntil) ctx.waitUntil(cleanup);
+    else await cleanup;
+  },
+};
+`);
+}
 if (command === 'check') {
   run('../node_modules/wrangler/bin/wrangler.js', ['deploy', '--dry-run', '--config', 'dist/server/wrangler.json']);
 }

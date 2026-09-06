@@ -28,6 +28,8 @@ const independentBindingConfig = {
     database_id: process.env.CLOUDFLARE_D1_DATABASE_ID || SITE_CREATOR_PLACEHOLDER_DATABASE_ID,
     migrations_dir: 'drizzle',
   }],
+  // Run the seven-day trash cleanup once a day at 03:00 KST (18:00 UTC).
+  triggers: { crons: ['0 18 * * *'] },
 };
 
 // macOS Seatbelt blocks FSEvents, so Codex previews need polling for HMR.
