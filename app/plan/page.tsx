@@ -22,7 +22,7 @@ import {
   Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle,
 } from '@/components/ui/sheet';
 
-type DayKey = '9/19' | '9/20';
+type DayKey = string;
 type PlaceType = '식사' | '간식' | '관광' | '숙소' | '기타';
 type Stop = { id: string; day: DayKey; time: string; name: string; category: PlaceType; memo: string; address: string; lat: number; lng: number; customLocation?: boolean; naverLink?: string; costPerPerson?: number; costTotal?: number; costBasis?: 'person'|'total' };
 type SearchPlace = { title: string; category: string; address: string; roadAddress: string; mapx: string; mapy: string; link?: string; description?: string };
@@ -33,23 +33,23 @@ declare global {
   interface Window { naver?: any; __naverMapsLoading?: Promise<void>; navermap_authFailure?: () => void }
 }
 
-const DAY_COLOR: Record<DayKey, string> = { '9/19': '#ff5b35', '9/20': '#2279f2' };
+const DAY_COLORS = ['#ff5b35', '#2279f2', '#7257d9', '#0c9b75', '#d15d9a', '#db8b18'];
 const DEFAULT_MAP_CENTER = { lat:35.8242, lng:127.1534 };
 const DEFAULT_TRIP: TripSettings = { title:'전주 맛집 여행', destination:'전주', startDate:'2026-09-19', endDate:'2026-09-20', people:5 };
 const PLACE_CATEGORIES: PlaceType[] = ['식사','간식','관광','숙소','기타'];
 const suggestionCache = new globalThis.Map<string, SearchPlace[]>();
 
 const seedStops: Stop[] = [
-  { id:'station-arrive', day:'9/19', time:'08:39', name:'전주역', category:'기타', memo:'전주 도착', address:'전북 전주시 덕진구 동부대로 680', lat:35.8500537, lng:127.1623649 },
-  { id:'veteran', day:'9/19', time:'10:00', name:'베테랑칼국수 본점', category:'식사', memo:'칼국수 또는 근처 길거리야 바게트버거', address:'전북 전주시 완산구 경기전길 135', lat:35.8134534, lng:127.1513383 },
-  { id:'hanok', day:'9/19', time:'12:30', name:'전주한옥마을', category:'관광', memo:'골목 산책과 주요 관광지', address:'전북 전주시 완산구 기린대로 99 일대', lat:35.8151786, lng:127.1538888 },
-  { id:'jojeomrye', day:'9/19', time:'13:00', name:'조점례남문피순대', category:'식사', memo:'순대국밥 · 피순대', address:'전북 전주시 완산구 풍남문2길 39', lat:35.81195, lng:127.1472 },
-  { id:'grandma', day:'9/19', time:'14:30', name:'외할머니솜씨', category:'간식', memo:'옛날팥빙수', address:'전북 전주시 완산구 오목대길 81-8', lat:35.812675632, lng:127.152030609 },
-  { id:'namno', day:'9/19', time:'18:30', name:'남노갈비 본점', category:'식사', memo:'전주식 물갈비', address:'전북 전주시 완산구 한지길 24', lat:35.8192024, lng:127.1531673 },
-  { id:'nightmarket', day:'9/19', time:'21:00', name:'전주남부시장 야시장', category:'간식', memo:'먹거리 여러 개 나눠 먹기', address:'전북 전주시 완산구 풍남문1길 19-3', lat:35.8122382, lng:127.1474635 },
-  { id:'hyundaiok', day:'9/20', time:'09:00', name:'현대옥 전주역점', category:'식사', memo:'콩나물국밥', address:'전북 전주시 덕진구 백제대로 813', lat:35.84755, lng:127.16115 },
-  { id:'firstwelcome', day:'9/20', time:'10:00', name:'전주역 첫마중길', category:'관광', memo:'전주역 앞 가벼운 산책', address:'전북 전주시 덕진구 우아동3가 746 일대', lat:35.8488, lng:127.1617 },
-  { id:'station-leave', day:'9/20', time:'14:47', name:'전주역', category:'기타', memo:'기차 탑승', address:'전북 전주시 덕진구 동부대로 680', lat:35.8500537, lng:127.1623649 },
+  { id:'station-arrive', day:'2026-09-19', time:'08:39', name:'전주역', category:'기타', memo:'전주 도착', address:'전북 전주시 덕진구 동부대로 680', lat:35.8500537, lng:127.1623649 },
+  { id:'veteran', day:'2026-09-19', time:'10:00', name:'베테랑칼국수 본점', category:'식사', memo:'칼국수 또는 근처 길거리야 바게트버거', address:'전북 전주시 완산구 경기전길 135', lat:35.8134534, lng:127.1513383 },
+  { id:'hanok', day:'2026-09-19', time:'12:30', name:'전주한옥마을', category:'관광', memo:'골목 산책과 주요 관광지', address:'전북 전주시 완산구 기린대로 99 일대', lat:35.8151786, lng:127.1538888 },
+  { id:'jojeomrye', day:'2026-09-19', time:'13:00', name:'조점례남문피순대', category:'식사', memo:'순대국밥 · 피순대', address:'전북 전주시 완산구 풍남문2길 39', lat:35.81195, lng:127.1472 },
+  { id:'grandma', day:'2026-09-19', time:'14:30', name:'외할머니솜씨', category:'간식', memo:'옛날팥빙수', address:'전북 전주시 완산구 오목대길 81-8', lat:35.812675632, lng:127.152030609 },
+  { id:'namno', day:'2026-09-19', time:'18:30', name:'남노갈비 본점', category:'식사', memo:'전주식 물갈비', address:'전북 전주시 완산구 한지길 24', lat:35.8192024, lng:127.1531673 },
+  { id:'nightmarket', day:'2026-09-19', time:'21:00', name:'전주남부시장 야시장', category:'간식', memo:'먹거리 여러 개 나눠 먹기', address:'전북 전주시 완산구 풍남문1길 19-3', lat:35.8122382, lng:127.1474635 },
+  { id:'hyundaiok', day:'2026-09-20', time:'09:00', name:'현대옥 전주역점', category:'식사', memo:'콩나물국밥', address:'전북 전주시 덕진구 백제대로 813', lat:35.84755, lng:127.16115 },
+  { id:'firstwelcome', day:'2026-09-20', time:'10:00', name:'전주역 첫마중길', category:'관광', memo:'전주역 앞 가벼운 산책', address:'전북 전주시 덕진구 우아동3가 746 일대', lat:35.8488, lng:127.1617 },
+  { id:'station-leave', day:'2026-09-20', time:'14:47', name:'전주역', category:'기타', memo:'기차 탑승', address:'전북 전주시 덕진구 동부대로 680', lat:35.8500537, lng:127.1623649 },
 ];
 
 function cleanTitle(value: string) { return value.replace(/<[^>]*>/g, '') }
@@ -64,6 +64,26 @@ function formatTripDate(value:string,weekday=false){
   if(Number.isNaN(date.getTime()))return value;
   return new Intl.DateTimeFormat('ko-KR',{month:'numeric',day:'numeric',...(weekday?{weekday:'short'}:{})}).format(date).replace(/\.\s/g,'. ');
 }
+function localDate(value:string){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(value))return null;
+  const [year,month,day]=value.split('-').map(Number),date=new Date(year,month-1,day);
+  return date.getFullYear()===year&&date.getMonth()===month-1&&date.getDate()===day?date:null;
+}
+function dateKey(date:Date){return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`}
+function dateDayKey(value:string){const date=localDate(value);return date?dateKey(date):''}
+function tripDaysBetween(start:string,end:string){
+  const first=localDate(start),last=localDate(end);if(!first||!last||first>last)return [] as Array<{key:DayKey;date:string}>;
+  const days:Array<{key:DayKey;date:string}>=[],cursor=new Date(first);
+  while(cursor<=last&&days.length<366){const value=dateKey(cursor);days.push({key:value,date:value});cursor.setDate(cursor.getDate()+1)}
+  return days;
+}
+function normalizeStoredDay(value:string,start:string,end:string){
+  const days=tripDaysBetween(start,end);if(days.some(day=>day.key===value))return value;
+  const match=String(value).match(/^(\d{1,2})\/(\d{1,2})$/);
+  if(match){const short=`${Number(match[1])}/${Number(match[2])}`,found=days.find(day=>{const date=localDate(day.date);return date?`${date.getMonth()+1}/${date.getDate()}`===short:false});if(found)return found.key}
+  const parsed=dateDayKey(value),found=days.find(day=>day.key===parsed);return found?.key||days[0]?.key||dateDayKey(start)||value;
+}
+function dayColor(day:DayKey,orderedDays:DayKey[]){const index=orderedDays.indexOf(day);return DAY_COLORS[(index<0?0:index)%DAY_COLORS.length]}
 function usePlaceSuggestions(query:string,enabled:boolean,context=''){
   const [results,setResults]=useState<SearchPlace[]>([]),[searching,setSearching]=useState(false),[error,setError]=useState('');
   useEffect(()=>{
@@ -188,6 +208,7 @@ function loadNaverMaps(clientId: string) {
 
 function NaverMap({stops,clientId,destination,onSelect,placeResults,onPlaceSelect,dateLabels,activeDay,onDayChange,editableStopId,onStopPositionChange,onCancelStopPositionEdit,customPin,customPinMode,onCustomLocationChange,onCustomAddressChange,onCustomPinContinue}:{stops:Stop[];clientId:string;destination:string;onSelect:(stop:Stop)=>void;placeResults:SearchPlace[];onPlaceSelect:(place:SearchPlace)=>void;dateLabels:Record<DayKey,string>;activeDay:DayKey;onDayChange:(day:DayKey)=>void;editableStopId:string|null;onStopPositionChange:(id:string,lat:number,lng:number)=>void;onCancelStopPositionEdit:()=>void;customPin:{lat:number;lng:number}|null;customPinMode:boolean;onCustomLocationChange:(point:{lat:number;lng:number})=>void;onCustomAddressChange:(address:string)=>void;onCustomPinContinue:()=>void}) {
   const containerRef=useRef<HTMLDivElement>(null), mapRef=useRef<any>(null), overlaysRef=useRef<any[]>([]), placeOverlaysRef=useRef<any[]>([]), customOverlayRef=useRef<any>(null);
+  const orderedDays=useMemo(()=>Object.keys(dateLabels),[dateLabels]);
   const [status,setStatus]=useState<'idle'|'loading'|'ready'|'error'>(clientId?'loading':'idle');
   const [cityCenter,setCityCenter]=useState(DEFAULT_MAP_CENTER);
   useEffect(()=>{
@@ -232,14 +253,14 @@ function NaverMap({stops,clientId,destination,onSelect,placeResults,onPlaceSelec
     if(!map||!naver?.maps||status!=='ready')return;
     overlaysRef.current.forEach(o=>{try{o?.setMap(null)}catch{}}); overlaysRef.current=[];
     stops.forEach((stop,index)=>{
-      const position=new naver.maps.LatLng(stop.lat,stop.lng), color=DAY_COLOR[stop.day];
+      const position=new naver.maps.LatLng(stop.lat,stop.lng), color=dayColor(stop.day,orderedDays);
       const marker=new naver.maps.Marker({map,position,title:stop.name,clickable:true,draggable:editableStopId===stop.id,zIndex:100+index,icon:{content:`<button type="button" class="naver-marker" style="--pin:${color}" aria-label="${escapeHtml(stop.name)} 정보 보기"><span>${index+1}</span></button>`,anchor:new naver.maps.Point(20,45)}});
       naver.maps.Event.addListener(marker,'click',()=>onSelect(stop));
       if(editableStopId===stop.id){naver.maps.Event.addListener(marker,'dragend',()=>{const point=marker.getPosition();onStopPositionChange(stop.id,point.lat(),point.lng())})}
       overlaysRef.current.push(marker);
     });
-    if(stops.length>1){const line=new naver.maps.Polyline({map,path:stops.map(s=>new naver.maps.LatLng(s.lat,s.lng)),strokeColor:DAY_COLOR[stops[0].day],strokeWeight:5,strokeOpacity:.7,strokeStyle:'shortdash',zIndex:20});overlaysRef.current.push(line)}
-  },[stops,status,onSelect,editableStopId,onStopPositionChange]);
+    if(stops.length>1){const line=new naver.maps.Polyline({map,path:stops.map(s=>new naver.maps.LatLng(s.lat,s.lng)),strokeColor:dayColor(stops[0].day,orderedDays),strokeWeight:5,strokeOpacity:.7,strokeStyle:'shortdash',zIndex:20});overlaysRef.current.push(line)}
+  },[stops,status,onSelect,editableStopId,onStopPositionChange,dateLabels,orderedDays]);
   const fitItinerary=useCallback(()=>{
     const map=mapRef.current,naver=window.naver;
     if(!map||!naver?.maps||status!=='ready')return;
@@ -298,7 +319,7 @@ function NaverMap({stops,clientId,destination,onSelect,placeResults,onPlaceSelec
       {status==='loading'?<><div className="loading-orbit"/><strong>네이버 지도를 연결하는 중</strong><span>잠시만 기다려주세요.</span></>:status==='error'?<><CircleAlert/><strong>네이버 지도 인증에 실패했습니다</strong><span>Maps 앱의 10자 Client ID와 등록된 웹 서비스 URL을 확인해주세요.</span></>:<><Map className="text-[#03c75a]"/><strong>네이버 지도 연결이 필요합니다</strong><span>설정에서 Maps Client ID를 입력하면 실제 지도가 열립니다.</span></>}
     </div></div>}
     <button type="button" className="map-home-button" onClick={fitItinerary} aria-label={stops.length?'전체 동선 한눈에 보기':'여행지 전체 보기'} title={stops.length?'전체 동선 한눈에 보기':'여행지 전체 보기'}><House/></button>
-    <div className="map-legend">{(['9/19','9/20'] as DayKey[]).map(day=><button type="button" key={day} className={`map-date-button ${activeDay===day?'is-active':''}`} aria-pressed={activeDay===day} onClick={()=>onDayChange(day)}><i style={{background:DAY_COLOR[day]}}/>{formatTripDate(dateLabels[day])}</button>)}</div>
+    <div className="map-legend">{orderedDays.map(day=><button type="button" key={day} className={`map-date-button ${activeDay===day?'is-active':''}`} aria-pressed={activeDay===day} onClick={()=>onDayChange(day)}><i style={{background:dayColor(day,orderedDays)}}/>{formatTripDate(dateLabels[day])}</button>)}</div>
     {customPinMode&&<div className="map-location-editor"><strong>지도에서 위치를 정하세요</strong><span>지도를 클릭하거나 초록 핀을 끌어 옮긴 뒤 계속하세요.</span><Button onClick={onCustomPinContinue} disabled={!customPin}>이 위치로 계속</Button></div>}
     {editableStopId&&<div className="map-location-editor"><strong>위치 수정 중</strong><span>선택한 장소의 핀을 드래그해 위치를 바꾸세요.</span><Button variant="outline" onClick={onCancelStopPositionEdit}>취소</Button></div>}
   </div>
@@ -316,7 +337,8 @@ function PanoramaView({stop,clientId}:{stop:Stop;clientId:string}) {
 }
 
 export default function Home(){
-  const [activeDay,setActiveDay]=useState<DayKey>('9/19'), [stops,setStops]=useState<Stop[]>(seedStops), [selected,setSelected]=useState<Stop|null>(null);
+  const firstDefaultDay=dateDayKey(DEFAULT_TRIP.startDate);
+  const [activeDay,setActiveDay]=useState<DayKey>(firstDefaultDay), [stops,setStops]=useState<Stop[]>(seedStops), [selected,setSelected]=useState<Stop|null>(null);
   const [tripSettings,setTripSettings]=useState<TripSettings>(DEFAULT_TRIP), [settingsDraft,setSettingsDraft]=useState<TripSettings>(DEFAULT_TRIP);
   const [addOpen,setAddOpen]=useState(false), [settingsOpen,setSettingsOpen]=useState(false), [clientId,setClientId]=useState('');
   const [planId,setPlanId]=useState<string|null>(null), [planLoading,setPlanLoading]=useState(true), [planSaving,setPlanSaving]=useState(false), [planSaveMessage,setPlanSaveMessage]=useState(''), [isLocalDraft,setIsLocalDraft]=useState(true);
@@ -325,22 +347,31 @@ export default function Home(){
   const [query,setQuery]=useState(''), [picked,setPicked]=useState<SearchPlace|null>(null);
   const [mapQuery,setMapQuery]=useState(''),[mapPicked,setMapPicked]=useState<SearchPlace|null>(null),[mapCandidate,setMapCandidate]=useState<SearchPlace|null>(null),[mapResultPlaces,setMapResultPlaces]=useState<SearchPlace[]>([]);
   const [customPinMode,setCustomPinMode]=useState(false),[customPin,setCustomPin]=useState<{lat:number;lng:number}|null>(null),[customPinOpen,setCustomPinOpen]=useState(false),[locationEditingId,setLocationEditingId]=useState<string|null>(null);
-  const [customDay,setCustomDay]=useState<DayKey>('9/19'),[customName,setCustomName]=useState(''),[customAddress,setCustomAddress]=useState(''),[customMemo,setCustomMemo]=useState(''),[customTime,setCustomTime]=useState('12:00'),[customCategory,setCustomCategory]=useState<PlaceType>('관광'),[customAddressSearching,setCustomAddressSearching]=useState(false),[customAddressError,setCustomAddressError]=useState('');
+  const [customDay,setCustomDay]=useState<DayKey>(firstDefaultDay),[customName,setCustomName]=useState(''),[customAddress,setCustomAddress]=useState(''),[customMemo,setCustomMemo]=useState(''),[customTime,setCustomTime]=useState('12:00'),[customCategory,setCustomCategory]=useState<PlaceType>('관광'),[customAddressSearching,setCustomAddressSearching]=useState(false),[customAddressError,setCustomAddressError]=useState('');
   const [newTime,setNewTime]=useState('12:00'), [newCategory,setNewCategory]=useState<PlaceType>('식사'), [newMemo,setNewMemo]=useState(''), [draggedId,setDraggedId]=useState<string|null>(null), [dragOverId,setDragOverId]=useState<string|null>(null), [justMovedId,setJustMovedId]=useState<string|null>(null);
+  const itineraryDays=useMemo(()=>{
+    const days=tripDaysBetween(tripSettings.startDate,tripSettings.endDate);
+    if(days.length)return days;
+    const fallback=dateDayKey(tripSettings.startDate)||firstDefaultDay;
+    return [{key:fallback,date:tripSettings.startDate||DEFAULT_TRIP.startDate}];
+  },[tripSettings.startDate,tripSettings.endDate,firstDefaultDay]);
+  const dayKeys=useMemo(()=>itineraryDays.map(day=>day.key),[itineraryDays]);
+  const dayDates=useMemo(()=>Object.fromEntries(itineraryDays.map(day=>[day.key,day.date])) as Record<DayKey,string>,[itineraryDays]);
   const addSuggestions=usePlaceSuggestions(query,addOpen,tripSettings.destination),editSuggestions=usePlaceSuggestions(editQuery,Boolean(editing),tripSettings.destination),mapSuggestions=usePlaceSuggestions(mapQuery,true,tripSettings.destination);
   const applyStoredPlan=useCallback((data:StoredPlan,editToken?:string)=>{
     const settings={title:data.title,destination:data.destination,startDate:data.startDate,endDate:data.endDate,people:data.people};
-    setPlanId(data.id);setIsLocalDraft(false);setTripSettings(settings);setSettingsDraft(settings);setStops((data.stops||[]).map(stop=>({...stop,category:normalizeCategory(String(stop.category))})));setPlanPassword('');setPlanLoading(false);
+    setPlanId(data.id);setIsLocalDraft(false);setTripSettings(settings);setSettingsDraft(settings);setStops((data.stops||[]).map(stop=>({...stop,day:normalizeStoredDay(String(stop.day),data.startDate,data.endDate),category:normalizeCategory(String(stop.category))})));setActiveDay(dateDayKey(data.startDate)||firstDefaultDay);setCustomDay(dateDayKey(data.startDate)||firstDefaultDay);setPlanPassword('');setPlanLoading(false);
     if(editToken)localStorage.setItem(`route-note-edit-token-${data.id}`,editToken);
-  },[]);
+  },[firstDefaultDay]);
   useEffect(()=>{
     let alive=true;
     const path=window.location.pathname.split('/').filter(Boolean), params=new URLSearchParams(window.location.search), routeId=path[0]==='plan'&&path[1]&&path[1]!=='new'?decodeURIComponent(path[1]):null, isDraft=params.get('draft')==='1', mode=params.get('mode');
     setPlanId(routeId);setIsLocalDraft(!routeId);
     const loadLocalDraft=()=>{
       const ss=localStorage.getItem('route-note-stops'),ts=localStorage.getItem('route-note-trip-settings');
-      if(ss){try{const savedStops=JSON.parse(ss) as Stop[];setStops(savedStops.map(stop=>({...stop,category:normalizeCategory(String(stop.category))})))}catch{localStorage.removeItem('route-note-stops')}}
-      if(ts){try{const saved={...DEFAULT_TRIP,...JSON.parse(ts)};setTripSettings(saved);setSettingsDraft(saved)}catch{localStorage.removeItem('route-note-trip-settings')}}
+      let saved={...DEFAULT_TRIP};
+      if(ts){try{saved={...DEFAULT_TRIP,...JSON.parse(ts)};setTripSettings(saved);setSettingsDraft(saved)}catch{localStorage.removeItem('route-note-trip-settings')}}
+      if(ss){try{const savedStops=JSON.parse(ss) as Stop[];setStops(savedStops.map(stop=>({...stop,day:normalizeStoredDay(String(stop.day),saved.startDate,saved.endDate),category:normalizeCategory(String(stop.category))})))}catch{localStorage.removeItem('route-note-stops')}}
     };
     const loadRoute=async()=>{
       if(routeId){
@@ -359,6 +390,10 @@ export default function Home(){
     if(embedded)setClientId(embedded);else void fetch('/api/config').then(response=>response.json()).then(data=>{if(data.mapClientId&&alive)setClientId(data.mapClientId)}).catch(()=>{});
     return()=>{alive=false};
   },[applyStoredPlan]);
+  useEffect(()=>{
+    if(!dayKeys.includes(activeDay))setActiveDay(dayKeys[0]);
+    if(!dayKeys.includes(customDay))setCustomDay(dayKeys[0]);
+  },[dayKeys,activeDay,customDay]);
   useEffect(()=>{
     if(planLoading)return;
     if(isLocalDraft){
@@ -395,18 +430,18 @@ export default function Home(){
     void Promise.resolve(context.registerTool({
       name:'add_itinerary_stop',title:'여행 일정에 장소 추가',
       description:'날짜, 시간, 장소와 좌표를 받아 현재 여행 일정과 지도에 새 방문지를 추가합니다.',
-      inputSchema:{type:'object',properties:{day:{type:'string',enum:['9/19','9/20']},time:{type:'string',pattern:'^([01]\\d|2[0-3]):[0-5]\\d$'},name:{type:'string',minLength:1},category:{type:'string',enum:categories},memo:{type:'string'},address:{type:'string',minLength:1},lat:{type:'number'},lng:{type:'number'}},required:['day','time','name','category','address','lat','lng'],additionalProperties:false},
+      inputSchema:{type:'object',properties:{day:{type:'string',enum:dayKeys},time:{type:'string',pattern:'^([01]\\d|2[0-3]):[0-5]\\d$'},name:{type:'string',minLength:1},category:{type:'string',enum:categories},memo:{type:'string'},address:{type:'string',minLength:1},lat:{type:'number'},lng:{type:'number'}},required:['day','time','name','category','address','lat','lng'],additionalProperties:false},
       annotations:{readOnlyHint:false,untrustedContentHint:false},
       execute(input:unknown){
         const value=input as Partial<Stop>;
-        if(!value.day||!['9/19','9/20'].includes(value.day)||!value.time||!/^([01]\d|2[0-3]):[0-5]\d$/.test(value.time)||!value.name||!value.address||typeof value.lat!=='number'||typeof value.lng!=='number'||!value.category||!categories.includes(value.category))throw new Error('일정 정보가 올바르지 않습니다.');
+        if(!value.day||!dayKeys.includes(value.day)||!value.time||!/^([01]\d|2[0-3]):[0-5]\d$/.test(value.time)||!value.name||!value.address||typeof value.lat!=='number'||typeof value.lng!=='number'||!value.category||!categories.includes(value.category))throw new Error('일정 정보가 올바르지 않습니다.');
         const stop:Stop={id:`tool-${Date.now()}`,day:value.day,time:value.time,name:value.name,category:value.category,memo:value.memo||'',address:value.address,lat:value.lat,lng:value.lng};
         setStops(current=>insertStopByTime(current,stop)); setActiveDay(stop.day);
         return {added:true,id:stop.id,day:stop.day,name:stop.name};
       }
     },{signal:lifecycle.signal})).catch(()=>{});
     return()=>lifecycle.abort();
-  },[]);
+  },[dayKeys]);
   const dayStops=useMemo(()=>stops.filter(s=>s.day===activeDay),[stops,activeDay]);
   const peopleCount=Math.max(1,tripSettings.people||1);
   const dayCostSummary=useMemo(()=>dayStops.reduce((summary,stop)=>{const cost=costValues(stop,peopleCount);return {personal:summary.personal+cost.personal,total:summary.total+cost.total}},{personal:0,total:0}),[dayStops,peopleCount]);
@@ -463,8 +498,6 @@ export default function Home(){
     return()=>window.clearInterval(timer);
   },[planId,planLoading,tripSettings,stops,planPassword]);
 
-  const dayDates:Record<DayKey,string>={'9/19':tripSettings.startDate,'9/20':tripSettings.endDate};
-
   return <main className="app-shell">
     <header className="topbar">
       <a className="brand" href="/"><span className="brand-mark"><Navigation/></span><span>여행을 떠나요</span></a>
@@ -482,7 +515,7 @@ export default function Home(){
       <DialogContent className="add-dialog sm:max-w-[540px]">
         <DialogHeader><DialogTitle>장소 추가</DialogTitle><DialogDescription>장소를 검색해 선택하세요.</DialogDescription></DialogHeader>
         <div className="form-grid">
-          <label>날짜<select value={activeDay} onChange={e=>setActiveDay(e.target.value as DayKey)}><option value="9/19">{formatTripDate(tripSettings.startDate,true)}</option><option value="9/20">{formatTripDate(tripSettings.endDate,true)}</option></select></label>
+          <label>날짜<select value={activeDay} onChange={e=>setActiveDay(e.target.value as DayKey)}>{itineraryDays.map(day=><option value={day.key} key={day.key}>{formatTripDate(day.date,true)}</option>)}</select></label>
           <label>시간(24시간)<Time24Input value={newTime} onChange={setNewTime}/></label>
           <label>카테고리<select value={newCategory} onChange={e=>setNewCategory(e.target.value as PlaceType)}>{PLACE_CATEGORIES.map(t=><option key={t}>{t}</option>)}</select></label>
         </div>
@@ -499,7 +532,7 @@ export default function Home(){
         <DialogHeader><DialogTitle>지도에 임의 핀 추가</DialogTitle><DialogDescription>검색되지 않는 장소도 직접 일정에 넣을 수 있어요.</DialogDescription></DialogHeader>
         <label>장소 이름<Input value={customName} onChange={e=>setCustomName(e.target.value)} placeholder="예: 숙소, 친구 추천 맛집"/></label>
         <div className="form-grid">
-          <label>날짜<select value={customDay} onChange={e=>setCustomDay(e.target.value as DayKey)}><option value="9/19">{formatTripDate(tripSettings.startDate,true)}</option><option value="9/20">{formatTripDate(tripSettings.endDate,true)}</option></select></label>
+          <label>날짜<select value={customDay} onChange={e=>setCustomDay(e.target.value as DayKey)}>{itineraryDays.map(day=><option value={day.key} key={day.key}>{formatTripDate(day.date,true)}</option>)}</select></label>
           <label>시간(24시간)<Time24Input value={customTime} onChange={setCustomTime}/></label>
           <label>카테고리<select value={customCategory} onChange={e=>setCustomCategory(e.target.value as PlaceType)}>{PLACE_CATEGORIES.map(t=><option key={t}>{t}</option>)}</select></label>
         </div>
@@ -513,7 +546,7 @@ export default function Home(){
 
     <section className="workspace">
       <aside className="planner-panel">
-        <div className="day-switch" role="tablist" aria-label="여행 날짜">{(['9/19','9/20'] as DayKey[]).map((day,index)=><button key={day} role="tab" aria-selected={activeDay===day} onClick={()=>setActiveDay(day)}><span>DAY {index+1}</span><strong>{formatTripDate(dayDates[day],true)}</strong></button>)}</div>
+        <div className="day-switch" role="tablist" aria-label="여행 날짜">{dayKeys.map((day,index)=><button key={day} role="tab" aria-selected={activeDay===day} onClick={()=>setActiveDay(day)}><span>DAY {index+1}</span><strong>{formatTripDate(dayDates[day],true)}</strong></button>)}</div>
         <div className="panel-heading"><div><span><CalendarDays/>방문 순서</span><strong>{dayStops.length}개 장소</strong></div></div>
         <div className="stop-list">
           {dayStops.map((stop,index)=>{
@@ -522,7 +555,7 @@ export default function Home(){
               {gap!==null&&<div className="distance-chip"><span/>직선 {gap<1?`${Math.round(gap*1000)}m`:`${gap.toFixed(1)}km`}</div>}
               <article className={`stop-card ${draggedId===stop.id?'is-dragging':''} ${dragOverId===stop.id&&draggedId!==stop.id?'is-drag-over':''} ${justMovedId===stop.id?'just-moved':''}`} draggable onDragStart={()=>setDraggedId(stop.id)} onDragOver={e=>{e.preventDefault();if(draggedId!==stop.id)setDragOverId(stop.id)}} onDragLeave={()=>setDragOverId(current=>current===stop.id?null:current)} onDrop={()=>reorderByDrop(stop.id)} onDragEnd={()=>{setDraggedId(null);setDragOverId(null)}} onClick={()=>setSelected(stop)}>
                 <div className="drag-handle" aria-hidden="true"><GripVertical/></div>
-                <div className="order-pin" style={{background:DAY_COLOR[activeDay]}}>{index+1}</div>
+                <div className="order-pin" style={{background:dayColor(activeDay,dayKeys)}}>{index+1}</div>
                 <div className="stop-main">
                   <div className="stop-time"><Clock3 className={reverse?'time-warning':''}/><span className={reverse?'time-warning':''} title={reverse?'앞 장소보다 시간이 이릅니다.':undefined}>{stop.time}</span><span className="stop-category">{stop.category}</span></div>
                   <strong>{stop.name}</strong>
@@ -541,14 +574,14 @@ export default function Home(){
         <div className="planner-add-actions"><Button variant="outline" className="wide-add" onClick={()=>setAddOpen(true)}><Plus/>이 날짜에 장소 추가</Button><Button variant="ghost" className="custom-add-button" onClick={openCustomPin}><MapPin/>지도에 임의 핀 추가</Button></div>
       </aside>
       <section className="map-panel">
-        <div className="map-toolbar"><div><Sparkles/><span><strong>{activeDay==='9/19'?'첫째 날':'둘째 날'}</strong></span></div><span className="naver-badge"><b>N</b>NAVER 지도</span></div>
+        <div className="map-toolbar"><div><Sparkles/><span><strong>DAY {Math.max(1,dayKeys.indexOf(activeDay)+1)}</strong></span></div><span className="naver-badge"><b>N</b>NAVER 지도</span></div>
         <div className="map-place-search"><PlacePicker query={mapQuery} onQueryChange={(value,userInput)=>{setMapQuery(value);if(userInput){setMapPicked(null);setMapCandidate(null);setMapResultPlaces([])}}} results={mapSuggestions.results} value={mapPicked} onPick={place=>{setMapPicked(place);setMapCandidate(place);setMapResultPlaces(mapSuggestions.results.slice(0,8));if(place)setMapQuery(cleanTitle(place.title))}} onEnter={commitMapSearch} searching={mapSuggestions.searching} placeholder={`${tripSettings.destination} 장소 검색`} selected={Boolean(mapPicked)}/></div>
         <NaverMap stops={dayStops} clientId={clientId} destination={tripSettings.destination} onSelect={selectStop} placeResults={mapResultPlaces} onPlaceSelect={selectMapCandidate} dateLabels={dayDates} activeDay={activeDay} onDayChange={setActiveDay} editableStopId={locationEditingId} onStopPositionChange={updateStopPosition} onCancelStopPositionEdit={()=>setLocationEditingId(null)} customPin={customPin} customPinMode={customPinMode} onCustomLocationChange={updateCustomPin} onCustomAddressChange={setCustomAddress} onCustomPinContinue={continueCustomPin}/>
         {mapCandidate&&<div className="map-place-card"><button className="map-card-close" onClick={()=>setMapCandidate(null)} aria-label="장소 정보 닫기">×</button><span>{mapCandidate.category}</span><strong>{cleanTitle(mapCandidate.title)}</strong><p>{mapCandidate.roadAddress||mapCandidate.address}</p><div><a href={naverPlaceUrl({name:cleanTitle(mapCandidate.title),address:mapCandidate.roadAddress||mapCandidate.address})} target="_blank" rel="noreferrer">네이버지도에서 상세보기</a><Button onClick={prepareMapCandidate}><Plus/>이 장소로 결정</Button></div></div>}
       </section>
     </section>
 
-    <Sheet open={Boolean(selected)} onOpenChange={open=>!open&&setSelected(null)}><SheetContent className="place-sheet sm:max-w-[430px]">{selected&&<><SheetHeader><div className="sheet-eyebrow"><span style={{background:DAY_COLOR[selected.day]}}>{dayStops.findIndex(s=>s.id===selected.id)+1}</span>{formatTripDate(dayDates[selected.day])} · {selected.time} · {selected.category}</div><SheetTitle>{selected.name}</SheetTitle><SheetDescription>{selected.address}</SheetDescription></SheetHeader><div className="sheet-body"><div className="section-title"><span>거리뷰</span><small>네이버 파노라마</small></div><PanoramaView stop={selected} clientId={clientId}/>{selected.memo&&<div className="place-note"><span>메모</span><p>{selected.memo}</p></div>}<a className="naver-link" href={naverPlaceUrl(selected)} target="_blank" rel="noreferrer"><span><b>N</b>네이버지도에서 상세보기</span><ExternalLink/></a><Button variant="outline" className="location-edit-button" onClick={startLocationEdit}><MapPin/>위치 임의 수정</Button><Button variant="destructive" className="delete-button" onClick={removeSelected}><Trash2/>이 장소 삭제</Button></div></>}</SheetContent></Sheet>
+    <Sheet open={Boolean(selected)} onOpenChange={open=>!open&&setSelected(null)}><SheetContent className="place-sheet sm:max-w-[430px]">{selected&&<><SheetHeader><div className="sheet-eyebrow"><span style={{background:dayColor(selected.day,dayKeys)}}>{stops.filter(s=>s.day===selected.day).findIndex(s=>s.id===selected.id)+1}</span>{formatTripDate(dayDates[selected.day])} · {selected.time} · {selected.category}</div><SheetTitle>{selected.name}</SheetTitle><SheetDescription>{selected.address}</SheetDescription></SheetHeader><div className="sheet-body"><div className="section-title"><span>거리뷰</span><small>네이버 파노라마</small></div><PanoramaView stop={selected} clientId={clientId}/>{selected.memo&&<div className="place-note"><span>메모</span><p>{selected.memo}</p></div>}<a className="naver-link" href={naverPlaceUrl(selected)} target="_blank" rel="noreferrer"><span><b>N</b>네이버지도에서 상세보기</span><ExternalLink/></a><Button variant="outline" className="location-edit-button" onClick={startLocationEdit}><MapPin/>위치 임의 수정</Button><Button variant="destructive" className="delete-button" onClick={removeSelected}><Trash2/>이 장소 삭제</Button></div></>}</SheetContent></Sheet>
 
     <Dialog open={Boolean(editing)} onOpenChange={open=>{if(!open){setEditing(null);setEditDraft(null)}}}><DialogContent className="edit-dialog sm:max-w-[500px]">{editDraft&&<><DialogHeader><DialogTitle>장소 수정</DialogTitle><DialogDescription>장소를 바꾸려면 검색 결과에서 선택하세요.</DialogDescription></DialogHeader><div className="edit-grid"><label>장소 <PlacePicker query={editQuery} onQueryChange={(value,userInput)=>{setEditQuery(value);if(userInput)setEditPlaceLinked(false)}} results={editSuggestions.results} value={null} onPick={place=>{if(!place)return;const name=cleanTitle(place.title);setEditQuery(name);setEditPlaceLinked(true);setEditDraft({...editDraft,name,address:place.roadAddress||place.address,lat:Number(place.mapy)/1e7,lng:Number(place.mapx)/1e7})}} searching={editSuggestions.searching} placeholder="장소 검색" selected={editPlaceLinked}/></label>{editSuggestions.error&&editQuery.trim().length>=2&&!editPlaceLinked&&<div className="inline-notice"><CircleAlert/>{editSuggestions.error}</div>}<div className={`linked-place ${editPlaceLinked?'':'unlinked'}`}><MapPin/><span><strong>{editDraft.name}</strong><small>{editDraft.address}</small></span><em>{editPlaceLinked?'선택됨':'장소를 골라주세요'}</em></div><div className="form-grid two"><label>시간(24시간)<Time24Input value={editDraft.time} onChange={time=>setEditDraft({...editDraft,time})}/></label><label>카테고리<select value={editDraft.category} onChange={e=>setEditDraft({...editDraft,category:e.target.value as PlaceType})}>{PLACE_CATEGORIES.map(t=><option key={t}>{t}</option>)}</select></label></div><label>메모<Textarea value={editDraft.memo} onChange={e=>setEditDraft({...editDraft,memo:e.target.value})} placeholder="메모를 남겨보세요"/></label></div><DialogFooter><Button variant="outline" onClick={()=>{setEditing(null);setEditDraft(null)}}>취소</Button><Button onClick={saveEdit} disabled={!editPlaceLinked||!isValidTime(editDraft.time)}>저장</Button></DialogFooter></>}</DialogContent></Dialog>
 
