@@ -512,7 +512,7 @@ export default function Home(){
       <div className="trip-title"><strong>{tripSettings.title}</strong><span>{formatTripDate(tripSettings.startDate)} — {formatTripDate(tripSettings.endDate)} · {tripSettings.people}명</span></div>
       <div className="top-actions">
         <div className="trip-cost-total" aria-label="전체 예상 경비"><span>전체 예상 경비</span><strong>{formatWon(tripCostSummary.personal)} <small>개인별</small> · {formatWon(tripCostSummary.total)} <small>총 비용</small></strong></div>
-        <Button variant="outline" className={`plan-save-button ${planSaveMessage==='저장됨'?'is-saved':''}`} onClick={savePlan} disabled={planSaving||planLoading}><Save/><span>{planSaving?'저장 중…':'계획 저장'}</span></Button>
+        <Button variant="outline" className={`plan-save-button ${planSaveMessage==='저장됨'?'is-saved':''}`} onClick={()=>void savePlan()} disabled={planSaving||planLoading}><Save/><span>{planSaving?'저장 중…':'계획 저장'}</span></Button>
         {planSaveMessage&&<span className={`save-feedback ${planSaveMessage==='저장됨'?'is-success':'is-error'}`} role="status" aria-live="polite">{planSaveMessage}</span>}
         <Button variant="outline" className="settings-button" onClick={()=>{setSettingsDraft(tripSettings);setSettingsOpen(true)}}><CalendarDays/><span>여행 일정</span></Button>
       </div>
