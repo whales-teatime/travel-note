@@ -26,14 +26,14 @@ type DayKey = '9/19' | '9/20';
 type PlaceType = '교통' | '식사' | '카페' | '관광' | '야시장' | '기타';
 type Stop = { id: string; day: DayKey; time: string; name: string; category: PlaceType; memo: string; address: string; lat: number; lng: number };
 type SearchPlace = { title: string; category: string; address: string; roadAddress: string; mapx: string; mapy: string };
-type TripSettings = { title: string; startDate: string; endDate: string; people: number };
+type TripSettings = { title: string; destination: string; startDate: string; endDate: string; people: number };
 
 declare global {
   interface Window { naver?: any; __naverMapsLoading?: Promise<void>; navermap_authFailure?: () => void }
 }
 
 const DAY_COLOR: Record<DayKey, string> = { '9/19': '#ff5b35', '9/20': '#2279f2' };
-const DEFAULT_TRIP: TripSettings = { title:'전주 맛집 여행', startDate:'2026-09-19', endDate:'2026-09-20', people:5 };
+const DEFAULT_TRIP: TripSettings = { title:'전주 맛집 여행', destination:'전주', startDate:'2026-09-19', endDate:'2026-09-20', people:5 };
 
 const seedStops: Stop[] = [
   { id:'station-arrive', day:'9/19', time:'08:39', name:'전주역', category:'교통', memo:'전주 도착', address:'전북 전주시 덕진구 동부대로 680', lat:35.8500537, lng:127.1623649 },
@@ -49,32 +49,35 @@ const seedStops: Stop[] = [
 ];
 
 function cleanTitle(value: string) { return value.replace(/<[^>]*>/g, '') }
+function escapeHtml(value:string){return value.replace(/[&<>'"]/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':'&quot;'}[char]||char))}
 function formatTripDate(value:string,weekday=false){
   const date=new Date(`${value}T00:00:00`);
   if(Number.isNaN(date.getTime()))return value;
   return new Intl.DateTimeFormat('ko-KR',{month:'numeric',day:'numeric',...(weekday?{weekday:'short'}:{})}).format(date).replace(/\.\s/g,'. ');
 }
-function usePlaceSuggestions(query:string,enabled:boolean){
+function usePlaceSuggestions(query:string,enabled:boolean,context=''){
   const [results,setResults]=useState<SearchPlace[]>([]),[searching,setSearching]=useState(false),[error,setError]=useState('');
   useEffect(()=>{
-    const value=query.trim();
+    const value=query.trim(),searchValue=context&& !value.includes(context)?`${context} ${value}`:value;
     if(!enabled||value.length<2){setResults([]);setSearching(false);setError('');return}
     const controller=new AbortController();
     const timer=window.setTimeout(async()=>{
       setSearching(true);setError('');
       try{
-        const response=await fetch(`/api/search?q=${encodeURIComponent(value)}`,{signal:controller.signal}),body=await response.json();
+        const response=await fetch(`/api/search?q=${encodeURIComponent(searchValue)}`,{signal:controller.signal}),body=await response.json();
         if(!response.ok)throw new Error(body.message||'검색에 실패했습니다.');
         setResults(body.items||[]);if(!body.items?.length)setError('검색 결과가 없습니다.');
       }catch(reason){if(!controller.signal.aborted)setError(reason instanceof Error?reason.message:'검색에 실패했습니다.')}
       finally{if(!controller.signal.aborted)setSearching(false)}
     },350);
     return()=>{window.clearTimeout(timer);controller.abort()};
-  },[query,enabled]);
+  },[query,enabled,context]);
   return {results,searching,error};
 }
-function PlacePicker({query,onQueryChange,results,value,onPick,searching,placeholder}:{query:string;onQueryChange:(value:string)=>void;results:SearchPlace[];value:SearchPlace|null;onPick:(place:SearchPlace|null)=>void;searching:boolean;placeholder:string}){
-  return <Combobox<SearchPlace> items={results} filteredItems={results} filter={null} value={value} inputValue={query} onInputValueChange={onQueryChange} onValueChange={onPick} itemToStringLabel={place=>cleanTitle(place.title)}>
+function PlacePicker({query,onQueryChange,results,value,onPick,searching,placeholder,selected}:{query:string;onQueryChange:(value:string,userInput:boolean)=>void;results:SearchPlace[];value:SearchPlace|null;onPick:(place:SearchPlace|null)=>void;searching:boolean;placeholder:string;selected:boolean}){
+  const [open,setOpen]=useState(false);
+  useEffect(()=>{setOpen(query.trim().length>=2&&!selected)},[query,selected]);
+  return <Combobox<SearchPlace> items={results} filteredItems={results} filter={null} value={value} inputValue={query} open={open} onOpenChange={setOpen} onInputValueChange={(next,details)=>onQueryChange(next,details.reason==='input-change')} onValueChange={place=>{onPick(place);if(place)setOpen(false)}} itemToStringLabel={place=>cleanTitle(place.title)}>
     <ComboboxInput className="place-combobox-input" placeholder={placeholder} showTrigger={false}/>
     <ComboboxContent className="place-combobox-content">
       <ComboboxEmpty>{searching?'네이버 지도에서 검색 중…':'검색 결과가 없습니다.'}</ComboboxEmpty>
@@ -110,8 +113,8 @@ function loadNaverMaps(clientId: string) {
   return window.__naverMapsLoading;
 }
 
-function NaverMap({stops,clientId,onSelect}:{stops:Stop[];clientId:string;onSelect:(stop:Stop)=>void}) {
-  const containerRef=useRef<HTMLDivElement>(null), mapRef=useRef<any>(null), overlaysRef=useRef<any[]>([]);
+function NaverMap({stops,clientId,onSelect,placeResults,onPlaceSelect,dateLabels}:{stops:Stop[];clientId:string;onSelect:(stop:Stop)=>void;placeResults:SearchPlace[];onPlaceSelect:(place:SearchPlace)=>void;dateLabels:Record<DayKey,string>}) {
+  const containerRef=useRef<HTMLDivElement>(null), mapRef=useRef<any>(null), overlaysRef=useRef<any[]>([]), placeOverlaysRef=useRef<any[]>([]);
   const [status,setStatus]=useState<'idle'|'loading'|'ready'|'error'>(clientId?'loading':'idle');
   useEffect(()=>{
     if(!clientId||!containerRef.current)return;
@@ -140,12 +143,26 @@ function NaverMap({stops,clientId,onSelect}:{stops:Stop[];clientId:string;onSele
     if(stops.length===1)map.setCenter(bounds.getCenter());
     if(stops.length>1)map.fitBounds(bounds,{top:80,right:80,bottom:80,left:80});
   },[stops,status,onSelect]);
+  useEffect(()=>{
+    const map=mapRef.current,naver=window.naver;
+    if(!map||!naver?.maps||status!=='ready')return;
+    placeOverlaysRef.current.forEach(o=>o.setMap(null));placeOverlaysRef.current=[];
+    if(!placeResults.length)return;
+    const bounds=new naver.maps.LatLngBounds();
+    placeResults.forEach((place,index)=>{
+      const position=new naver.maps.LatLng(Number(place.mapy)/1e7,Number(place.mapx)/1e7);
+      const name=cleanTitle(place.title);
+      const marker=new naver.maps.Marker({map,position,title:name,zIndex:250+index,icon:{content:`<button class="place-result-marker" aria-label="${escapeHtml(name)} 정보 보기"><span>${index+1}</span></button>`,anchor:new naver.maps.Point(17,40)}});
+      naver.maps.Event.addListener(marker,'click',()=>onPlaceSelect(place));placeOverlaysRef.current.push(marker);bounds.extend(position);
+    });
+    if(placeResults.length===1)map.panTo(bounds.getCenter());else map.fitBounds(bounds,{top:120,right:70,bottom:110,left:70});
+  },[placeResults,status,onPlaceSelect]);
   return <div className="map-stage">
     <div ref={containerRef} className="map-canvas" aria-label="네이버 지도" />
     {status!=='ready'&&<div className="map-gate"><div className="map-gate-card">
       {status==='loading'?<><div className="loading-orbit"/><strong>네이버 지도를 연결하는 중</strong><span>잠시만 기다려주세요.</span></>:status==='error'?<><CircleAlert/><strong>네이버 지도 인증에 실패했습니다</strong><span>Maps 앱의 10자 Client ID와 등록된 웹 서비스 URL을 확인해주세요.</span></>:<><Map className="text-[#03c75a]"/><strong>네이버 지도 연결이 필요합니다</strong><span>설정에서 Maps Client ID를 입력하면 실제 지도가 열립니다.</span></>}
     </div></div>}
-    <div className="map-legend"><span><i style={{background:DAY_COLOR['9/19']}}/>9월 19일</span><span><i style={{background:DAY_COLOR['9/20']}}/>9월 20일</span></div>
+    <div className="map-legend"><span><i style={{background:DAY_COLOR['9/19']}}/>{formatTripDate(dateLabels['9/19'])}</span><span><i style={{background:DAY_COLOR['9/20']}}/>{formatTripDate(dateLabels['9/20'])}</span></div>
   </div>
 }
 
@@ -166,8 +183,9 @@ export default function Home(){
   const [addOpen,setAddOpen]=useState(false), [settingsOpen,setSettingsOpen]=useState(false), [clientId,setClientId]=useState('');
   const [editing,setEditing]=useState<Stop|null>(null), [editDraft,setEditDraft]=useState<Stop|null>(null), [editQuery,setEditQuery]=useState(''), [editPlaceLinked,setEditPlaceLinked]=useState(true);
   const [query,setQuery]=useState(''), [picked,setPicked]=useState<SearchPlace|null>(null);
+  const [mapQuery,setMapQuery]=useState(''),[mapPicked,setMapPicked]=useState<SearchPlace|null>(null),[mapCandidate,setMapCandidate]=useState<SearchPlace|null>(null);
   const [newTime,setNewTime]=useState('12:00'), [newCategory,setNewCategory]=useState<PlaceType>('식사'), [newMemo,setNewMemo]=useState(''), [draggedId,setDraggedId]=useState<string|null>(null);
-  const addSuggestions=usePlaceSuggestions(query,addOpen),editSuggestions=usePlaceSuggestions(editQuery,Boolean(editing));
+  const addSuggestions=usePlaceSuggestions(query,addOpen,tripSettings.destination),editSuggestions=usePlaceSuggestions(editQuery,Boolean(editing),tripSettings.destination),mapSuggestions=usePlaceSuggestions(mapQuery,true,tripSettings.destination);
   useEffect(()=>{
     const ss=localStorage.getItem('route-note-stops'),ts=localStorage.getItem('route-note-trip-settings');
     if(ss){try{setStops(JSON.parse(ss))}catch{localStorage.removeItem('route-note-stops')}}
@@ -201,37 +219,39 @@ export default function Home(){
   },[]);
   const dayStops=useMemo(()=>stops.filter(s=>s.day===activeDay),[stops,activeDay]);
   const selectStop=useCallback((stop:Stop)=>setSelected(stop),[]);
-  const saveTripSettings=()=>{const next={...settingsDraft,title:settingsDraft.title.trim()||'나의 여행',people:Math.max(1,Math.round(Number(settingsDraft.people)||1))};setTripSettings(next);setSettingsDraft(next);localStorage.setItem('route-note-trip-settings',JSON.stringify(next));setSettingsOpen(false)};
+  const selectMapCandidate=useCallback((place:SearchPlace)=>setMapCandidate(place),[]);
+  const saveTripSettings=()=>{const next={...settingsDraft,title:settingsDraft.title.trim()||'나의 여행',destination:settingsDraft.destination.trim(),people:Math.max(1,Math.round(Number(settingsDraft.people)||1))};setTripSettings(next);setSettingsDraft(next);localStorage.setItem('route-note-trip-settings',JSON.stringify(next));setSettingsOpen(false)};
   const addStop=()=>{if(!picked)return;const stop:Stop={id:`${Date.now()}`,day:activeDay,time:newTime,name:cleanTitle(picked.title),category:newCategory,memo:newMemo.trim(),address:picked.roadAddress||picked.address,lat:Number(picked.mapy)/1e7,lng:Number(picked.mapx)/1e7};setStops(c=>[...c,stop]);setAddOpen(false);setQuery('');setPicked(null);setNewMemo('')};
   const openEdit=(stop:Stop)=>{setEditing(stop);setEditDraft({...stop});setEditQuery(stop.name);setEditPlaceLinked(true)};
   const saveEdit=()=>{if(!editing||!editDraft)return;const updated={...editDraft,name:editDraft.name.trim()||editing.name,memo:editDraft.memo.trim()};setStops(current=>current.map(stop=>stop.id===editing.id?updated:stop));if(selected?.id===editing.id)setSelected(updated);setEditing(null);setEditDraft(null)};
   const moveStop=(id:string,direction:-1|1)=>setStops(current=>{const items=current.filter(s=>s.day===activeDay),i=items.findIndex(s=>s.id===id),t=i+direction;if(i<0||t<0||t>=items.length)return current;const next=[...items];[next[i],next[t]]=[next[t],next[i]];let cursor=0;return current.map(s=>s.day===activeDay?next[cursor++]:s)});
   const reorderByDrop=(targetId:string)=>{if(!draggedId||draggedId===targetId)return;setStops(current=>{const items=current.filter(s=>s.day===activeDay),from=items.findIndex(s=>s.id===draggedId),to=items.findIndex(s=>s.id===targetId);if(from<0||to<0)return current;const next=[...items],[moved]=next.splice(from,1);next.splice(to,0,moved);let cursor=0;return current.map(s=>s.day===activeDay?next[cursor++]:s)});setDraggedId(null)};
   const removeSelected=()=>{if(!selected)return;setStops(c=>c.filter(s=>s.id!==selected.id));setSelected(null)};
+  const prepareMapCandidate=()=>{if(!mapCandidate)return;setPicked(mapCandidate);setQuery(cleanTitle(mapCandidate.title));setMapCandidate(null);setAddOpen(true)};
 
   const dayDates:Record<DayKey,string>={'9/19':tripSettings.startDate,'9/20':tripSettings.endDate};
 
   return <main className="app-shell">
     <header className="topbar">
-      <div className="brand"><span className="brand-mark"><Navigation/></span><span>여행을 떠나요</span><em>prototype</em></div>
+      <div className="brand"><span className="brand-mark"><Navigation/></span><span>여행을 떠나요</span></div>
       <div className="trip-title"><strong>{tripSettings.title}</strong><span>{formatTripDate(tripSettings.startDate)} — {formatTripDate(tripSettings.endDate)} · {tripSettings.people}명</span></div>
       <div className="top-actions">
-        <Button variant="outline" className="settings-button" onClick={()=>{setSettingsDraft(tripSettings);setSettingsOpen(true)}}><CalendarDays/><span>여행 기본 설정</span></Button>
+        <Button variant="outline" className="settings-button" onClick={()=>{setSettingsDraft(tripSettings);setSettingsOpen(true)}}><CalendarDays/><span>여행 일정</span></Button>
       </div>
     </header>
 
     <Dialog open={addOpen} onOpenChange={open=>{setAddOpen(open);if(!open){setQuery('');setPicked(null)}}}>
       <DialogContent className="add-dialog sm:max-w-[540px]">
-        <DialogHeader><DialogTitle>새 장소 추가</DialogTitle><DialogDescription>네이버 지역검색 결과에서 정확한 장소를 골라 일정에 추가합니다.</DialogDescription></DialogHeader>
+        <DialogHeader><DialogTitle>장소 추가</DialogTitle><DialogDescription>장소를 검색해 선택하세요.</DialogDescription></DialogHeader>
         <div className="form-grid">
           <label>날짜<select value={activeDay} onChange={e=>setActiveDay(e.target.value as DayKey)}><option value="9/19">{formatTripDate(tripSettings.startDate,true)}</option><option value="9/20">{formatTripDate(tripSettings.endDate,true)}</option></select></label>
           <label>시간<Input type="time" value={newTime} onChange={e=>setNewTime(e.target.value)}/></label>
           <label>종류<select value={newCategory} onChange={e=>setNewCategory(e.target.value as PlaceType)}>{['식사','카페','관광','교통','야시장','기타'].map(t=><option key={t}>{t}</option>)}</select></label>
         </div>
-        <label className="place-search-field">장소 <PlacePicker query={query} onQueryChange={value=>{setQuery(value);if(!picked||value!==cleanTitle(picked.title))setPicked(null)}} results={addSuggestions.results} value={picked} onPick={place=>{setPicked(place);if(place)setQuery(cleanTitle(place.title))}} searching={addSuggestions.searching} placeholder="장소명을 입력하면 네이버 지도 후보가 표시됩니다"/></label>
+        <label className="place-search-field">장소 <PlacePicker query={query} onQueryChange={(value,userInput)=>{setQuery(value);if(userInput)setPicked(null)}} results={addSuggestions.results} value={picked} onPick={place=>{setPicked(place);if(place)setQuery(cleanTitle(place.title))}} searching={addSuggestions.searching} placeholder="장소 검색" selected={Boolean(picked)}/></label>
         {addSuggestions.error&&query.trim().length>=2&&<div className="inline-notice"><CircleAlert/>{addSuggestions.error}</div>}
-        {picked&&<div className="linked-place"><MapPin/><span><strong>{cleanTitle(picked.title)}</strong><small>{picked.roadAddress||picked.address}</small></span><em>네이버 지도 연결됨</em></div>}
-        <label className="memo-field">메모 <Textarea value={newMemo} onChange={e=>setNewMemo(e.target.value)} placeholder="먹을 메뉴, 예약 정보처럼 기억할 내용을 적어보세요."/></label>
+        {picked&&<div className="linked-place"><MapPin/><span><strong>{cleanTitle(picked.title)}</strong><small>{picked.roadAddress||picked.address}</small></span><em>선택됨</em></div>}
+        <label className="memo-field">메모 <Textarea value={newMemo} onChange={e=>setNewMemo(e.target.value)} placeholder="메뉴, 예약 시간 등"/></label>
         <DialogFooter><Button variant="outline" onClick={()=>setAddOpen(false)}>취소</Button><Button onClick={addStop} disabled={!picked}>일정에 추가</Button></DialogFooter>
       </DialogContent>
     </Dialog>
@@ -239,17 +259,22 @@ export default function Home(){
     <section className="workspace">
       <aside className="planner-panel">
         <div className="day-switch" role="tablist" aria-label="여행 날짜">{(['9/19','9/20'] as DayKey[]).map((day,index)=><button key={day} role="tab" aria-selected={activeDay===day} onClick={()=>setActiveDay(day)}><span>DAY {index+1}</span><strong>{formatTripDate(dayDates[day],true)}</strong></button>)}</div>
-        <div className="panel-heading"><div><span><CalendarDays/>방문 순서</span><strong>{dayStops.length}개 장소</strong></div><p>카드를 끌어 순서를 바꾸면 지도도 바로 바뀝니다.</p></div>
-        <div className="stop-list">{dayStops.map((stop,index)=>{const previous=dayStops[index-1],gap=previous?distanceKm(previous,stop):null;return <div key={stop.id}>{gap!==null&&<div className="distance-chip"><span/>직선 {gap<1?`${Math.round(gap*1000)}m`:`${gap.toFixed(1)}km`}</div>}<article className="stop-card" draggable onDragStart={()=>setDraggedId(stop.id)} onDragOver={e=>e.preventDefault()} onDrop={()=>reorderByDrop(stop.id)} onClick={()=>setSelected(stop)}><div className="drag-handle" aria-hidden="true"><GripVertical/></div><div className="order-pin" style={{background:DAY_COLOR[activeDay]}}>{index+1}</div><div className="stop-main"><div className="stop-time"><Clock3/>{stop.time}<span>{stop.category}</span></div><strong>{stop.name}</strong><p>{stop.memo||'메모 없음'}</p></div><div className="card-actions"><button className="edit-card-button" aria-label={`${stop.name} 수정`} onClick={e=>{e.stopPropagation();openEdit(stop)}}><Pencil/><span>수정</span></button><div className="move-buttons"><button aria-label={`${stop.name} 위로 이동`} disabled={index===0} onClick={e=>{e.stopPropagation();moveStop(stop.id,-1)}}><ArrowUp/></button><button aria-label={`${stop.name} 아래로 이동`} disabled={index===dayStops.length-1} onClick={e=>{e.stopPropagation();moveStop(stop.id,1)}}><ArrowDown/></button></div></div></article></div>})}</div>
+        <div className="panel-heading"><div><span><CalendarDays/>방문 순서</span><strong>{dayStops.length}개 장소</strong></div></div>
+        <div className="stop-list">{dayStops.map((stop,index)=>{const previous=dayStops[index-1],gap=previous?distanceKm(previous,stop):null;return <div key={stop.id}>{gap!==null&&<div className="distance-chip"><span/>직선 {gap<1?`${Math.round(gap*1000)}m`:`${gap.toFixed(1)}km`}</div>}<article className="stop-card" draggable onDragStart={()=>setDraggedId(stop.id)} onDragOver={e=>e.preventDefault()} onDrop={()=>reorderByDrop(stop.id)} onClick={()=>setSelected(stop)}><div className="drag-handle" aria-hidden="true"><GripVertical/></div><div className="order-pin" style={{background:DAY_COLOR[activeDay]}}>{index+1}</div><div className="stop-main"><div className="stop-time"><Clock3/>{stop.time}<span>{stop.category}</span></div><strong>{stop.name}</strong>{stop.memo&&<p>{stop.memo}</p>}</div><div className="card-actions"><button className="edit-card-button" title="수정" aria-label={`${stop.name} 수정`} onClick={e=>{e.stopPropagation();openEdit(stop)}}><Pencil/></button><div className="move-buttons"><button aria-label={`${stop.name} 위로 이동`} disabled={index===0} onClick={e=>{e.stopPropagation();moveStop(stop.id,-1)}}><ArrowUp/></button><button aria-label={`${stop.name} 아래로 이동`} disabled={index===dayStops.length-1} onClick={e=>{e.stopPropagation();moveStop(stop.id,1)}}><ArrowDown/></button></div></div></article></div>})}</div>
         <Button variant="outline" className="wide-add" onClick={()=>setAddOpen(true)}><Plus/>이 날짜에 장소 추가</Button>
       </aside>
-      <section className="map-panel"><div className="map-toolbar"><div><Sparkles/><span><strong>{activeDay==='9/19'?'첫째 날':'둘째 날'} 동선</strong> · 번호 순서대로 연결</span></div><span className="naver-badge"><b>N</b>NAVER 지도</span></div><NaverMap stops={dayStops} clientId={clientId} onSelect={selectStop}/></section>
+      <section className="map-panel">
+        <div className="map-toolbar"><div><Sparkles/><span><strong>{activeDay==='9/19'?'첫째 날':'둘째 날'}</strong></span></div><span className="naver-badge"><b>N</b>NAVER 지도</span></div>
+        <div className="map-place-search"><PlacePicker query={mapQuery} onQueryChange={(value,userInput)=>{setMapQuery(value);if(userInput){setMapPicked(null);setMapCandidate(null)}}} results={mapSuggestions.results} value={mapPicked} onPick={place=>{setMapPicked(place);setMapCandidate(place);if(place)setMapQuery(cleanTitle(place.title))}} searching={mapSuggestions.searching} placeholder={`${tripSettings.destination} 장소 검색`} selected={Boolean(mapPicked)}/></div>
+        <NaverMap stops={dayStops} clientId={clientId} onSelect={selectStop} placeResults={mapSuggestions.results} onPlaceSelect={selectMapCandidate} dateLabels={dayDates}/>
+        {mapCandidate&&<div className="map-place-card"><button className="map-card-close" onClick={()=>setMapCandidate(null)} aria-label="장소 정보 닫기">×</button><span>{mapCandidate.category}</span><strong>{cleanTitle(mapCandidate.title)}</strong><p>{mapCandidate.roadAddress||mapCandidate.address}</p><div><a href={naverPlaceUrl({name:cleanTitle(mapCandidate.title),address:mapCandidate.roadAddress||mapCandidate.address})} target="_blank" rel="noreferrer">네이버지도</a><Button onClick={prepareMapCandidate}><Plus/>여행 장소로 추가</Button></div></div>}
+      </section>
     </section>
 
-    <Sheet open={Boolean(selected)} onOpenChange={open=>!open&&setSelected(null)}><SheetContent className="place-sheet sm:max-w-[430px]">{selected&&<><SheetHeader><div className="sheet-eyebrow"><span style={{background:DAY_COLOR[selected.day]}}>{dayStops.findIndex(s=>s.id===selected.id)+1}</span>{formatTripDate(dayDates[selected.day])} · {selected.time} · {selected.category}</div><SheetTitle>{selected.name}</SheetTitle><SheetDescription>{selected.address}</SheetDescription></SheetHeader><div className="sheet-body"><div className="section-title"><span>거리뷰</span><small>네이버 파노라마</small></div><PanoramaView stop={selected} clientId={clientId}/><div className="place-note"><span>메모</span><p>{selected.memo||'등록된 메모가 없습니다.'}</p></div><a className="naver-link" href={naverPlaceUrl(selected)} target="_blank" rel="noreferrer"><span><b>N</b>네이버지도에서 상세·후기 보기</span><ExternalLink/></a><Button variant="destructive" className="delete-button" onClick={removeSelected}><Trash2/>이 장소 삭제</Button></div></>}</SheetContent></Sheet>
+    <Sheet open={Boolean(selected)} onOpenChange={open=>!open&&setSelected(null)}><SheetContent className="place-sheet sm:max-w-[430px]">{selected&&<><SheetHeader><div className="sheet-eyebrow"><span style={{background:DAY_COLOR[selected.day]}}>{dayStops.findIndex(s=>s.id===selected.id)+1}</span>{formatTripDate(dayDates[selected.day])} · {selected.time} · {selected.category}</div><SheetTitle>{selected.name}</SheetTitle><SheetDescription>{selected.address}</SheetDescription></SheetHeader><div className="sheet-body"><div className="section-title"><span>거리뷰</span><small>네이버 파노라마</small></div><PanoramaView stop={selected} clientId={clientId}/>{selected.memo&&<div className="place-note"><span>메모</span><p>{selected.memo}</p></div>}<a className="naver-link" href={naverPlaceUrl(selected)} target="_blank" rel="noreferrer"><span><b>N</b>네이버지도에서 상세·후기 보기</span><ExternalLink/></a><Button variant="destructive" className="delete-button" onClick={removeSelected}><Trash2/>이 장소 삭제</Button></div></>}</SheetContent></Sheet>
 
-    <Dialog open={Boolean(editing)} onOpenChange={open=>{if(!open){setEditing(null);setEditDraft(null)}}}><DialogContent className="edit-dialog sm:max-w-[500px]">{editDraft&&<><DialogHeader><DialogTitle>장소 수정</DialogTitle><DialogDescription>장소명을 바꾸면 네이버 지도 후보에서 정확한 장소를 선택해주세요.</DialogDescription></DialogHeader><div className="edit-grid"><label>장소명 <PlacePicker query={editQuery} onQueryChange={value=>{setEditQuery(value);if(value!==editDraft.name)setEditPlaceLinked(false)}} results={editSuggestions.results} value={null} onPick={place=>{if(!place)return;const name=cleanTitle(place.title);setEditQuery(name);setEditPlaceLinked(true);setEditDraft({...editDraft,name,address:place.roadAddress||place.address,lat:Number(place.mapy)/1e7,lng:Number(place.mapx)/1e7})}} searching={editSuggestions.searching} placeholder="장소명을 입력해 네이버 지도에서 다시 찾기"/></label>{editSuggestions.error&&editQuery.trim().length>=2&&!editPlaceLinked&&<div className="inline-notice"><CircleAlert/>{editSuggestions.error}</div>}<div className={`linked-place ${editPlaceLinked?'':'unlinked'}`}><MapPin/><span><strong>{editDraft.name}</strong><small>{editDraft.address}</small></span><em>{editPlaceLinked?'네이버 지도 연결됨':'검색 결과에서 장소를 선택해주세요'}</em></div><div className="form-grid two"><label>시간<Input type="time" value={editDraft.time} onChange={e=>setEditDraft({...editDraft,time:e.target.value})}/></label><label>종류<select value={editDraft.category} onChange={e=>setEditDraft({...editDraft,category:e.target.value as PlaceType})}>{['식사','카페','관광','교통','야시장','기타'].map(t=><option key={t}>{t}</option>)}</select></label></div><label>메모<Textarea value={editDraft.memo} onChange={e=>setEditDraft({...editDraft,memo:e.target.value})} placeholder="먹을 메뉴, 예약 정보처럼 기억할 내용을 적어보세요."/></label></div><DialogFooter><Button variant="outline" onClick={()=>{setEditing(null);setEditDraft(null)}}>취소</Button><Button onClick={saveEdit} disabled={!editPlaceLinked}>수정 저장</Button></DialogFooter></>}</DialogContent></Dialog>
+    <Dialog open={Boolean(editing)} onOpenChange={open=>{if(!open){setEditing(null);setEditDraft(null)}}}><DialogContent className="edit-dialog sm:max-w-[500px]">{editDraft&&<><DialogHeader><DialogTitle>장소 수정</DialogTitle><DialogDescription>장소를 바꾸려면 검색 결과에서 선택하세요.</DialogDescription></DialogHeader><div className="edit-grid"><label>장소 <PlacePicker query={editQuery} onQueryChange={(value,userInput)=>{setEditQuery(value);if(userInput)setEditPlaceLinked(false)}} results={editSuggestions.results} value={null} onPick={place=>{if(!place)return;const name=cleanTitle(place.title);setEditQuery(name);setEditPlaceLinked(true);setEditDraft({...editDraft,name,address:place.roadAddress||place.address,lat:Number(place.mapy)/1e7,lng:Number(place.mapx)/1e7})}} searching={editSuggestions.searching} placeholder="장소 검색" selected={editPlaceLinked}/></label>{editSuggestions.error&&editQuery.trim().length>=2&&!editPlaceLinked&&<div className="inline-notice"><CircleAlert/>{editSuggestions.error}</div>}<div className={`linked-place ${editPlaceLinked?'':'unlinked'}`}><MapPin/><span><strong>{editDraft.name}</strong><small>{editDraft.address}</small></span><em>{editPlaceLinked?'선택됨':'장소를 골라주세요'}</em></div><div className="form-grid two"><label>시간<Input type="time" value={editDraft.time} onChange={e=>setEditDraft({...editDraft,time:e.target.value})}/></label><label>종류<select value={editDraft.category} onChange={e=>setEditDraft({...editDraft,category:e.target.value as PlaceType})}>{['식사','카페','관광','교통','야시장','기타'].map(t=><option key={t}>{t}</option>)}</select></label></div><label>메모<Textarea value={editDraft.memo} onChange={e=>setEditDraft({...editDraft,memo:e.target.value})} placeholder="메모를 남겨보세요"/></label></div><DialogFooter><Button variant="outline" onClick={()=>{setEditing(null);setEditDraft(null)}}>취소</Button><Button onClick={saveEdit} disabled={!editPlaceLinked}>저장</Button></DialogFooter></>}</DialogContent></Dialog>
 
-    <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}><DialogContent className="settings-dialog sm:max-w-[500px]"><DialogHeader><DialogTitle>여행 기본 설정</DialogTitle><DialogDescription>여행 이름과 날짜, 함께 가는 인원을 설정합니다.</DialogDescription></DialogHeader><div className="trip-settings-grid"><label>여행 이름<Input value={settingsDraft.title} onChange={e=>setSettingsDraft({...settingsDraft,title:e.target.value})} placeholder="예: 전주 맛집 여행"/></label><div className="date-fields"><label>출발일<Input type="date" value={settingsDraft.startDate} onChange={e=>setSettingsDraft({...settingsDraft,startDate:e.target.value})}/></label><label>돌아오는 날<Input type="date" min={settingsDraft.startDate} value={settingsDraft.endDate} onChange={e=>setSettingsDraft({...settingsDraft,endDate:e.target.value})}/></label></div><label>인원<div className="people-input"><Users/><Input type="number" min="1" max="99" value={settingsDraft.people} onChange={e=>setSettingsDraft({...settingsDraft,people:Number(e.target.value)})}/><span>명</span></div></label></div>{settingsDraft.startDate>settingsDraft.endDate&&<div className="inline-notice"><CircleAlert/>돌아오는 날은 출발일보다 빠를 수 없습니다.</div>}<DialogFooter><Button variant="outline" onClick={()=>setSettingsOpen(false)}>취소</Button><Button onClick={saveTripSettings} disabled={!settingsDraft.startDate||!settingsDraft.endDate||settingsDraft.startDate>settingsDraft.endDate}>설정 저장</Button></DialogFooter></DialogContent></Dialog>
+    <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}><DialogContent className="settings-dialog sm:max-w-[500px]"><DialogHeader><DialogTitle>여행 일정</DialogTitle><DialogDescription>어디로, 언제 떠날지 정하세요.</DialogDescription></DialogHeader><div className="trip-settings-grid"><label>여행 이름<Input value={settingsDraft.title} onChange={e=>setSettingsDraft({...settingsDraft,title:e.target.value})} placeholder="전주 맛집 여행"/></label><label>여행지<Input value={settingsDraft.destination} onChange={e=>setSettingsDraft({...settingsDraft,destination:e.target.value})} placeholder="전주"/></label><div className="date-fields"><label>출발일<Input type="date" value={settingsDraft.startDate} onChange={e=>setSettingsDraft({...settingsDraft,startDate:e.target.value})}/></label><label>돌아오는 날<Input type="date" min={settingsDraft.startDate} value={settingsDraft.endDate} onChange={e=>setSettingsDraft({...settingsDraft,endDate:e.target.value})}/></label></div><label>인원<div className="people-input"><Users/><Input type="number" min="1" max="99" value={settingsDraft.people} onChange={e=>setSettingsDraft({...settingsDraft,people:Number(e.target.value)})}/><span>명</span></div></label></div>{settingsDraft.startDate>settingsDraft.endDate&&<div className="inline-notice"><CircleAlert/>날짜를 다시 확인해주세요.</div>}<DialogFooter><Button variant="outline" onClick={()=>setSettingsOpen(false)}>취소</Button><Button onClick={saveTripSettings} disabled={!settingsDraft.destination.trim()||!settingsDraft.startDate||!settingsDraft.endDate||settingsDraft.startDate>settingsDraft.endDate}>저장</Button></DialogFooter></DialogContent></Dialog>
   </main>
 }
