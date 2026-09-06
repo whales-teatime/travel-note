@@ -117,7 +117,7 @@ function PlacePicker({query,onQueryChange,results,value,onPick,searching,placeho
   const composingRef=useRef(false);
   useEffect(()=>{if(!composingRef.current)setInputValue(query)},[query]);
   useEffect(()=>{setOpen(inputValue.trim().length>=2&&!selected)},[inputValue,selected]);
-  return <Combobox<SearchPlace> items={results} filteredItems={results} filter={null} value={value} inputValue={inputValue} open={open} onOpenChange={setOpen} onInputValueChange={(next,details)=>{setInputValue(next);if(details.reason==='item-press')return;if(details.reason==='input-change'){if(!composingRef.current)onQueryChange(next,true)}else if(details.reason==='input-clear'&&!suppressClearRef.current)onQueryChange(next,true)}} onValueChange={place=>{onPick(place);if(place){setInputValue(cleanTitle(place.title));setOpen(false)}}} itemToStringLabel={place=>cleanTitle(place.title)}>
+  return <Combobox<SearchPlace> items={results} filteredItems={results} filter={null} value={value} inputValue={inputValue} open={open} onOpenChange={setOpen} onInputValueChange={(next,details)=>{if(details.reason==='item-press')return;if(details.reason==='input-change'){setInputValue(next);if(!composingRef.current)onQueryChange(next,true)}else if(details.reason==='input-clear'&&!suppressClearRef.current){const source=details.event as Event|undefined;const isUserDelete=Boolean(source&&'inputType' in source&&String((source as InputEvent).inputType||'').startsWith('delete'));if(isUserDelete||!inputValue.trim()){setInputValue(next);onQueryChange(next,true)}}}} onValueChange={place=>{onPick(place);if(place){setInputValue(cleanTitle(place.title));setOpen(false)}}} itemToStringLabel={place=>cleanTitle(place.title)}>
     <ComboboxInput className="place-combobox-input" placeholder={placeholder} showTrigger={false} inputMode="search" enterKeyHint="search" onFocus={()=>{if(!selected&&inputValue.trim().length>=2)setOpen(true)}} onCompositionStart={()=>{composingRef.current=true}} onCompositionEnd={event=>{composingRef.current=false;const committed=event.currentTarget.value;setInputValue(committed);onQueryChange(committed,true);setOpen(committed.trim().length>=2&&!selected)}} onKeyDown={event=>{const nativeEvent=event.nativeEvent as KeyboardEvent;if(event.key==='Enter'&&!nativeEvent.isComposing&&!composingRef.current){event.preventDefault();event.stopPropagation();const current=event.currentTarget.value;suppressClearRef.current=true;setInputValue(current);onQueryChange(current,false);onEnter?.(current);setOpen(false);window.setTimeout(()=>{suppressClearRef.current=false},350)}}}/>
     <ComboboxContent className="place-combobox-content">
       <ComboboxEmpty>{searching?'네이버 지도에서 검색 중…':'검색 결과가 없습니다.'}</ComboboxEmpty>
@@ -217,7 +217,7 @@ function loadNaverMaps(clientId: string) {
   return window.__naverMapsLoading;
 }
 
-function NaverMap({stops,clientId,destination,onSelect,placeResults,onPlaceSelect,dateLabels,activeDay,onDayChange,editableStopId,onStopPositionChange,onCancelStopPositionEdit,customPin,customPinMode,onCustomLocationChange,onCustomAddressChange,onCustomPinContinue}:{stops:Stop[];clientId:string;destination:string;onSelect:(stop:Stop)=>void;placeResults:SearchPlace[];onPlaceSelect:(place:SearchPlace)=>void;dateLabels:Record<DayKey,string>;activeDay:DayKey;onDayChange:(day:DayKey)=>void;editableStopId:string|null;onStopPositionChange:(id:string,lat:number,lng:number)=>void;onCancelStopPositionEdit:()=>void;customPin:{lat:number;lng:number}|null;customPinMode:boolean;onCustomLocationChange:(point:{lat:number;lng:number})=>void;onCustomAddressChange:(address:string)=>void;onCustomPinContinue:()=>void}) {
+function NaverMap({stops,clientId,destination,onSelect,placeResults,onPlaceSelect,dateLabels,activeDay,onDayChange,editableStopId,onStopPositionChange,onCancelStopPositionEdit,customPin,customPinMode,onCustomLocationChange,onCustomAddressChange,onCustomPinContinue,onMapInteract,mapFocused,onToggleMapFocus}:{stops:Stop[];clientId:string;destination:string;onSelect:(stop:Stop)=>void;placeResults:SearchPlace[];onPlaceSelect:(place:SearchPlace)=>void;dateLabels:Record<DayKey,string>;activeDay:DayKey;onDayChange:(day:DayKey)=>void;editableStopId:string|null;onStopPositionChange:(id:string,lat:number,lng:number)=>void;onCancelStopPositionEdit:()=>void;customPin:{lat:number;lng:number}|null;customPinMode:boolean;onCustomLocationChange:(point:{lat:number;lng:number})=>void;onCustomAddressChange:(address:string)=>void;onCustomPinContinue:()=>void;onMapInteract:()=>void;mapFocused:boolean;onToggleMapFocus:()=>void}) {
   const containerRef=useRef<HTMLDivElement>(null), mapRef=useRef<any>(null), overlaysRef=useRef<any[]>([]), placeOverlaysRef=useRef<any[]>([]), customOverlayRef=useRef<any>(null);
   const orderedDays=useMemo(()=>Object.keys(dateLabels),[dateLabels]);
   const [status,setStatus]=useState<'idle'|'loading'|'ready'|'error'>(clientId?'loading':'idle');
@@ -238,6 +238,17 @@ function NaverMap({stops,clientId,destination,onSelect,placeResults,onPlaceSelec
     }).catch(()=>setStatus('error'));
     return()=>{cancelled=true;window.removeEventListener('naver-map-auth-failure',handleAuthFailure)};
   },[clientId]);
+  useEffect(()=>{
+    const canvas=containerRef.current,stage=canvas?.parentElement;
+    if(!stage)return;
+    const handlePointerDown=(event:PointerEvent)=>{
+      const target=event.target as Element|null;
+      if(target?.closest('button,a,input,textarea,select'))return;
+      onMapInteract();
+    };
+    stage.addEventListener('pointerdown',handlePointerDown,{passive:true});
+    return()=>stage.removeEventListener('pointerdown',handlePointerDown);
+  },[onMapInteract]);
   useEffect(()=>{
     const map=mapRef.current,naver=window.naver;
     if(!map||!naver?.maps||status!=='ready')return;
@@ -332,6 +343,7 @@ function NaverMap({stops,clientId,destination,onSelect,placeResults,onPlaceSelec
     {status!=='ready'&&<div className="map-gate"><div className="map-gate-card">
       {status==='loading'?<><div className="loading-orbit"/><strong>네이버 지도를 연결하는 중</strong><span>잠시만 기다려주세요.</span></>:status==='error'?<><CircleAlert/><strong>네이버 지도 인증에 실패했습니다</strong><span>Maps 앱의 10자 Client ID와 등록된 웹 서비스 URL을 확인해주세요.</span></>:<><Map className="text-[#03c75a]"/><strong>네이버 지도 연결이 필요합니다</strong><span>설정에서 Maps Client ID를 입력하면 실제 지도가 열립니다.</span></>}
     </div></div>}
+    {mapFocused&&<button type="button" className="map-planner-toggle" onClick={event=>{event.stopPropagation();onToggleMapFocus()}} aria-label="일정 패널 펼치기"><ChevronDown/>일정 보기</button>}
     <button type="button" className="map-home-button" onClick={fitItinerary} aria-label={stops.length?'전체 동선 한눈에 보기':'여행지 전체 보기'} title={stops.length?'전체 동선 한눈에 보기':'여행지 전체 보기'}><House/></button>
     <div className="map-legend"><div className="map-legend-days">{visibleLegendDays.map(day=><button type="button" key={day} className={`map-date-button ${activeDay===day?'is-active':''}`} aria-pressed={activeDay===day} onClick={()=>onDayChange(day)}><i style={{background:dayColor(day,orderedDays)}}/>{formatTripDate(dateLabels[day])}</button>)}</div>{orderedDays.length>6&&<button type="button" className="map-legend-toggle" onClick={()=>setLegendExpanded(current=>!current)} aria-expanded={legendExpanded}>{legendExpanded?<><ChevronUp/>접기</>:<><ChevronDown/>+{orderedDays.length-visibleLegendDays.length}일</>}</button>}</div>
     {customPinMode&&<div className="map-location-editor"><strong>지도에서 위치를 정하세요</strong><span>지도를 클릭하거나 초록 핀을 끌어 옮긴 뒤 계속하세요.</span><Button onClick={onCustomPinContinue} disabled={!customPin}>이 위치로 계속</Button></div>}
@@ -352,7 +364,7 @@ function PanoramaView({stop,clientId}:{stop:Stop;clientId:string}) {
 
 export default function Home(){
   const firstDefaultDay=dateDayKey(DEFAULT_TRIP.startDate);
-  const [activeDay,setActiveDay]=useState<DayKey>(firstDefaultDay), [stops,setStops]=useState<Stop[]>(seedStops), [selected,setSelected]=useState<Stop|null>(null);
+  const [activeDay,setActiveDay]=useState<DayKey>(firstDefaultDay), [stops,setStops]=useState<Stop[]>(seedStops), [selected,setSelected]=useState<Stop|null>(null), [mapFocused,setMapFocused]=useState(false);
   const [tripSettings,setTripSettings]=useState<TripSettings>(DEFAULT_TRIP), [settingsDraft,setSettingsDraft]=useState<TripSettings>(DEFAULT_TRIP);
   const [addOpen,setAddOpen]=useState(false), [settingsOpen,setSettingsOpen]=useState(false), [clientId,setClientId]=useState('');
   const [planId,setPlanId]=useState<string|null>(null), [planUpdatedAt,setPlanUpdatedAt]=useState(''), [planLoading,setPlanLoading]=useState(true), [planSaving,setPlanSaving]=useState(false), [planSaveMessage,setPlanSaveMessage]=useState(''), [isLocalDraft,setIsLocalDraft]=useState(true), [canEdit,setCanEdit]=useState(true), [planAction,setPlanAction]=useState<'duplicate'|'delete'|null>(null), [deleteDialogOpen,setDeleteDialogOpen]=useState(false), [editPasswordWarningOpen,setEditPasswordWarningOpen]=useState(false);
@@ -467,6 +479,8 @@ export default function Home(){
   const dayCostSummary=useMemo(()=>dayStops.reduce((summary,stop)=>{const cost=costValues(stop,peopleCount);return {personal:summary.personal+cost.personal,total:summary.total+cost.total}},{personal:0,total:0}),[dayStops,peopleCount]);
   const tripCostSummary=useMemo(()=>stops.reduce((summary,stop)=>{const cost=costValues(stop,peopleCount);return {personal:summary.personal+cost.personal,total:summary.total+cost.total}},{personal:0,total:0}),[stops,peopleCount]);
   const selectStop=useCallback((stop:Stop)=>setSelected(stop),[]);
+  const focusMap=useCallback(()=>setMapFocused(true),[]);
+  const toggleMapFocus=useCallback(()=>setMapFocused(current=>!current),[]);
   const selectMapCandidate=useCallback((place:SearchPlace)=>setMapCandidate(place),[]);
   const updateCustomPin=useCallback((point:{lat:number;lng:number})=>setCustomPin(point),[]);
   const updateStopPosition=useCallback((id:string,lat:number,lng:number)=>{setStops(current=>current.map(stop=>stop.id===id?{...stop,lat,lng,customLocation:true}:stop));setLocationEditingId(null)},[]);
@@ -630,7 +644,7 @@ export default function Home(){
       </DialogContent>
     </Dialog>
 
-    <section className="workspace">
+    <section className={`workspace ${mapFocused?'map-focused':''}`}>
       <aside className="planner-panel">
         {planId&&!canEdit&&<div className="inline-notice plan-readonly-notice"><CircleAlert/><span>{tripSettings.editPolicy==='password'?'편집 비밀번호를 입력하면 일정을 수정할 수 있어요.':tripSettings.editPolicy==='all'?'열람 비밀번호로 계획을 열면 수정할 수 있어요.':'작성자의 편집 토큰이 있어야 일정을 바꿀 수 있어요.'}</span>{tripSettings.editPolicy==='password'&&<Button variant="outline" onClick={()=>setEditPasswordPromptOpen(true)}>편집 비밀번호 입력</Button>}</div>}
         <div className="day-switch-wrap"><div className={`day-switch ${dayKeys.length>6&&!daysExpanded?'is-collapsed':''}`} role="tablist" aria-label="여행 날짜">{visibleDayKeys.map(day=>{const index=dayKeys.indexOf(day);return <button key={day} role="tab" aria-selected={activeDay===day} onClick={()=>setActiveDay(day)}><span style={{color:dayColor(day,dayKeys)}}>DAY {index+1}</span><strong>{formatTripDate(dayDates[day],true)}</strong></button>})}</div>{dayKeys.length>6&&<button type="button" className="day-rollup-toggle" onClick={()=>setDaysExpanded(current=>!current)} aria-expanded={daysExpanded}>{daysExpanded?<><ChevronUp/> 일정 접기</>:<><ChevronDown/> 전체 {dayKeys.length}일 보기</>}</button>}</div>
@@ -663,7 +677,7 @@ export default function Home(){
       <section className="map-panel">
         <div className="map-toolbar"><div><Sparkles/><span><strong>DAY {Math.max(1,dayKeys.indexOf(activeDay)+1)}</strong></span></div><span className="naver-badge"><b>N</b>NAVER 지도</span></div>
         <div className="map-place-search"><PlacePicker query={mapQuery} onQueryChange={(value,userInput)=>{setMapQuery(value);if(userInput){setMapPicked(null);setMapCandidate(null);setMapResultPlaces([])}}} results={mapSuggestions.results} value={mapPicked} onPick={place=>{setMapPicked(place);setMapCandidate(place);setMapResultPlaces(mapSuggestions.results.slice(0,8));if(place)setMapQuery(cleanTitle(place.title))}} onEnter={commitMapSearch} searching={mapSuggestions.searching} placeholder={`${tripSettings.destination} 장소 검색`} selected={Boolean(mapPicked)}/></div>
-        <NaverMap stops={dayStops} clientId={clientId} destination={tripSettings.destination} onSelect={selectStop} placeResults={mapResultPlaces} onPlaceSelect={selectMapCandidate} dateLabels={dayDates} activeDay={activeDay} onDayChange={setActiveDay} editableStopId={locationEditingId} onStopPositionChange={updateStopPosition} onCancelStopPositionEdit={()=>setLocationEditingId(null)} customPin={customPin} customPinMode={customPinMode} onCustomLocationChange={updateCustomPin} onCustomAddressChange={setCustomAddress} onCustomPinContinue={continueCustomPin}/>
+        <NaverMap stops={dayStops} clientId={clientId} destination={tripSettings.destination} onSelect={selectStop} placeResults={mapResultPlaces} onPlaceSelect={selectMapCandidate} dateLabels={dayDates} activeDay={activeDay} onDayChange={setActiveDay} editableStopId={locationEditingId} onStopPositionChange={updateStopPosition} onCancelStopPositionEdit={()=>setLocationEditingId(null)} customPin={customPin} customPinMode={customPinMode} onCustomLocationChange={updateCustomPin} onCustomAddressChange={setCustomAddress} onCustomPinContinue={continueCustomPin} onMapInteract={focusMap} mapFocused={mapFocused} onToggleMapFocus={toggleMapFocus}/>
         {mapCandidate&&<div className="map-place-card"><button className="map-card-close" onClick={()=>setMapCandidate(null)} aria-label="장소 정보 닫기">×</button><span>{mapCandidate.category}</span><strong>{cleanTitle(mapCandidate.title)}</strong><p>{mapCandidate.roadAddress||mapCandidate.address}</p><div><a href={naverPlaceUrl({name:cleanTitle(mapCandidate.title),address:mapCandidate.roadAddress||mapCandidate.address})} target="_blank" rel="noreferrer">네이버지도에서 상세보기</a><Button onClick={prepareMapCandidate}><Plus/>이 장소로 결정</Button></div></div>}
       </section>
     </section>
