@@ -1,4 +1,4 @@
-import { fullPlan, getDb, passwordHash, publicPlan, sanitizePlan, sha256 } from '@/lib/plan-store';
+import { fullPlan, getDb, passwordHash, publicPlan, randomHex, sanitizePlan, sha256 } from '@/lib/plan-store';
 
 type Context = { params: { id: string } | Promise<{ id: string }> };
 
@@ -48,12 +48,19 @@ export async function PUT(request: Request, context: Context) {
   if (!row) return Response.json({ message: '계획을 찾을 수 없습니다.' }, { status: 404 });
   let body: Record<string, unknown>;
   try { body = await request.json() as Record<string, unknown>; } catch { return Response.json({ message: '잘못된 요청입니다.' }, { status: 400 }); }
-  const password = typeof body.password === 'string' ? body.password : undefined;
+  const password = typeof body.password === 'string' ? body.password.trim().slice(0, 100) : undefined;
   if (!(await hasAccess(request, row, password, true))) return Response.json({ message: '계획을 만든 사람만 수정할 수 있습니다.' }, { status: 403 });
   const plan = sanitizePlan(body);
   if (!plan) return Response.json({ message: '여행 이름, 여행지, 날짜를 입력해주세요.' }, { status: 400 });
+  const passwordChanged = Object.prototype.hasOwnProperty.call(body, 'password');
+  const salt = passwordChanged && password ? randomHex(16) : null;
+  const hash = passwordChanged && password && salt ? await passwordHash(password, salt) : null;
   const now = new Date().toISOString();
-  await db.prepare('UPDATE plans SET title=?,destination=?,start_date=?,end_date=?,people=?,stops_json=?,updated_at=? WHERE id=?').bind(plan.title, plan.destination, plan.startDate, plan.endDate, plan.people, JSON.stringify(plan.stops), now, String(row.id)).run();
-  const updated = { ...row, title: plan.title, destination: plan.destination, start_date: plan.startDate, end_date: plan.endDate, people: plan.people, stops_json: JSON.stringify(plan.stops), updated_at: now };
+  const passwordSql = passwordChanged ? ',password_hash=?,password_salt=?' : '';
+  const values = passwordChanged
+    ? [plan.title, plan.destination, plan.startDate, plan.endDate, plan.people, JSON.stringify(plan.stops), hash, salt, now, String(row.id)]
+    : [plan.title, plan.destination, plan.startDate, plan.endDate, plan.people, JSON.stringify(plan.stops), now, String(row.id)];
+  await db.prepare(`UPDATE plans SET title=?,destination=?,start_date=?,end_date=?,people=?,stops_json=?${passwordSql},updated_at=? WHERE id=?`).bind(...values).run();
+  const updated = { ...row, title: plan.title, destination: plan.destination, start_date: plan.startDate, end_date: plan.endDate, people: plan.people, stops_json: JSON.stringify(plan.stops), updated_at: now, ...(passwordChanged ? { password_hash: hash, password_salt: salt } : {}) };
   return Response.json({ plan: fullPlan(updated) });
 }
