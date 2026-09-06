@@ -11,9 +11,9 @@ async function rowFor(id: string) {
 }
 
 async function hasAccess(request: Request, row: Record<string, unknown>, password?: string, requireEditToken = false, editPassword?: string) {
-  const token = request.headers.get('x-plan-edit-token') || '';
-  if (token && row.edit_token_hash && await sha256(token) === String(row.edit_token_hash)) return true;
   const policy = row.edit_policy === 'all' ? 'all' : row.edit_policy === 'password' ? 'password' : 'owner';
+  const token = request.headers.get('x-plan-edit-token') || '';
+  if (token && row.edit_token_hash && await sha256(token) === String(row.edit_token_hash) && (!requireEditToken || policy !== 'password')) return true;
   const storedHash = String(row.password_hash || '');
   const salt = String(row.password_salt || '');
   if (!requireEditToken) {
