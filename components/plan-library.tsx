@@ -11,6 +11,8 @@ export type PlanSummary = {
   endDate: string;
   people: number;
   passwordProtected: boolean;
+  editPolicy?: 'owner' | 'all' | 'password';
+  editPasswordProtected?: boolean;
   updatedAt: string;
   deletedAt?: string;
 };
@@ -41,6 +43,7 @@ export function PlanLibrary({ compact = false, trash = false }: { compact?: bool
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [restoringId, setRestoringId] = useState<string | null>(null);
 
   const loadPlans = useCallback(async (value: string) => {
     setLoading(true); setError('');
@@ -52,7 +55,37 @@ export function PlanLibrary({ compact = false, trash = false }: { compact?: bool
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '계획 목록을 불러오지 못했어요.');
     } finally { setLoading(false); }
-  }, []);
+  }, [trash]);
+
+  const restorePlan = async (plan: PlanSummary) => {
+    if (!window.confirm(`“${plan.title}” 계획을 복원할까요?`)) return;
+    let password: string | undefined;
+    let editPassword: string | undefined;
+    const token = localStorage.getItem(`route-note-edit-token-${plan.id}`);
+    if (!token && plan.editPolicy === 'all' && plan.passwordProtected) {
+      const entered = window.prompt('열람 비밀번호를 입력하세요.');
+      if (entered === null) return;
+      password = entered;
+    }
+    if (plan.editPolicy === 'password') {
+      const entered = window.prompt('편집 비밀번호를 입력하세요.');
+      if (entered === null) return;
+      editPassword = entered;
+    }
+    setRestoringId(plan.id); setError('');
+    try {
+      const response = await fetch(`/api/plans/${encodeURIComponent(plan.id)}`, {
+        method: 'POST', headers: {'Content-Type': 'application/json', ...(token ? {'x-plan-edit-token': token} : {})},
+        body: JSON.stringify({action: 'restore', ...(password ? {password, passwordAuth: password} : {}), ...(editPassword ? {editPassword, editPasswordAuth: editPassword} : {})}),
+      });
+      const body = await response.json() as {message?: string};
+      if (!response.ok) throw new Error(body.message || '계획을 복원하지 못했어요.');
+      setNotice('계획을 복원했어요.');
+      await loadPlans(search);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '계획을 복원하지 못했어요.');
+    } finally { setRestoringId(null); }
+  };
 
   useEffect(() => { void loadPlans(''); }, [loadPlans]);
   useEffect(() => {
@@ -77,7 +110,7 @@ export function PlanLibrary({ compact = false, trash = false }: { compact?: bool
     {error && <div className="library-notice">{error}</div>}
     <div className="library-grid">
       {!loading && !plans.length && !error && <div className="library-empty"><CalendarDays /><strong>{search ? '검색 결과가 없어요.' : trash ? '휴지통이 비어 있어요.' : '아직 저장된 계획이 없어요.'}</strong><span>{search ? '다른 이름이나 도시로 찾아보세요.' : trash ? '삭제한 계획은 7일 동안 이곳에 보관돼요.' : '첫 여행 계획을 만들어 목록에 저장해보세요.'}</span>{!trash && <a href="/plan/new?mode=domestic">새 계획 세우기<ArrowRight /></a>}</div>}
-      {plans.map(plan => trash ? <article className="library-card trash-card" key={plan.id}><div className="library-card-top"><span className="library-destination"><MapPin />{plan.destination}</span><span className="library-lock"><Trash2 />휴지통</span></div><h2>{plan.title}</h2><p><CalendarDays />{formatDate(plan.startDate)} — {formatDate(plan.endDate)}<span>·</span>{plan.people}명</p><div className="library-card-bottom"><small>{formatTrashExpiry(plan.deletedAt)}</small></div></article> : <a className="library-card" href={`/plan/${encodeURIComponent(plan.id)}`} key={plan.id}><div className="library-card-top"><span className="library-destination"><MapPin />{plan.destination}</span>{plan.passwordProtected && <span className="library-lock"><LockKeyhole />비밀번호</span>}</div><h2>{plan.title}</h2><p><CalendarDays />{formatDate(plan.startDate)} — {formatDate(plan.endDate)}<span>·</span>{plan.people}명</p><div className="library-card-bottom"><small>최근 수정 {formatUpdated(plan.updatedAt)}</small><ArrowRight /></div></a>)}
+      {plans.map(plan => trash ? <article className="library-card trash-card" key={plan.id}><div className="library-card-top"><span className="library-destination"><MapPin />{plan.destination}</span><span className="library-lock"><Trash2 />휴지통</span></div><h2>{plan.title}</h2><p><CalendarDays />{formatDate(plan.startDate)} — {formatDate(plan.endDate)}<span>·</span>{plan.people}명</p><div className="library-card-bottom"><small>{formatTrashExpiry(plan.deletedAt)}</small><button type="button" className="trash-restore-button" onClick={()=>void restorePlan(plan)} disabled={restoringId===plan.id}>{restoringId===plan.id?'복원 중…':'복원'}</button></div></article> : <a className="library-card" href={`/plan/${encodeURIComponent(plan.id)}`} key={plan.id}><div className="library-card-top"><span className="library-destination"><MapPin />{plan.destination}</span>{plan.passwordProtected && <span className="library-lock"><LockKeyhole />비밀번호</span>}</div><h2>{plan.title}</h2><p><CalendarDays />{formatDate(plan.startDate)} — {formatDate(plan.endDate)}<span>·</span>{plan.people}명</p><div className="library-card-bottom"><small>최근 수정 {formatUpdated(plan.updatedAt)}</small><ArrowRight /></div></a>)}
     </div>
   </section>;
 }

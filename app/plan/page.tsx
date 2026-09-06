@@ -32,7 +32,7 @@ type Stop = { id: string; day: DayKey; time: string; name: string; category: Pla
 type SearchPlace = { title: string; category: string; address: string; roadAddress: string; mapx: string; mapy: string; link?: string; description?: string };
 type EditPolicy = 'owner' | 'all' | 'password';
 type TripSettings = { title: string; destination: string; startDate: string; endDate: string; people: number; editPolicy: EditPolicy };
-type StoredPlan = { id: string; title: string; destination: string; startDate: string; endDate: string; people: number; editPolicy?: EditPolicy; passwordProtected?: boolean; editPasswordProtected?: boolean; stops: Stop[] };
+type StoredPlan = { id: string; title: string; destination: string; startDate: string; endDate: string; people: number; editPolicy?: EditPolicy; passwordProtected?: boolean; editPasswordProtected?: boolean; updatedAt?: string; stops: Stop[] };
 
 declare global {
   interface Window { naver?: any; __naverMapsLoading?: Promise<void>; navermap_authFailure?: () => void }
@@ -158,6 +158,9 @@ function insertStopByTime(current:Stop[],stop:Stop){
   if(!insertBefore)return [...current,stop];
   const index=current.findIndex(item=>item.id===insertBefore.id);
   return index<0?[...current,stop]:[...current.slice(0,index),stop,...current.slice(index)];
+}
+function itinerarySnapshot(settings:TripSettings,stops:Stop[],viewPassword='',viewPasswordTouched=false,editPassword='',editPasswordTouched=false){
+  return JSON.stringify({settings,stops,viewPassword:viewPasswordTouched?viewPassword:'',editPassword:editPasswordTouched?editPassword:''});
 }
 function naverPlaceUrl(stop: Pick<Stop,'name'|'address'>) { return `https://map.naver.com/p/search/${encodeURIComponent(`${stop.name} ${stop.address}`)}` }
 function geocodeAddress(query:string):Promise<{lat:number;lng:number;address:string}> {
@@ -349,7 +352,7 @@ export default function Home(){
   const [activeDay,setActiveDay]=useState<DayKey>(firstDefaultDay), [stops,setStops]=useState<Stop[]>(seedStops), [selected,setSelected]=useState<Stop|null>(null);
   const [tripSettings,setTripSettings]=useState<TripSettings>(DEFAULT_TRIP), [settingsDraft,setSettingsDraft]=useState<TripSettings>(DEFAULT_TRIP);
   const [addOpen,setAddOpen]=useState(false), [settingsOpen,setSettingsOpen]=useState(false), [clientId,setClientId]=useState('');
-  const [planId,setPlanId]=useState<string|null>(null), [planLoading,setPlanLoading]=useState(true), [planSaving,setPlanSaving]=useState(false), [planSaveMessage,setPlanSaveMessage]=useState(''), [isLocalDraft,setIsLocalDraft]=useState(true), [canEdit,setCanEdit]=useState(true), [planAction,setPlanAction]=useState<'duplicate'|'delete'|null>(null), [deleteDialogOpen,setDeleteDialogOpen]=useState(false);
+  const [planId,setPlanId]=useState<string|null>(null), [planUpdatedAt,setPlanUpdatedAt]=useState(''), [planLoading,setPlanLoading]=useState(true), [planSaving,setPlanSaving]=useState(false), [planSaveMessage,setPlanSaveMessage]=useState(''), [isLocalDraft,setIsLocalDraft]=useState(true), [canEdit,setCanEdit]=useState(true), [planAction,setPlanAction]=useState<'duplicate'|'delete'|null>(null), [deleteDialogOpen,setDeleteDialogOpen]=useState(false), [editPasswordWarningOpen,setEditPasswordWarningOpen]=useState(false);
   const [planPassword,setPlanPassword]=useState(''), [planPasswordAuth,setPlanPasswordAuth]=useState(''), [passwordConfigured,setPasswordConfigured]=useState(false), [planPasswordTouched,setPlanPasswordTouched]=useState(false), [showPlanPassword,setShowPlanPassword]=useState(false), [editPassword,setEditPassword]=useState(''), [editPasswordAuth,setEditPasswordAuth]=useState(''), [editPasswordConfigured,setEditPasswordConfigured]=useState(false), [editPasswordTouched,setEditPasswordTouched]=useState(false), [showEditPassword,setShowEditPassword]=useState(false), [editPasswordPromptOpen,setEditPasswordPromptOpen]=useState(false), [editPasswordPrompt,setEditPasswordPrompt]=useState(''), [editPasswordPromptError,setEditPasswordPromptError]=useState(''), [passwordPromptOpen,setPasswordPromptOpen]=useState(false), [passwordPrompt,setPasswordPrompt]=useState(''), [passwordPromptError,setPasswordPromptError]=useState(''), [protectedPlanId,setProtectedPlanId]=useState<string|null>(null), [protectedPlanTitle,setProtectedPlanTitle]=useState('');
   const [editing,setEditing]=useState<Stop|null>(null), [editDraft,setEditDraft]=useState<Stop|null>(null), [editQuery,setEditQuery]=useState(''), [editPlaceLinked,setEditPlaceLinked]=useState(true);
   const [query,setQuery]=useState(''), [picked,setPicked]=useState<SearchPlace|null>(null);
@@ -357,6 +360,8 @@ export default function Home(){
   const [customPinMode,setCustomPinMode]=useState(false),[customPin,setCustomPin]=useState<{lat:number;lng:number}|null>(null),[customPinOpen,setCustomPinOpen]=useState(false),[locationEditingId,setLocationEditingId]=useState<string|null>(null);
   const [customDay,setCustomDay]=useState<DayKey>(firstDefaultDay),[customName,setCustomName]=useState(''),[customAddress,setCustomAddress]=useState(''),[customMemo,setCustomMemo]=useState(''),[customTime,setCustomTime]=useState('12:00'),[customCategory,setCustomCategory]=useState<PlaceType>('관광'),[customAddressSearching,setCustomAddressSearching]=useState(false),[customAddressError,setCustomAddressError]=useState('');
   const [newTime,setNewTime]=useState('12:00'), [newCategory,setNewCategory]=useState<PlaceType>('식사'), [newMemo,setNewMemo]=useState(''), [draggedId,setDraggedId]=useState<string|null>(null), [dragOverId,setDragOverId]=useState<string|null>(null), [justMovedId,setJustMovedId]=useState<string|null>(null), [daysExpanded,setDaysExpanded]=useState(false);
+  const savedSnapshotRef=useRef('');
+  const savePlanRef=useRef<(silent?:boolean)=>Promise<void>>(async()=>{});
   const itineraryDays=useMemo(()=>{
     const days=tripDaysBetween(tripSettings.startDate,tripSettings.endDate);
     if(days.length)return days;
@@ -368,7 +373,8 @@ export default function Home(){
   const addSuggestions=usePlaceSuggestions(query,addOpen,tripSettings.destination),editSuggestions=usePlaceSuggestions(editQuery,Boolean(editing),tripSettings.destination),mapSuggestions=usePlaceSuggestions(mapQuery,true,tripSettings.destination);
   const applyStoredPlan=useCallback((data:StoredPlan,editToken?:string,permission?:boolean)=>{
     const settings={title:data.title,destination:data.destination,startDate:data.startDate,endDate:data.endDate,people:data.people,editPolicy:data.editPolicy==='all'?'all':data.editPolicy==='password'?'password':'owner' as EditPolicy};
-    setPlanId(data.id);setIsLocalDraft(false);setCanEdit(permission??Boolean(editToken));setTripSettings(settings);setSettingsDraft(settings);setStops((data.stops||[]).map(stop=>({...stop,day:normalizeStoredDay(String(stop.day),data.startDate,data.endDate),category:normalizeCategory(String(stop.category))})));setActiveDay(dateDayKey(data.startDate)||firstDefaultDay);setCustomDay(dateDayKey(data.startDate)||firstDefaultDay);setPlanPassword('');setPlanPasswordAuth('');setPasswordConfigured(Boolean(data.passwordProtected));setPlanPasswordTouched(false);setShowPlanPassword(false);setEditPassword('');setEditPasswordAuth('');setEditPasswordConfigured(Boolean(data.editPasswordProtected));setEditPasswordTouched(false);setShowEditPassword(false);setPlanLoading(false);
+    const normalizedStops=(data.stops||[]).map(stop=>({...stop,day:normalizeStoredDay(String(stop.day),data.startDate,data.endDate),category:normalizeCategory(String(stop.category))}));
+    setPlanId(data.id);setPlanUpdatedAt(data.updatedAt||'');setIsLocalDraft(false);setCanEdit(permission??Boolean(editToken));setTripSettings(settings);setSettingsDraft(settings);setStops(normalizedStops);setActiveDay(dateDayKey(data.startDate)||firstDefaultDay);setCustomDay(dateDayKey(data.startDate)||firstDefaultDay);setPlanPassword('');setPlanPasswordAuth('');setPasswordConfigured(Boolean(data.passwordProtected));setPlanPasswordTouched(false);setShowPlanPassword(false);setEditPassword('');setEditPasswordAuth('');setEditPasswordConfigured(Boolean(data.editPasswordProtected));setEditPasswordTouched(false);setShowEditPassword(false);setPlanLoading(false);savedSnapshotRef.current=itinerarySnapshot(settings,normalizedStops);
     if(editToken)localStorage.setItem(`route-note-edit-token-${data.id}`,editToken);
   },[firstDefaultDay]);
   useEffect(()=>{
@@ -378,8 +384,10 @@ export default function Home(){
     const loadLocalDraft=()=>{
       const ss=localStorage.getItem('route-note-stops'),ts=localStorage.getItem('route-note-trip-settings');
       let saved={...DEFAULT_TRIP};
+      let normalizedStops:Stop[]=[];
       if(ts){try{saved={...DEFAULT_TRIP,...JSON.parse(ts)};setTripSettings(saved);setSettingsDraft(saved)}catch{localStorage.removeItem('route-note-trip-settings')}}
-      if(ss){try{const savedStops=JSON.parse(ss) as Stop[];setStops(savedStops.map(stop=>({...stop,day:normalizeStoredDay(String(stop.day),saved.startDate,saved.endDate),category:normalizeCategory(String(stop.category))})))}catch{localStorage.removeItem('route-note-stops')}}
+      if(ss){try{const savedStops=JSON.parse(ss) as Stop[];normalizedStops=savedStops.map(stop=>({...stop,day:normalizeStoredDay(String(stop.day),saved.startDate,saved.endDate),category:normalizeCategory(String(stop.category))}));setStops(normalizedStops)}catch{localStorage.removeItem('route-note-stops')}}
+      savedSnapshotRef.current=itinerarySnapshot(saved,normalizedStops);
     };
     const loadRoute=async()=>{
       if(routeId){
@@ -391,7 +399,7 @@ export default function Home(){
           if(alive)applyStoredPlan(body.plan,undefined,body.canEdit);
         }catch{if(alive){setPlanLoading(false);setStops([])}}
       }else if(isDraft){loadLocalDraft();if(alive)setPlanLoading(false)}
-      else if(alive){setStops([]);const clean={...DEFAULT_TRIP,title:'나의 여행',destination:'',people:1,editPolicy:'owner' as EditPolicy};setTripSettings(clean);setSettingsDraft(clean);setPlanPassword('');setPlanPasswordAuth('');setPasswordConfigured(false);setPlanPasswordTouched(false);setShowPlanPassword(false);setEditPassword('');setEditPasswordAuth('');setEditPasswordConfigured(false);setEditPasswordTouched(false);setShowEditPassword(false);setCanEdit(true);setPlanLoading(false);if(mode==='domestic')window.setTimeout(()=>{if(alive)setSettingsOpen(true)},0)}
+      else if(alive){setStops([]);const clean={...DEFAULT_TRIP,title:'나의 여행',destination:'',people:1,editPolicy:'owner' as EditPolicy};setTripSettings(clean);setSettingsDraft(clean);setPlanPassword('');setPlanPasswordAuth('');setPasswordConfigured(false);setPlanPasswordTouched(false);setShowPlanPassword(false);setEditPassword('');setEditPasswordAuth('');setEditPasswordConfigured(false);setEditPasswordTouched(false);setShowEditPassword(false);setCanEdit(true);setPlanUpdatedAt('');setPlanLoading(false);savedSnapshotRef.current=itinerarySnapshot(clean,[]);if(mode==='domestic')window.setTimeout(()=>{if(alive)setSettingsOpen(true)},0)}
     };
     void loadRoute();
     const embedded=document.querySelector<HTMLMetaElement>('meta[name="naver-map-client-id"]')?.content;
@@ -460,7 +468,7 @@ export default function Home(){
   const updateCustomPin=useCallback((point:{lat:number;lng:number})=>setCustomPin(point),[]);
   const updateStopPosition=useCallback((id:string,lat:number,lng:number)=>{setStops(current=>current.map(stop=>stop.id===id?{...stop,lat,lng,customLocation:true}:stop));setLocationEditingId(null)},[]);
   const updateStopCost=useCallback((id:string,basis:'person'|'total',rawValue:string)=>{const value=parseCostInput(rawValue),people=Math.max(1,tripSettings.people||1);setStops(current=>current.map(stop=>{if(stop.id!==id)return stop;if(value===null)return {...stop,costPerPerson:undefined,costTotal:undefined,costBasis:undefined};return basis==='person'?{...stop,costBasis:basis,costPerPerson:value,costTotal:value*people}:{...stop,costBasis:basis,costTotal:value,costPerPerson:Math.round(value/people)}}))},[tripSettings.people]);
-  const saveTripSettings=()=>{const next={...settingsDraft,title:settingsDraft.title.trim()||'나의 여행',destination:settingsDraft.destination.trim(),people:Math.max(1,Math.round(Number(settingsDraft.people)||1)),editPolicy:settingsDraft.editPolicy==='all'?'all':settingsDraft.editPolicy==='password'?'password':'owner' as EditPolicy},nextStart=dateDayKey(next.startDate)||firstDefaultDay;setTripSettings(next);setSettingsDraft(next);setStops(current=>current.map(stop=>({...stop,day:normalizeStoredDay(stop.day,next.startDate,next.endDate)})));setActiveDay(nextStart);setCustomDay(nextStart);localStorage.setItem('route-note-trip-settings',JSON.stringify(next));setSettingsOpen(false)};
+  const saveTripSettings=()=>{const next={...settingsDraft,title:settingsDraft.title.trim()||'나의 여행',destination:settingsDraft.destination.trim(),people:Math.max(1,Math.round(Number(settingsDraft.people)||1)),editPolicy:settingsDraft.editPolicy==='all'?'all':settingsDraft.editPolicy==='password'?'password':'owner' as EditPolicy};if(next.editPolicy==='password'&&((!editPasswordConfigured&&!editPassword.trim())||(editPasswordTouched&&!editPassword.trim()))){setEditPasswordWarningOpen(true);return}const nextStart=dateDayKey(next.startDate)||firstDefaultDay;setTripSettings(next);setSettingsDraft(next);setStops(current=>current.map(stop=>({...stop,day:normalizeStoredDay(stop.day,next.startDate,next.endDate)})));setActiveDay(nextStart);setCustomDay(nextStart);localStorage.setItem('route-note-trip-settings',JSON.stringify(next));setSettingsOpen(false)};
   const addStop=()=>{if(!picked)return;const stop:Stop={id:`${Date.now()}`,day:activeDay,time:newTime,name:cleanTitle(picked.title),category:newCategory,memo:newMemo.trim(),address:picked.roadAddress||picked.address,lat:Number(picked.mapy)/1e7,lng:Number(picked.mapx)/1e7,naverLink:picked.link};setStops(current=>insertStopByTime(current,stop));setAddOpen(false);setQuery('');setPicked(null);setNewMemo('')};
   const openEdit=(stop:Stop)=>{setEditing(stop);setEditDraft({...stop});setEditQuery(stop.name);setEditPlaceLinked(true)};
   const saveEdit=()=>{if(!editing||!editDraft||!isValidTime(editDraft.time))return;const updated={...editDraft,name:editDraft.name.trim()||editing.name,memo:editDraft.memo.trim()};setStops(current=>current.map(stop=>stop.id===editing.id?updated:stop));if(selected?.id===editing.id)setSelected(updated);setEditing(null);setEditDraft(null)};
@@ -498,23 +506,25 @@ export default function Home(){
   const savePlan=async(silent=false)=>{
     if(planId&&!canEdit){if(!silent)setPlanSaveMessage('보기 전용 계획이라 저장할 수 없습니다.');return}
     if(!tripSettings.destination.trim()||!tripSettings.startDate||!tripSettings.endDate){if(!silent){setPlanSaveMessage('여행지와 날짜를 먼저 입력해주세요.');setSettingsOpen(true)}return}
-    if(tripSettings.editPolicy==='password'&&!editPasswordConfigured&&!editPassword){if(!silent){setPlanSaveMessage('편집 비밀번호를 입력해주세요.');setSettingsOpen(true)}return}
+    if(tripSettings.editPolicy==='password'&&((!editPasswordConfigured&&!editPassword)||(editPasswordTouched&&!editPassword))){if(silent)setPlanSaveMessage('자동저장하지 못했어요. 편집 비밀번호는 빈칸으로 저장할 수 없습니다.');else{setEditPasswordWarningOpen(true);setSettingsOpen(true)}return}
+    if(silent&&savedSnapshotRef.current===itinerarySnapshot(tripSettings,stops,planPassword,planPasswordTouched,editPassword,editPasswordTouched))return;
     if(!silent){setPlanSaving(true);setPlanSaveMessage('')}
     const payload={title:tripSettings.title,destination:tripSettings.destination,startDate:tripSettings.startDate,endDate:tripSettings.endDate,people:tripSettings.people,editPolicy:tripSettings.editPolicy,stops};
     try{
       const existing=Boolean(planId),token=planId?localStorage.getItem(`route-note-edit-token-${planId}`):null;
       const viewPasswordPayload=!existing?{password:planPassword}:planPasswordTouched?{password:planPassword,...(planPasswordAuth?{passwordAuth:planPasswordAuth}:{})}:(tripSettings.editPolicy==='all'&&passwordConfigured&&planPassword)?{password:planPassword,passwordAuth:planPasswordAuth||planPassword}:{};
       const editPasswordPayload={...(existing&&editPasswordAuth?{editPasswordAuth}:{}),...((!existing||editPasswordTouched||(tripSettings.editPolicy!=='password'&&editPasswordConfigured))?{editPassword:tripSettings.editPolicy==='password'?editPassword:''}:{})};
-      const response=await fetch(existing?`/api/plans/${encodeURIComponent(planId as string)}`:'/api/plans',{method:existing?'PUT':'POST',headers:{'Content-Type':'application/json',...(token?{'x-plan-edit-token':token}:{})},body:JSON.stringify({...payload,...viewPasswordPayload,...editPasswordPayload})}),body=await response.json() as {id?:string;editToken?:string;message?:string;plan?:StoredPlan};
+      const response=await fetch(existing?`/api/plans/${encodeURIComponent(planId as string)}`:'/api/plans',{method:existing?'PUT':'POST',headers:{'Content-Type':'application/json',...(token?{'x-plan-edit-token':token}:{})},body:JSON.stringify({...payload,...(existing&&planUpdatedAt?{baseUpdatedAt:planUpdatedAt}:{}),...viewPasswordPayload,...editPasswordPayload})}),body=await response.json() as {id?:string;editToken?:string;conflict?:boolean;message?:string;plan?:StoredPlan};
       if(!response.ok)throw new Error(body.message||'계획을 저장하지 못했습니다.');
-      if(!existing&&body.id){setPlanId(body.id);setCanEdit(true);if(body.editToken)localStorage.setItem(`route-note-edit-token-${body.id}`,body.editToken);window.history.replaceState({},'',`/plan/${encodeURIComponent(body.id)}`)}
-      if(body.plan){setPasswordConfigured(Boolean(body.plan.passwordProtected));setEditPasswordConfigured(Boolean(body.plan.editPasswordProtected));if(planPasswordTouched)setPlanPasswordAuth(planPassword);if(tripSettings.editPolicy==='password'&&editPassword){setEditPasswordAuth(editPassword)}else if(tripSettings.editPolicy!=='password'){setEditPasswordAuth('')}}
+      if(body.id&&body.editToken&&(!existing||body.conflict)){setPlanId(body.id);setCanEdit(true);localStorage.setItem(`route-note-edit-token-${body.id}`,body.editToken);window.history.replaceState({},'',`/plan/${encodeURIComponent(body.id)}`)}
+      if(body.plan){const savedSettings=body.conflict?{...tripSettings,title:body.plan.title}:tripSettings;setTripSettings(savedSettings);setSettingsDraft(savedSettings);setPlanUpdatedAt(body.plan.updatedAt||planUpdatedAt);setPasswordConfigured(Boolean(body.plan.passwordProtected));setEditPasswordConfigured(Boolean(body.plan.editPasswordProtected));if(planPasswordTouched)setPlanPasswordAuth(planPassword);if(tripSettings.editPolicy==='password'&&editPassword){setEditPasswordAuth(editPassword)}else if(tripSettings.editPolicy!=='password'){setEditPasswordAuth('')}savedSnapshotRef.current=itinerarySnapshot(savedSettings,body.plan.stops||stops)}
       setIsLocalDraft(false);localStorage.removeItem('route-note-stops');localStorage.removeItem('route-note-trip-settings');
       setPlanPasswordTouched(false);setEditPasswordTouched(false);
-      if(!silent){setPlanSaveMessage('저장됨');window.setTimeout(()=>setPlanSaveMessage(current=>current==='저장됨'?'':current),2800)}
-    }catch(error){if(!silent)setPlanSaveMessage(error instanceof Error?error.message:'계획을 저장하지 못했습니다.')}
+      if(!silent||body.conflict){const message=body.conflict?'동시 편집 내용은 별도 계획으로 저장했어요.':'저장됨';setPlanSaveMessage(message);window.setTimeout(()=>setPlanSaveMessage(current=>current===message?'':current),3200)}
+    }catch(error){setPlanSaveMessage(silent?'자동저장하지 못했어요. 다시 시도해주세요.':error instanceof Error?error.message:'계획을 저장하지 못했습니다.')}
     finally{setPlanSaving(false)}
   };
+  savePlanRef.current=savePlan;
 
   const duplicatePlan=async()=>{
     if(!planId||planAction)return;
@@ -539,7 +549,6 @@ export default function Home(){
       const response=await fetch(`/api/plans/${encodeURIComponent(planId)}`,{method:'DELETE',headers:{'Content-Type':'application/json',...(token?{'x-plan-edit-token':token}:{})},body:JSON.stringify({...passwordPayload,...editPasswordPayload})});
       const body=await response.json() as {message?:string};
       if(!response.ok)throw new Error(body.message||'계획을 휴지통으로 옮기지 못했습니다.');
-      localStorage.removeItem(`route-note-edit-token-${planId}`);
       window.location.href='/plans?deleted=1';
     }catch(error){setPlanSaveMessage(error instanceof Error?error.message:'계획을 휴지통으로 옮기지 못했습니다.');setDeleteDialogOpen(false)}
     finally{setPlanAction(null)}
@@ -547,9 +556,9 @@ export default function Home(){
 
   useEffect(()=>{
     if(planLoading)return;
-    const timer=window.setInterval(()=>{void savePlan(true)},300000);
+    const timer=window.setInterval(()=>{void savePlanRef.current(true)},300000);
     return()=>window.clearInterval(timer);
-  },[planId,planLoading,tripSettings,stops,planPassword]);
+  },[planLoading]);
 
   const visibleDayKeys=useMemo(()=>{if(dayKeys.length<=6||daysExpanded)return dayKeys;const first=dayKeys.slice(0,5);return first.includes(activeDay)?first:[...first,activeDay]},[dayKeys,daysExpanded,activeDay]);
 
@@ -573,6 +582,13 @@ export default function Home(){
       <AlertDialogContent className="delete-plan-dialog">
         <AlertDialogHeader><AlertDialogTitle>이 계획을 휴지통으로 옮길까요?</AlertDialogTitle><AlertDialogDescription>계획은 목록에서 바로 숨겨지고 7일 동안 휴지통에 보관된 뒤 자동으로 삭제됩니다.</AlertDialogDescription></AlertDialogHeader>
         <AlertDialogFooter><AlertDialogCancel disabled={planAction==='delete'}>취소</AlertDialogCancel><AlertDialogAction className="delete-plan-confirm" onClick={()=>void deletePlan()} disabled={planAction==='delete'}>{planAction==='delete'?'옮기는 중…':'휴지통으로 이동'}</AlertDialogAction></AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+
+    <AlertDialog open={editPasswordWarningOpen} onOpenChange={setEditPasswordWarningOpen}>
+      <AlertDialogContent className="delete-plan-dialog">
+        <AlertDialogHeader><AlertDialogTitle>편집 비밀번호를 입력해주세요</AlertDialogTitle><AlertDialogDescription>편집 비밀번호는 빈칸으로 저장할 수 없습니다. 새 비밀번호를 입력하거나 편집 권한 설정을 바꿔주세요.</AlertDialogDescription></AlertDialogHeader>
+        <AlertDialogFooter><AlertDialogAction onClick={()=>{setEditPasswordWarningOpen(false);setSettingsOpen(true)}}>확인</AlertDialogAction></AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
 

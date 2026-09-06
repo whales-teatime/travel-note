@@ -34,6 +34,12 @@ function accessResponse(row: Record<string, unknown>) {
   return Response.json({ requiresPassword: true, plan: publicPlan(row) }, { status: 401 });
 }
 
+function clientIp(request: Request) {
+  const forwarded = request.headers.get('CF-Connecting-IP') || request.headers.get('X-Real-IP') || '';
+  const value = forwarded.split(',')[0].trim();
+  return /^[0-9a-f:.]{2,64}$/i.test(value) ? value : '기기';
+}
+
 async function getId(context: Context) { return (await context.params).id; }
 
 export async function GET(request: Request, context: Context) {
@@ -51,10 +57,18 @@ export async function POST(request: Request, context: Context) {
   if (!row) return Response.json({ message: '계획을 찾을 수 없습니다.' }, { status: 404 });
   let body: Record<string, unknown> = {};
   try { body = await request.json() as Record<string, unknown>; } catch {}
-  if (row.deleted_at) return Response.json({ message: '휴지통에 있는 계획입니다.' }, { status: 410 });
   const password = typeof body.passwordAuth === 'string' ? body.passwordAuth.trim().slice(0, 100) : typeof body.password === 'string' ? body.password.trim().slice(0, 100) : undefined;
   const editPassword = typeof body.editPasswordAuth === 'string' ? body.editPasswordAuth.trim().slice(0, 100) : typeof body.editPassword === 'string' ? body.editPassword.trim().slice(0, 100) : undefined;
   if (!(await hasAccess(request, row, password))) return accessResponse(row);
+  if (body.action === 'restore') {
+    if (!row.deleted_at) return Response.json({ message: '휴지통에 없는 계획입니다.' }, { status: 400 });
+    if (!(await hasAccess(request, row, password, true, editPassword))) return Response.json({ message: '복원 권한이 없습니다. 편집 비밀번호 또는 작성자 토큰을 확인해주세요.' }, { status: 403 });
+    const now = new Date().toISOString();
+    await db.prepare('UPDATE plans SET deleted_at=NULL,updated_at=? WHERE id=?').bind(now, String(row.id)).run();
+    const restored = { ...row, deleted_at: null, updated_at: now };
+    return Response.json({ plan: fullPlan(restored), message: '계획을 복원했습니다.' });
+  }
+  if (row.deleted_at) return Response.json({ message: '휴지통에 있는 계획입니다.' }, { status: 410 });
   if (body.action === 'edit-auth') {
     if (!(await hasAccess(request, row, password, true, editPassword))) return Response.json({ message: '편집 비밀번호가 올바르지 않습니다.' }, { status: 403 });
     return Response.json({ plan: fullPlan(row), canEdit: true });
@@ -88,7 +102,8 @@ export async function PUT(request: Request, context: Context) {
   if (!plan) return Response.json({ message: '여행 이름, 여행지, 날짜를 입력해주세요.' }, { status: 400 });
   const passwordChanged = Object.prototype.hasOwnProperty.call(body, 'password');
   const editPasswordChanged = Object.prototype.hasOwnProperty.call(body, 'editPassword') || plan.editPolicy !== 'password';
-  if (plan.editPolicy === 'password' && (!String(row.edit_password_hash || '') && !editPassword || editPasswordChanged && !editPassword)) return Response.json({ message: '편집 비밀번호를 입력해주세요.' }, { status: 400 });
+  if (plan.editPolicy === 'password' && Object.prototype.hasOwnProperty.call(body, 'editPassword') && !newEditPassword) return Response.json({ message: '편집 비밀번호는 빈칸으로 저장할 수 없습니다.' }, { status: 400 });
+  if (plan.editPolicy === 'password' && !String(row.edit_password_hash || '') && !newEditPassword) return Response.json({ message: '편집 비밀번호를 입력해주세요.' }, { status: 400 });
   const salt = passwordChanged && newPassword ? randomHex(16) : null;
   const hash = passwordChanged && newPassword && salt ? await passwordHash(newPassword, salt) : null;
   const editSalt = editPasswordChanged && plan.editPolicy === 'password' && newEditPassword ? randomHex(16) : null;
@@ -97,8 +112,18 @@ export async function PUT(request: Request, context: Context) {
   const passwordSql = passwordChanged ? ',password_hash=?,password_salt=?' : '';
   const editPasswordSql = editPasswordChanged ? ',edit_password_hash=?,edit_password_salt=?' : '';
   const values = [plan.title, plan.destination, plan.startDate, plan.endDate, plan.people, plan.editPolicy, JSON.stringify(plan.stops), ...(passwordChanged ? [hash, salt] : []), ...(editPasswordChanged ? [editHash, editSalt] : []), now, String(row.id)];
+  const baseUpdatedAt = typeof body.baseUpdatedAt === 'string' ? body.baseUpdatedAt.trim() : '';
+  if (baseUpdatedAt && baseUpdatedAt !== String(row.updated_at)) {
+    const id = `plan_${Date.now().toString(36)}_${randomHex(5)}`;
+    const editToken = randomHex(28);
+    const editTokenHash = await sha256(editToken);
+    const conflictTitle = `${plan.title} - (${clientIp(request)})`.slice(0, 160);
+    await db.prepare('INSERT INTO plans (id,title,destination,start_date,end_date,people,edit_policy,stops_json,password_hash,password_salt,edit_password_hash,edit_password_salt,edit_token_hash,created_at,updated_at,deleted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(id, conflictTitle, plan.destination, plan.startDate, plan.endDate, plan.people, plan.editPolicy, JSON.stringify(plan.stops), passwordChanged ? hash : row.password_hash || null, passwordChanged ? salt : row.password_salt || null, editPasswordChanged ? editHash : row.edit_password_hash || null, editPasswordChanged ? editSalt : row.edit_password_salt || null, editTokenHash, now, now, null).run();
+    const copied = { ...row, id, title: conflictTitle, destination: plan.destination, start_date: plan.startDate, end_date: plan.endDate, people: plan.people, edit_policy: plan.editPolicy, stops_json: JSON.stringify(plan.stops), password_hash: passwordChanged ? hash : row.password_hash || null, password_salt: passwordChanged ? salt : row.password_salt || null, edit_password_hash: editPasswordChanged ? editHash : row.edit_password_hash || null, edit_password_salt: editPasswordChanged ? editSalt : row.edit_password_salt || null, edit_token_hash: editTokenHash, created_at: now, updated_at: now, deleted_at: null, password_protected: passwordChanged ? Number(Boolean(hash)) : row.password_protected, edit_password_protected: editPasswordChanged ? Number(Boolean(editHash)) : row.edit_password_protected };
+    return Response.json({ id, editToken, conflict: true, message: '동시에 편집한 내용이라 별도 계획으로 저장했어요.', plan: fullPlan(copied) }, { status: 201 });
+  }
   await db.prepare(`UPDATE plans SET title=?,destination=?,start_date=?,end_date=?,people=?,edit_policy=?,stops_json=?${passwordSql}${editPasswordSql},updated_at=? WHERE id=?`).bind(...values).run();
-  const updated = { ...row, title: plan.title, destination: plan.destination, start_date: plan.startDate, end_date: plan.endDate, people: plan.people, edit_policy: plan.editPolicy, stops_json: JSON.stringify(plan.stops), updated_at: now, ...(passwordChanged ? { password_hash: hash, password_salt: salt } : {}), ...(editPasswordChanged ? { edit_password_hash: editHash, edit_password_salt: editSalt } : {}) };
+  const updated = { ...row, title: plan.title, destination: plan.destination, start_date: plan.startDate, end_date: plan.endDate, people: plan.people, edit_policy: plan.editPolicy, stops_json: JSON.stringify(plan.stops), updated_at: now, ...(passwordChanged ? { password_hash: hash, password_salt: salt, password_protected: Number(Boolean(hash)) } : {}), ...(editPasswordChanged ? { edit_password_hash: editHash, edit_password_salt: editSalt, edit_password_protected: Number(Boolean(editHash)) } : {}) };
   return Response.json({ plan: fullPlan(updated) });
 }
 
