@@ -1,4 +1,4 @@
-type SearchItem = { title?: string; category?: string; address?: string; roadAddress?: string; mapx?: string; mapy?: string };
+type SearchItem = { title?: string; category?: string; address?: string; roadAddress?: string; mapx?: string; mapy?: string; link?: string; description?: string };
 
 const resultCache = new Map<string, { expires: number; items: SearchItem[] }>();
 
@@ -48,12 +48,17 @@ export async function GET(request: Request) {
   }));
   if (!responses.some(response => response.ok)) return Response.json({ message: '네이버 장소 검색 중 오류가 발생했습니다.' }, { status: 502 });
   const seen = new Set<string>();
+  const nearToken = near.replace(/\s+/g, '').replace(/(특별자치)?도$/,'').toLocaleLowerCase('ko-KR');
   const items = responses.flatMap(response => response.items).filter(item => {
     const title = (item.title ?? '').replace(/<[^>]*>/g, '').trim();
     const key = `${title}|${item.roadAddress || item.address}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
+  }).sort((a,b)=>{
+    if(!nearToken)return 0;
+    const score=(item:SearchItem)=>`${item.address??''}${item.roadAddress??''}`.replace(/\s+/g,'').toLocaleLowerCase('ko-KR').includes(nearToken)?1:0;
+    return score(b)-score(a);
   }).slice(0, 10);
   resultCache.set(cacheKey, { expires: Date.now() + 5 * 60 * 1000, items });
   return Response.json({ items });
