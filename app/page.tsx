@@ -24,7 +24,7 @@ import {
 
 type DayKey = '9/19' | '9/20';
 type PlaceType = '교통' | '식사' | '카페' | '관광' | '야시장' | '기타';
-type Stop = { id: string; day: DayKey; time: string; name: string; category: PlaceType; memo: string; address: string; lat: number; lng: number; customLocation?: boolean };
+type Stop = { id: string; day: DayKey; time: string; name: string; category: PlaceType; memo: string; address: string; lat: number; lng: number; customLocation?: boolean; costPerPerson?: number; costTotal?: number; costBasis?: 'person'|'total' };
 type SearchPlace = { title: string; category: string; address: string; roadAddress: string; mapx: string; mapy: string };
 type TripSettings = { title: string; destination: string; startDate: string; endDate: string; people: number };
 
@@ -91,6 +91,8 @@ function PlacePicker({query,onQueryChange,results,value,onPick,searching,placeho
 }
 
 function isValidTime(value:string){return /^([01]\d|2[0-3]):[0-5]\d$/.test(value)}
+function costInputValue(value:number|undefined){return typeof value==='number'&&Number.isFinite(value)?String(Math.round(value)):''}
+function parseCostInput(value:string){const digits=value.replace(/[^0-9]/g,'');return digits?Math.min(Number(digits),999999999):null}
 function normalizeTimeInput(raw:string){
   const value=raw.replace(/[^0-9:]/g,'');
   const colon=value.indexOf(':');
@@ -266,6 +268,24 @@ export default function Home(){
   },[]);
   useEffect(()=>{localStorage.setItem('route-note-stops',JSON.stringify(stops))},[stops]);
   useEffect(()=>{
+    const people=Math.max(1,tripSettings.people||1);
+    setStops(current=>{
+      let changed=false;
+      const next=current.map(stop=>{
+        if(stop.costBasis==='person'&&typeof stop.costPerPerson==='number'){
+          const total=stop.costPerPerson*people;
+          if(stop.costTotal!==total){changed=true;return {...stop,costTotal:total}}
+        }
+        if(stop.costBasis==='total'&&typeof stop.costTotal==='number'){
+          const perPerson=Math.round(stop.costTotal/people);
+          if(stop.costPerPerson!==perPerson){changed=true;return {...stop,costPerPerson:perPerson}}
+        }
+        return stop;
+      });
+      return changed?next:current;
+    });
+  },[tripSettings.people]);
+  useEffect(()=>{
     const context=(document as any).modelContext;
     if(!context?.registerTool)return;
     const lifecycle=new AbortController();
@@ -290,6 +310,7 @@ export default function Home(){
   const selectMapCandidate=useCallback((place:SearchPlace)=>setMapCandidate(place),[]);
   const updateCustomPin=useCallback((point:{lat:number;lng:number})=>setCustomPin(point),[]);
   const updateStopPosition=useCallback((id:string,lat:number,lng:number)=>{setStops(current=>current.map(stop=>stop.id===id?{...stop,lat,lng,customLocation:true}:stop));setLocationEditingId(null)},[]);
+  const updateStopCost=useCallback((id:string,basis:'person'|'total',rawValue:string)=>{const value=parseCostInput(rawValue),people=Math.max(1,tripSettings.people||1);setStops(current=>current.map(stop=>{if(stop.id!==id)return stop;if(value===null)return {...stop,costPerPerson:undefined,costTotal:undefined,costBasis:undefined};return basis==='person'?{...stop,costBasis:basis,costPerPerson:value,costTotal:value*people}:{...stop,costBasis:basis,costTotal:value,costPerPerson:Math.round(value/people)}}))},[tripSettings.people]);
   const saveTripSettings=()=>{const next={...settingsDraft,title:settingsDraft.title.trim()||'나의 여행',destination:settingsDraft.destination.trim(),people:Math.max(1,Math.round(Number(settingsDraft.people)||1))};setTripSettings(next);setSettingsDraft(next);localStorage.setItem('route-note-trip-settings',JSON.stringify(next));setSettingsOpen(false)};
   const addStop=()=>{if(!picked)return;const stop:Stop={id:`${Date.now()}`,day:activeDay,time:newTime,name:cleanTitle(picked.title),category:newCategory,memo:newMemo.trim(),address:picked.roadAddress||picked.address,lat:Number(picked.mapy)/1e7,lng:Number(picked.mapx)/1e7};setStops(current=>insertStopByTime(current,stop));setAddOpen(false);setQuery('');setPicked(null);setNewMemo('')};
   const openEdit=(stop:Stop)=>{setEditing(stop);setEditDraft({...stop});setEditQuery(stop.name);setEditPlaceLinked(true)};
@@ -356,7 +377,7 @@ export default function Home(){
       <aside className="planner-panel">
         <div className="day-switch" role="tablist" aria-label="여행 날짜">{(['9/19','9/20'] as DayKey[]).map((day,index)=><button key={day} role="tab" aria-selected={activeDay===day} onClick={()=>setActiveDay(day)}><span>DAY {index+1}</span><strong>{formatTripDate(dayDates[day],true)}</strong></button>)}</div>
         <div className="panel-heading"><div><span><CalendarDays/>방문 순서</span><strong>{dayStops.length}개 장소</strong></div></div>
-        <div className="stop-list">{dayStops.map((stop,index)=>{const previous=dayStops[index-1],gap=previous?distanceKm(previous,stop):null,reverse=previous&&timeMinutes(stop.time)<timeMinutes(previous.time);return <div key={stop.id}>{gap!==null&&<div className="distance-chip"><span/>직선 {gap<1?`${Math.round(gap*1000)}m`:`${gap.toFixed(1)}km`}</div>}<article className={`stop-card ${draggedId===stop.id?'is-dragging':''} ${dragOverId===stop.id&&draggedId!==stop.id?'is-drag-over':''} ${justMovedId===stop.id?'just-moved':''}`} draggable onDragStart={()=>setDraggedId(stop.id)} onDragOver={e=>{e.preventDefault();if(draggedId!==stop.id)setDragOverId(stop.id)}} onDragLeave={()=>setDragOverId(current=>current===stop.id?null:current)} onDrop={()=>reorderByDrop(stop.id)} onDragEnd={()=>{setDraggedId(null);setDragOverId(null)}} onClick={()=>setSelected(stop)}><div className="drag-handle" aria-hidden="true"><GripVertical/></div><div className="order-pin" style={{background:DAY_COLOR[activeDay]}}>{index+1}</div><div className="stop-main"><div className="stop-time"><Clock3 className={reverse?'time-warning':''}/><span className={reverse?'time-warning':''} title={reverse?'앞 장소보다 시간이 이릅니다.':undefined}>{stop.time}</span><span className="stop-category">{stop.category}</span></div><strong>{stop.name}</strong>{stop.memo&&<p>{stop.memo}</p>}</div><div className="card-actions"><div className="move-buttons"><button aria-label={`${stop.name} 위로 이동`} disabled={index===0} onClick={e=>{e.stopPropagation();moveStop(stop.id,-1)}}><ArrowUp/></button><button aria-label={`${stop.name} 아래로 이동`} disabled={index===dayStops.length-1} onClick={e=>{e.stopPropagation();moveStop(stop.id,1)}}><ArrowDown/></button></div><button className="edit-card-button" title="수정" aria-label={`${stop.name} 수정`} onClick={e=>{e.stopPropagation();openEdit(stop)}}><Pencil/></button><button className="remove-card-button" title="삭제" aria-label={`${stop.name} 삭제`} onClick={e=>{e.stopPropagation();removeStop(stop.id)}}><X/></button></div></article></div>})}</div>
+        <div className="stop-list">{dayStops.map((stop,index)=>{const previous=dayStops[index-1],gap=previous?distanceKm(previous,stop):null,reverse=previous&&timeMinutes(stop.time)<timeMinutes(previous.time);return <div key={stop.id}>{gap!==null&&<div className="distance-chip"><span/>직선 {gap<1?`${Math.round(gap*1000)}m`:`${gap.toFixed(1)}km`}</div>}<article className={`stop-card ${draggedId===stop.id?'is-dragging':''} ${dragOverId===stop.id&&draggedId!==stop.id?'is-drag-over':''} ${justMovedId===stop.id?'just-moved':''}`} draggable onDragStart={()=>setDraggedId(stop.id)} onDragOver={e=>{e.preventDefault();if(draggedId!==stop.id)setDragOverId(stop.id)}} onDragLeave={()=>setDragOverId(current=>current===stop.id?null:current)} onDrop={()=>reorderByDrop(stop.id)} onDragEnd={()=>{setDraggedId(null);setDragOverId(null)}} onClick={()=>setSelected(stop)}><div className="drag-handle" aria-hidden="true"><GripVertical/></div><div className="order-pin" style={{background:DAY_COLOR[activeDay]}}>{index+1}</div><div className="stop-main"><div className="stop-time"><Clock3 className={reverse?'time-warning':''}/><span className={reverse?'time-warning':''} title={reverse?'앞 장소보다 시간이 이릅니다.':undefined}>{stop.time}</span><span className="stop-category">{stop.category}</span></div><strong>{stop.name}</strong>{stop.memo&&<p>{stop.memo}</p>}<div className='stop-cost' onClick={e=>e.stopPropagation()}><span className='cost-label'>예상 경비</span><div className='cost-fields'><label className={stop.costBasis==='person'?'cost-field entered':stop.costBasis==='total'?'cost-field calculated':'cost-field'}><span>개인별</span><div><Input type='text' inputMode='numeric' value={costInputValue(stop.costPerPerson)} onChange={e=>updateStopCost(stop.id,'person',e.target.value)} placeholder='0'/><b>원</b></div></label><label className={stop.costBasis==='total'?'cost-field entered':stop.costBasis==='person'?'cost-field calculated':'cost-field'}><span>총 비용</span><div><Input type='text' inputMode='numeric' value={costInputValue(stop.costTotal)} onChange={e=>updateStopCost(stop.id,'total',e.target.value)} placeholder='0'/><b>원</b></div></label></div></div></div><div className="card-actions"><div className="move-buttons"><button aria-label={`${stop.name} 위로 이동`} disabled={index===0} onClick={e=>{e.stopPropagation();moveStop(stop.id,-1)}}><ArrowUp/></button><button aria-label={`${stop.name} 아래로 이동`} disabled={index===dayStops.length-1} onClick={e=>{e.stopPropagation();moveStop(stop.id,1)}}><ArrowDown/></button></div><button className="edit-card-button" title="수정" aria-label={`${stop.name} 수정`} onClick={e=>{e.stopPropagation();openEdit(stop)}}><Pencil/></button><button className="remove-card-button" title="삭제" aria-label={`${stop.name} 삭제`} onClick={e=>{e.stopPropagation();removeStop(stop.id)}}><X/></button></div></article></div>})}</div>
         <div className="planner-add-actions"><Button variant="outline" className="wide-add" onClick={()=>setAddOpen(true)}><Plus/>이 날짜에 장소 추가</Button><Button variant="ghost" className="custom-add-button" onClick={openCustomPin}><MapPin/>지도에 임의 핀 추가</Button></div>
       </aside>
       <section className="map-panel">
