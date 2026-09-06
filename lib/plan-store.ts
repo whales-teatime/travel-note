@@ -24,7 +24,7 @@ export type PlanInput = {
   startDate: string;
   endDate: string;
   people: number;
-  editPolicy: 'owner' | 'all';
+  editPolicy: 'owner' | 'all' | 'password';
   stops: PlanStop[];
 };
 
@@ -91,7 +91,7 @@ export function sanitizePlan(value: unknown): PlanInput | null {
   const startDate = String(source.startDate || '').slice(0, 20);
   const endDate = String(source.endDate || '').slice(0, 20);
   const people = Math.min(99, Math.max(1, Math.round(Number(source.people) || 1)));
-  const editPolicy = source.editPolicy === 'all' ? 'all' : 'owner';
+  const editPolicy = source.editPolicy === 'all' ? 'all' : source.editPolicy === 'password' ? 'password' : 'owner';
   if (!title || !destination || !startDate || !endDate) return null;
   return { title, destination, startDate, endDate, people, editPolicy, stops: sanitizeStops(source.stops) };
 }
@@ -104,8 +104,9 @@ export function publicPlan(row: Record<string, unknown>) {
     startDate: String(row.start_date),
     endDate: String(row.end_date),
     people: Number(row.people) || 1,
-    editPolicy: row.edit_policy === 'all' ? 'all' : 'owner',
+    editPolicy: row.edit_policy === 'all' ? 'all' : row.edit_policy === 'password' ? 'password' : 'owner',
     passwordProtected: Boolean(Number(row.password_protected ?? (row.password_hash ? 1 : 0))),
+    editPasswordProtected: Boolean(Number(row.edit_password_protected ?? (row.edit_password_hash ? 1 : 0))),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
     ...(row.deleted_at ? { deletedAt: String(row.deleted_at) } : {}),
