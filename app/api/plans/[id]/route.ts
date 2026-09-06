@@ -1,6 +1,6 @@
 import {
   bodyTooLarge, checkRateLimit, fullPlan, getDb, passwordHash, publicPlan,
-  purgeExpiredPlans, randomHex, rateLimitResponse, sanitizePlan, sha256,
+  purgeExpiredPlans, randomHex, rateLimitResponse, sanitizePlan, sha256, isAdminPassword,
 } from '@/lib/plan-store';
 
 type Context = { params: { id: string } | Promise<{ id: string }> };
@@ -22,6 +22,7 @@ async function verifyPassword(value: string | undefined, row: Record<string, unk
 }
 
 async function hasAccess(request: Request, row: Record<string, unknown>, password?: string, requireEditToken = false, editPassword?: string) {
+  if (isAdminPassword(password) || isAdminPassword(editPassword)) return true;
   const policy = row.edit_policy === 'all' ? 'all' : row.edit_policy === 'password' ? 'password' : 'owner';
   const token = request.headers.get('x-plan-edit-token') || '';
   if (token && row.edit_token_hash && await sha256(token) === String(row.edit_token_hash) && (!requireEditToken || policy !== 'password')) return true;

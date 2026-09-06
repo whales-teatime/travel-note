@@ -35,6 +35,11 @@ export function getDb() {
   return (env as unknown as { DB?: D1Database }).DB;
 }
 
+export function isAdminPassword(value: unknown) {
+  const master = (env as unknown as { ADMIN_MASTER_PASSWORD?: unknown }).ADMIN_MASTER_PASSWORD;
+  return typeof master === 'string' && master.length > 0 && typeof value === 'string' && value === master;
+}
+
 export function bodyTooLarge(request: Request) {
   const length = Number(request.headers.get('content-length') || 0);
   return Number.isFinite(length) && length > MAX_PLAN_BODY_BYTES;
