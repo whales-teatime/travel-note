@@ -173,7 +173,7 @@ function NaverMap({stops,clientId,onSelect,placeResults,onPlaceSelect,dateLabels
   useEffect(()=>{
     const map=mapRef.current, naver=window.naver;
     if(!map||!naver?.maps||status!=='ready')return;
-    overlaysRef.current.forEach(o=>o.setMap(null)); overlaysRef.current=[];
+    overlaysRef.current.forEach(o=>{try{o?.setMap(null)}catch{}}); overlaysRef.current=[];
     const bounds=new naver.maps.LatLngBounds();
     stops.forEach((stop,index)=>{
       const position=new naver.maps.LatLng(stop.lat,stop.lng), color=DAY_COLOR[stop.day];
@@ -199,18 +199,18 @@ function NaverMap({stops,clientId,onSelect,placeResults,onPlaceSelect,dateLabels
   useEffect(()=>{
     const map=mapRef.current,naver=window.naver;
     if(!map||!naver?.maps||status!=='ready')return;
-    customOverlayRef.current?.setMap(null);customOverlayRef.current=null;
+    try{customOverlayRef.current?.setMap(null)}catch{} customOverlayRef.current=null;
     if(!customPin)return;
     const marker=new naver.maps.Marker({map,position:new naver.maps.LatLng(customPin.lat,customPin.lng),title:'임의 위치',draggable:customPinMode,zIndex:400,icon:{content:'<button type="button" class="custom-pin-marker" aria-label="임의 핀 위치"><span>＋</span></button>',anchor:new naver.maps.Point(18,42)}});
     naver.maps.Event.addListener(marker,'dragend',()=>{const point=marker.getPosition();onCustomLocationChange({lat:point.lat(),lng:point.lng()})});
     customOverlayRef.current=marker;
     if(customPinMode)map.panTo(marker.getPosition());
-    return()=>{marker.setMap(null);if(customOverlayRef.current===marker)customOverlayRef.current=null};
+    return()=>{try{marker.setMap(null)}catch{} if(customOverlayRef.current===marker)customOverlayRef.current=null};
   },[customPin,status,customPinMode,onCustomLocationChange]);
   useEffect(()=>{
     const map=mapRef.current,naver=window.naver;
     if(!map||!naver?.maps||status!=='ready')return;
-    placeOverlaysRef.current.forEach(o=>o.setMap(null));placeOverlaysRef.current=[];
+    placeOverlaysRef.current.forEach(o=>{try{o?.setMap(null)}catch{}});placeOverlaysRef.current=[];
     if(!placeResults.length)return;
     const bounds=new naver.maps.LatLngBounds();
     placeResults.forEach((place,index)=>{
