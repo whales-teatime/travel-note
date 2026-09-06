@@ -1,6 +1,29 @@
+type SearchItem = { title?: string; category?: string; address?: string; roadAddress?: string; mapx?: string; mapy?: string };
+
+const resultCache = new Map<string, { expires: number; items: SearchItem[] }>();
+
+function searchQueries(query: string, near: string) {
+  const scoped = near && !query.includes(near) ? `${near} ${query}` : query;
+  const variants = [scoped];
+  const compact = scoped.replace(/\s+/g, '');
+  if (query.includes('야시장')) {
+    const area = near || query.replace(/야시장/g, '').trim();
+    variants.push(`${area} 남부시장 야시장`.trim(), `${area} 남부시장 맛집`.trim(), `${area} 남부시장 닭집`.trim());
+  } else if (compact !== scoped) {
+    variants.push(compact);
+  }
+  return [...new Set(variants)].slice(0, 4);
+}
+
 export async function GET(request: Request) {
-  const query = new URL(request.url).searchParams.get('q')?.trim();
+  const url = new URL(request.url);
+  const query = url.searchParams.get('q')?.trim();
+  const near = url.searchParams.get('near')?.trim() ?? '';
   if (!query) return Response.json({ message: '검색어를 입력해주세요.' }, { status: 400 });
+
+  const cacheKey = `${near}|${query}`.toLocaleLowerCase('ko-KR');
+  const cached = resultCache.get(cacheKey);
+  if (cached && cached.expires > Date.now()) return Response.json({ items: cached.items });
 
   const clientId = process.env.NAVER_API_HUB_CLIENT_ID;
   const clientSecret = process.env.NAVER_API_HUB_CLIENT_SECRET;
@@ -8,13 +31,27 @@ export async function GET(request: Request) {
     return Response.json({ message: '장소 검색 API가 아직 연결되지 않았습니다. 서버용 검색 API 키를 설정해주세요.' }, { status: 503 });
   }
 
-  const response = await fetch(`https://naverapihub.apigw.ntruss.com/search/v1/local?query=${encodeURIComponent(query)}&display=5&start=1&sort=random&format=json`, {
-    headers: {
-      'X-NCP-APIGW-API-KEY-ID': clientId,
-      'X-NCP-APIGW-API-KEY': clientSecret,
-    },
-  });
-  if (!response.ok) return Response.json({ message: '네이버 장소 검색 중 오류가 발생했습니다.' }, { status: response.status });
-  const data = (await response.json()) as { items?: unknown[] };
-  return Response.json({ items: data.items ?? [] });
+  const responses = await Promise.all(searchQueries(query, near).map(async searchQuery => {
+    const response = await fetch(`https://naverapihub.apigw.ntruss.com/search/v1/local?query=${encodeURIComponent(searchQuery)}&display=5&start=1&sort=random&format=json`, {
+      headers: {
+        'X-NCP-APIGW-API-KEY-ID': clientId,
+        'X-NCP-APIGW-API-KEY': clientSecret,
+      },
+      cache: 'no-store',
+    });
+    if (!response.ok) return { ok: false, items: [] as SearchItem[] };
+    const data = (await response.json()) as { items?: SearchItem[] };
+    return { ok: true, items: data.items ?? [] };
+  }));
+  if (!responses.some(response => response.ok)) return Response.json({ message: '네이버 장소 검색 중 오류가 발생했습니다.' }, { status: 502 });
+  const seen = new Set<string>();
+  const items = responses.flatMap(response => response.items).filter(item => {
+    const title = (item.title ?? '').replace(/<[^>]*>/g, '').trim();
+    const key = `${title}|${item.roadAddress || item.address}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, 10);
+  resultCache.set(cacheKey, { expires: Date.now() + 5 * 60 * 1000, items });
+  return Response.json({ items });
 }
