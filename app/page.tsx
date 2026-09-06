@@ -68,10 +68,16 @@ export default function HomePage() {
     window.localStorage.setItem('route-note-theme', next);
   };
 
+  const clearDraft = () => {
+    window.localStorage.removeItem('route-note-stops');
+    window.localStorage.removeItem('route-note-trip-settings');
+    setHasDraft(false);
+  };
+
   return <main className={`home-landing season-${season.key}`}>
     <div className="home-season-wash" aria-hidden="true" />
     <header className="landing-topbar">
-      <a className="landing-brand" href="/"><span className="landing-brand-mark"><MapPin /></span><span>여행을 떠나요<span className="brand-note">♪</span></span></a>
+      <a className="landing-brand" href="/"><span className="landing-brand-mark"><MapPin /></span><span>여행을 떠나요<span className="brand-note">♬</span></span></a>
       <nav className="landing-nav" aria-label="주요 메뉴">
         <div className="plan-menu-wrap" onMouseEnter={() => setPlanMenuOpen(true)} onMouseLeave={() => setPlanMenuOpen(false)}>
           <a className="landing-nav-link plan-menu-trigger" href="/plans" aria-haspopup="true" aria-expanded={planMenuOpen}><span>계획 목록</span><ChevronDown /></a>
@@ -90,7 +96,7 @@ export default function HomePage() {
 
     <section className="landing-hero">
       <div className="landing-kicker"><span className="kicker-dot" />{season.label}의 여행 노트</div>
-      <h1>여행을 떠나요<span className="hero-note">♪</span></h1>
+      <h1>여행을 떠나요<span className="hero-note">♬</span></h1>
       <p className="landing-lede">{season.message}<br /><span>오늘의 마음이 가는 곳으로.</span></p>
       <div className="departure-question"><span>어디로 떠나시나요?</span><small>여행의 첫 장면을 골라보세요</small></div>
       <div className="departure-choices">
@@ -98,7 +104,7 @@ export default function HomePage() {
         <button type="button" className="departure-card overseas-card" onClick={() => setOverseasMessage(true)}><span className="departure-icon"><Plane /></span><span className="departure-copy"><strong>해외로!</strong><small>새로운 나라를 준비 중이에요</small></span><ArrowRight className="departure-arrow" /><span className="plane-trail" aria-hidden="true">·　·　·　✈</span></button>
       </div>
       {overseasMessage && <button className="overseas-toast" type="button" onClick={() => setOverseasMessage(false)}><Plane /> 해외 여행 플래너는 준비 중이에요 ㅠㅠ <span>닫기</span></button>}
-      {hasDraft && <a className="draft-pill" href="/plan/new?draft=1"><span><small>이 기기에 남은 초안</small><strong>{draftTitle}</strong></span><span className="draft-pill-action">계속 쓰기<ArrowRight /></span></a>}
+      {hasDraft && <div className="draft-pill"><span><small>이 기기에 남은 초안</small><strong>{draftTitle}</strong></span><div className="draft-pill-actions"><a className="draft-pill-action" href="/plan/new?draft=1">계속 쓰기<ArrowRight /></a><button type="button" onClick={clearDraft}>초안 삭제</button></div></div>}
     </section>
     <footer className="landing-footer"><span>한 장씩 채워가는 우리들의 여행</span><span>TRAVEL NOTE</span></footer>
   </main>;
