@@ -24,6 +24,7 @@ export type PlanInput = {
   startDate: string;
   endDate: string;
   people: number;
+  editPolicy: 'owner' | 'all';
   stops: PlanStop[];
 };
 
@@ -90,22 +91,26 @@ export function sanitizePlan(value: unknown): PlanInput | null {
   const startDate = String(source.startDate || '').slice(0, 20);
   const endDate = String(source.endDate || '').slice(0, 20);
   const people = Math.min(99, Math.max(1, Math.round(Number(source.people) || 1)));
+  const editPolicy = source.editPolicy === 'all' ? 'all' : 'owner';
   if (!title || !destination || !startDate || !endDate) return null;
-  return { title, destination, startDate, endDate, people, stops: sanitizeStops(source.stops) };
+  return { title, destination, startDate, endDate, people, editPolicy, stops: sanitizeStops(source.stops) };
 }
 
 export function publicPlan(row: Record<string, unknown>) {
-  return {
+  const plan = {
     id: String(row.id),
     title: String(row.title),
     destination: String(row.destination),
     startDate: String(row.start_date),
     endDate: String(row.end_date),
     people: Number(row.people) || 1,
+    editPolicy: row.edit_policy === 'all' ? 'all' : 'owner',
     passwordProtected: Boolean(Number(row.password_protected ?? (row.password_hash ? 1 : 0))),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
+    ...(row.deleted_at ? { deletedAt: String(row.deleted_at) } : {}),
   };
+  return plan;
 }
 
 export function fullPlan(row: Record<string, unknown>) {

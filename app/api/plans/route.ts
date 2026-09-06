@@ -4,11 +4,14 @@ export async function GET(request: Request) {
   const db = getDb();
   if (!db) return Response.json({ message: '계획 저장소가 아직 연결되지 않았습니다.' }, { status: 503 });
   await purgeExpiredPlans(db);
-  const search = new URL(request.url).searchParams.get('search')?.trim() || '';
+  const params = new URL(request.url).searchParams;
+  const search = params.get('search')?.trim() || '';
+  const trash = params.get('trash') === '1';
   const pattern = `%${search.replace(/[%_]/g, char => `\\${char}`)}%`;
+  const deletedClause = trash ? 'deleted_at IS NOT NULL' : 'deleted_at IS NULL';
   const result = search
-    ? await db.prepare("SELECT id,title,destination,start_date,end_date,people,(password_hash IS NOT NULL) AS password_protected,created_at,updated_at FROM plans WHERE deleted_at IS NULL AND (title LIKE ? ESCAPE '\\' OR destination LIKE ? ESCAPE '\\') ORDER BY updated_at DESC LIMIT 100").bind(pattern, pattern).all()
-    : await db.prepare('SELECT id,title,destination,start_date,end_date,people,(password_hash IS NOT NULL) AS password_protected,created_at,updated_at FROM plans WHERE deleted_at IS NULL ORDER BY updated_at DESC LIMIT 100').all();
+    ? await db.prepare(`SELECT id,title,destination,start_date,end_date,people,edit_policy,(password_hash IS NOT NULL) AS password_protected,created_at,updated_at,deleted_at FROM plans WHERE ${deletedClause} AND (title LIKE ? ESCAPE '\\' OR destination LIKE ? ESCAPE '\\') ORDER BY updated_at DESC LIMIT 100`).bind(pattern, pattern).all()
+    : await db.prepare(`SELECT id,title,destination,start_date,end_date,people,edit_policy,(password_hash IS NOT NULL) AS password_protected,created_at,updated_at,deleted_at FROM plans WHERE ${deletedClause} ORDER BY updated_at DESC LIMIT 100`).all();
   return Response.json({ items: (result.results || []).map(row => publicPlan(row as Record<string, unknown>)) });
 }
 
@@ -26,6 +29,6 @@ export async function POST(request: Request) {
   const salt = password ? randomHex(16) : null;
   const hash = password && salt ? await passwordHash(password, salt) : null;
   const now = new Date().toISOString();
-  await db.prepare('INSERT INTO plans (id,title,destination,start_date,end_date,people,stops_json,password_hash,password_salt,edit_token_hash,created_at,updated_at,deleted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(id, plan.title, plan.destination, plan.startDate, plan.endDate, plan.people, JSON.stringify(plan.stops), hash, salt, editTokenHash, now, now, null).run();
+  await db.prepare('INSERT INTO plans (id,title,destination,start_date,end_date,people,edit_policy,stops_json,password_hash,password_salt,edit_token_hash,created_at,updated_at,deleted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(id, plan.title, plan.destination, plan.startDate, plan.endDate, plan.people, plan.editPolicy, JSON.stringify(plan.stops), hash, salt, editTokenHash, now, now, null).run();
   return Response.json({ id, editToken, plan: { ...plan, passwordProtected: Boolean(password), createdAt: now, updatedAt: now } }, { status: 201 });
 }

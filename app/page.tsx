@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ArrowRight, ChevronDown, Compass, MapPin, Plane, Settings2 } from 'lucide-react';
+import { ArrowRight, ChevronDown, Compass, MapPin, Plane, Settings2, Trash2 } from 'lucide-react';
 import type { PlanSummary } from '@/components/plan-library';
 
 type Season = {
@@ -87,6 +87,7 @@ export default function HomePage() {
             {!plans.length && <p className="plan-hover-empty">아직 저장된 계획이 없어요.</p>}
           </div>}
         </div>
+        <a className="landing-nav-link trash-nav-link" href="/trash"><Trash2 /><span>휴지통</span></a>
         <div className="theme-menu-wrap">
           <button type="button" className="theme-button" onClick={() => setThemeOpen(value => !value)} aria-label="테마 설정" aria-haspopup="true" aria-expanded={themeOpen}><Settings2 /><span>테마</span></button>
           {themeOpen && <div className="theme-menu" role="menu"><strong>배경 테마</strong><button type="button" className={theme === 'auto' ? 'is-selected' : ''} onClick={() => chooseTheme('auto')}><span className="theme-swatch auto-swatch" />오늘의 계절<small>자동</small></button>{(['spring', 'summer', 'autumn', 'winter'] as const).map(key => <button type="button" className={theme === key ? 'is-selected' : ''} key={key} onClick={() => chooseTheme(key)}><span className={`theme-swatch ${key}-swatch`} />{seasonFor(key).label}</button>)}</div>}

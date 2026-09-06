@@ -6,7 +6,7 @@ async function rowFor(id: string) {
   const db = getDb();
   if (!db) return { db: null, row: null };
   await purgeExpiredPlans(db);
-  const result = await db.prepare('SELECT id,title,destination,start_date,end_date,people,stops_json,password_hash,password_salt,edit_token_hash,created_at,updated_at,deleted_at,(password_hash IS NOT NULL) AS password_protected FROM plans WHERE id = ? LIMIT 1').bind(id).first();
+  const result = await db.prepare('SELECT id,title,destination,start_date,end_date,people,edit_policy,stops_json,password_hash,password_salt,edit_token_hash,created_at,updated_at,deleted_at,(password_hash IS NOT NULL) AS password_protected FROM plans WHERE id = ? LIMIT 1').bind(id).first();
   return { db, row: result as Record<string, unknown> | null };
 }
 
@@ -15,7 +15,7 @@ async function hasAccess(request: Request, row: Record<string, unknown>, passwor
   if (token && row.edit_token_hash && await sha256(token) === String(row.edit_token_hash)) return true;
   const storedHash = String(row.password_hash || '');
   const salt = String(row.password_salt || '');
-  if (!requireEditToken && !storedHash) return true;
+  if (!storedHash) return !requireEditToken || row.edit_policy === 'all';
   return Boolean(password && storedHash && salt && await passwordHash(password, salt) === storedHash);
 }
 
@@ -49,7 +49,7 @@ export async function POST(request: Request, context: Context) {
     const editTokenHash = await sha256(editToken);
     const now = new Date().toISOString();
     const title = `${String(row.title)} 복제본`.slice(0, 160);
-    await db.prepare('INSERT INTO plans (id,title,destination,start_date,end_date,people,stops_json,password_hash,password_salt,edit_token_hash,created_at,updated_at,deleted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(id, title, row.destination, row.start_date, row.end_date, row.people, row.stops_json, row.password_hash || null, row.password_salt || null, editTokenHash, now, now, null).run();
+    await db.prepare('INSERT INTO plans (id,title,destination,start_date,end_date,people,edit_policy,stops_json,password_hash,password_salt,edit_token_hash,created_at,updated_at,deleted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(id, title, row.destination, row.start_date, row.end_date, row.people, row.edit_policy === 'all' ? 'all' : 'owner', row.stops_json, row.password_hash || null, row.password_salt || null, editTokenHash, now, now, null).run();
     const copied = { ...row, id, title, edit_token_hash: editTokenHash, created_at: now, updated_at: now, deleted_at: null };
     return Response.json({ id, editToken, plan: fullPlan(copied) }, { status: 201 });
   }
@@ -73,10 +73,10 @@ export async function PUT(request: Request, context: Context) {
   const now = new Date().toISOString();
   const passwordSql = passwordChanged ? ',password_hash=?,password_salt=?' : '';
   const values = passwordChanged
-    ? [plan.title, plan.destination, plan.startDate, plan.endDate, plan.people, JSON.stringify(plan.stops), hash, salt, now, String(row.id)]
-    : [plan.title, plan.destination, plan.startDate, plan.endDate, plan.people, JSON.stringify(plan.stops), now, String(row.id)];
-  await db.prepare(`UPDATE plans SET title=?,destination=?,start_date=?,end_date=?,people=?,stops_json=?${passwordSql},updated_at=? WHERE id=?`).bind(...values).run();
-  const updated = { ...row, title: plan.title, destination: plan.destination, start_date: plan.startDate, end_date: plan.endDate, people: plan.people, stops_json: JSON.stringify(plan.stops), updated_at: now, ...(passwordChanged ? { password_hash: hash, password_salt: salt } : {}) };
+    ? [plan.title, plan.destination, plan.startDate, plan.endDate, plan.people, plan.editPolicy, JSON.stringify(plan.stops), hash, salt, now, String(row.id)]
+    : [plan.title, plan.destination, plan.startDate, plan.endDate, plan.people, plan.editPolicy, JSON.stringify(plan.stops), now, String(row.id)];
+  await db.prepare(`UPDATE plans SET title=?,destination=?,start_date=?,end_date=?,people=?,edit_policy=?,stops_json=?${passwordSql},updated_at=? WHERE id=?`).bind(...values).run();
+  const updated = { ...row, title: plan.title, destination: plan.destination, start_date: plan.startDate, end_date: plan.endDate, people: plan.people, edit_policy: plan.editPolicy, stops_json: JSON.stringify(plan.stops), updated_at: now, ...(passwordChanged ? { password_hash: hash, password_salt: salt } : {}) };
   return Response.json({ plan: fullPlan(updated) });
 }
 
