@@ -142,6 +142,22 @@ function geocodeAddress(query:string):Promise<{lat:number;lng:number;address:str
     });
   });
 }
+function reverseGeocodePoint(lat:number,lng:number):Promise<string> {
+  return new Promise((resolve,reject)=>{
+    const naver=window.naver, service=naver?.maps?.Service;
+    if(!service?.reverseGeocode||!naver?.maps?.LatLng){reject(new Error('주소 변환을 사용할 수 없습니다.'));return}
+    const orders=[service.OrderType?.ROAD_ADDR,service.OrderType?.ADDR].filter(Boolean).join(',');
+    const options:any={coords:new naver.maps.LatLng(lat,lng)};
+    if(orders)options.orders=orders;
+    service.reverseGeocode(options,(status:any,response:any)=>{
+      const ok=status===service.Status.OK||status==='OK';
+      const address=response?.v2?.address, item=response?.result?.items?.[0];
+      const value=address?.roadAddress||address?.jibunAddress||address?.addressLine||item?.roadAddress||item?.jibunAddress||item?.address;
+      if(!ok||!value){reject(new Error('주소를 찾지 못했습니다.'));return}
+      resolve(value);
+    });
+  });
+}
 
 function loadNaverMaps(clientId: string) {
   if (window.naver?.maps) return Promise.resolve();
@@ -163,7 +179,7 @@ function loadNaverMaps(clientId: string) {
   return window.__naverMapsLoading;
 }
 
-function NaverMap({stops,clientId,destination,onSelect,placeResults,onPlaceSelect,dateLabels,editableStopId,onStopPositionChange,onCancelStopPositionEdit,customPin,customPinMode,onCustomLocationChange,onCustomPinContinue}:{stops:Stop[];clientId:string;destination:string;onSelect:(stop:Stop)=>void;placeResults:SearchPlace[];onPlaceSelect:(place:SearchPlace)=>void;dateLabels:Record<DayKey,string>;editableStopId:string|null;onStopPositionChange:(id:string,lat:number,lng:number)=>void;onCancelStopPositionEdit:()=>void;customPin:{lat:number;lng:number}|null;customPinMode:boolean;onCustomLocationChange:(point:{lat:number;lng:number})=>void;onCustomPinContinue:()=>void}) {
+function NaverMap({stops,clientId,destination,onSelect,placeResults,onPlaceSelect,dateLabels,editableStopId,onStopPositionChange,onCancelStopPositionEdit,customPin,customPinMode,onCustomLocationChange,onCustomAddressChange,onCustomPinContinue}:{stops:Stop[];clientId:string;destination:string;onSelect:(stop:Stop)=>void;placeResults:SearchPlace[];onPlaceSelect:(place:SearchPlace)=>void;dateLabels:Record<DayKey,string>;editableStopId:string|null;onStopPositionChange:(id:string,lat:number,lng:number)=>void;onCancelStopPositionEdit:()=>void;customPin:{lat:number;lng:number}|null;customPinMode:boolean;onCustomLocationChange:(point:{lat:number;lng:number})=>void;onCustomAddressChange:(address:string)=>void;onCustomPinContinue:()=>void}) {
   const containerRef=useRef<HTMLDivElement>(null), mapRef=useRef<any>(null), overlaysRef=useRef<any[]>([]), placeOverlaysRef=useRef<any[]>([]), customOverlayRef=useRef<any>(null);
   const [status,setStatus]=useState<'idle'|'loading'|'ready'|'error'>(clientId?'loading':'idle');
   const [cityCenter,setCityCenter]=useState(DEFAULT_MAP_CENTER);
@@ -236,7 +252,11 @@ function NaverMap({stops,clientId,destination,onSelect,placeResults,onPlaceSelec
     const listener=naver.maps.Event.addListener(map,'click',(event:any)=>{
       if(!customPinMode)return;
       const point=event.coord||event.latlng;
-      if(point)onCustomLocationChange({lat:point.lat(),lng:point.lng()});
+      if(point){
+        const next={lat:point.lat(),lng:point.lng()};
+        onCustomLocationChange(next);
+        reverseGeocodePoint(next.lat,next.lng).then(onCustomAddressChange).catch(()=>{});
+      }
     });
     return()=>naver?.maps?.Event?.removeListener?.(listener);
   },[customPinMode,status,onCustomLocationChange]);
@@ -246,11 +266,11 @@ function NaverMap({stops,clientId,destination,onSelect,placeResults,onPlaceSelec
     try{customOverlayRef.current?.setMap(null)}catch{} customOverlayRef.current=null;
     if(!customPin)return;
     const marker=new naver.maps.Marker({map,position:new naver.maps.LatLng(customPin.lat,customPin.lng),title:'임의 위치',draggable:customPinMode,zIndex:400,icon:{content:'<button type="button" class="custom-pin-marker" aria-label="임의 핀 위치"><span>＋</span></button>',anchor:new naver.maps.Point(18,42)}});
-    naver.maps.Event.addListener(marker,'dragend',()=>{const point=marker.getPosition();onCustomLocationChange({lat:point.lat(),lng:point.lng()})});
+    naver.maps.Event.addListener(marker,'dragend',()=>{const point=marker.getPosition();const next={lat:point.lat(),lng:point.lng()};onCustomLocationChange(next);reverseGeocodePoint(next.lat,next.lng).then(onCustomAddressChange).catch(()=>{})});
     customOverlayRef.current=marker;
     if(customPinMode)map.panTo(marker.getPosition());
     return()=>{try{marker.setMap(null)}catch{} if(customOverlayRef.current===marker)customOverlayRef.current=null};
-  },[customPin,status,customPinMode,onCustomLocationChange]);
+  },[customPin,status,customPinMode,onCustomLocationChange,onCustomAddressChange]);
   useEffect(()=>{
     const map=mapRef.current,naver=window.naver;
     if(!map||!naver?.maps||status!=='ready')return;
@@ -426,12 +446,12 @@ export default function Home(){
       <section className="map-panel">
         <div className="map-toolbar"><div><Sparkles/><span><strong>{activeDay==='9/19'?'첫째 날':'둘째 날'}</strong></span></div><span className="naver-badge"><b>N</b>NAVER 지도</span></div>
         <div className="map-place-search"><PlacePicker query={mapQuery} onQueryChange={(value,userInput)=>{setMapQuery(value);if(userInput){setMapPicked(null);setMapCandidate(null);setMapResultPlaces([])}}} results={mapSuggestions.results} value={mapPicked} onPick={place=>{setMapPicked(place);setMapCandidate(place);setMapResultPlaces(mapSuggestions.results.slice(0,8));if(place)setMapQuery(cleanTitle(place.title))}} onEnter={commitMapSearch} searching={mapSuggestions.searching} placeholder={`${tripSettings.destination} 장소 검색`} selected={Boolean(mapPicked)}/></div>
-        <NaverMap stops={dayStops} clientId={clientId} destination={tripSettings.destination} onSelect={selectStop} placeResults={mapResultPlaces} onPlaceSelect={selectMapCandidate} dateLabels={dayDates} editableStopId={locationEditingId} onStopPositionChange={updateStopPosition} onCancelStopPositionEdit={()=>setLocationEditingId(null)} customPin={customPin} customPinMode={customPinMode} onCustomLocationChange={updateCustomPin} onCustomPinContinue={continueCustomPin}/>
-        {mapCandidate&&<div className="map-place-card"><button className="map-card-close" onClick={()=>setMapCandidate(null)} aria-label="장소 정보 닫기">×</button><span>{mapCandidate.category}</span><strong>{cleanTitle(mapCandidate.title)}</strong><p>{mapCandidate.roadAddress||mapCandidate.address}</p><div><a href={mapCandidate.link||naverPlaceUrl({name:cleanTitle(mapCandidate.title),address:mapCandidate.roadAddress||mapCandidate.address})} target="_blank" rel="noreferrer">네이버지도</a><Button onClick={prepareMapCandidate}><Plus/>이 장소로 결정</Button></div></div>}
+        <NaverMap stops={dayStops} clientId={clientId} destination={tripSettings.destination} onSelect={selectStop} placeResults={mapResultPlaces} onPlaceSelect={selectMapCandidate} dateLabels={dayDates} editableStopId={locationEditingId} onStopPositionChange={updateStopPosition} onCancelStopPositionEdit={()=>setLocationEditingId(null)} customPin={customPin} customPinMode={customPinMode} onCustomLocationChange={updateCustomPin} onCustomAddressChange={setCustomAddress} onCustomPinContinue={continueCustomPin}/>
+        {mapCandidate&&<div className="map-place-card"><button className="map-card-close" onClick={()=>setMapCandidate(null)} aria-label="장소 정보 닫기">×</button><span>{mapCandidate.category}</span><strong>{cleanTitle(mapCandidate.title)}</strong><p>{mapCandidate.roadAddress||mapCandidate.address}</p><div><a href={naverPlaceUrl({name:cleanTitle(mapCandidate.title),address:mapCandidate.roadAddress||mapCandidate.address})} target="_blank" rel="noreferrer">네이버지도에서 상세보기</a><Button onClick={prepareMapCandidate}><Plus/>이 장소로 결정</Button></div></div>}
       </section>
     </section>
 
-    <Sheet open={Boolean(selected)} onOpenChange={open=>!open&&setSelected(null)}><SheetContent className="place-sheet sm:max-w-[430px]">{selected&&<><SheetHeader><div className="sheet-eyebrow"><span style={{background:DAY_COLOR[selected.day]}}>{dayStops.findIndex(s=>s.id===selected.id)+1}</span>{formatTripDate(dayDates[selected.day])} · {selected.time} · {selected.category}</div><SheetTitle>{selected.name}</SheetTitle><SheetDescription>{selected.address}</SheetDescription></SheetHeader><div className="sheet-body"><div className="section-title"><span>거리뷰</span><small>네이버 파노라마</small></div><PanoramaView stop={selected} clientId={clientId}/>{selected.memo&&<div className="place-note"><span>메모</span><p>{selected.memo}</p></div>}<a className="naver-link" href={selected.naverLink||naverPlaceUrl(selected)} target="_blank" rel="noreferrer"><span><b>N</b>네이버지도에서 상세·후기 보기</span><ExternalLink/></a><Button variant="outline" className="location-edit-button" onClick={startLocationEdit}><MapPin/>위치 임의 수정</Button><Button variant="destructive" className="delete-button" onClick={removeSelected}><Trash2/>이 장소 삭제</Button></div></>}</SheetContent></Sheet>
+    <Sheet open={Boolean(selected)} onOpenChange={open=>!open&&setSelected(null)}><SheetContent className="place-sheet sm:max-w-[430px]">{selected&&<><SheetHeader><div className="sheet-eyebrow"><span style={{background:DAY_COLOR[selected.day]}}>{dayStops.findIndex(s=>s.id===selected.id)+1}</span>{formatTripDate(dayDates[selected.day])} · {selected.time} · {selected.category}</div><SheetTitle>{selected.name}</SheetTitle><SheetDescription>{selected.address}</SheetDescription></SheetHeader><div className="sheet-body"><div className="section-title"><span>거리뷰</span><small>네이버 파노라마</small></div><PanoramaView stop={selected} clientId={clientId}/>{selected.memo&&<div className="place-note"><span>메모</span><p>{selected.memo}</p></div>}<a className="naver-link" href={naverPlaceUrl(selected)} target="_blank" rel="noreferrer"><span><b>N</b>네이버지도에서 상세보기</span><ExternalLink/></a><Button variant="outline" className="location-edit-button" onClick={startLocationEdit}><MapPin/>위치 임의 수정</Button><Button variant="destructive" className="delete-button" onClick={removeSelected}><Trash2/>이 장소 삭제</Button></div></>}</SheetContent></Sheet>
 
     <Dialog open={Boolean(editing)} onOpenChange={open=>{if(!open){setEditing(null);setEditDraft(null)}}}><DialogContent className="edit-dialog sm:max-w-[500px]">{editDraft&&<><DialogHeader><DialogTitle>장소 수정</DialogTitle><DialogDescription>장소를 바꾸려면 검색 결과에서 선택하세요.</DialogDescription></DialogHeader><div className="edit-grid"><label>장소 <PlacePicker query={editQuery} onQueryChange={(value,userInput)=>{setEditQuery(value);if(userInput)setEditPlaceLinked(false)}} results={editSuggestions.results} value={null} onPick={place=>{if(!place)return;const name=cleanTitle(place.title);setEditQuery(name);setEditPlaceLinked(true);setEditDraft({...editDraft,name,address:place.roadAddress||place.address,lat:Number(place.mapy)/1e7,lng:Number(place.mapx)/1e7})}} searching={editSuggestions.searching} placeholder="장소 검색" selected={editPlaceLinked}/></label>{editSuggestions.error&&editQuery.trim().length>=2&&!editPlaceLinked&&<div className="inline-notice"><CircleAlert/>{editSuggestions.error}</div>}<div className={`linked-place ${editPlaceLinked?'':'unlinked'}`}><MapPin/><span><strong>{editDraft.name}</strong><small>{editDraft.address}</small></span><em>{editPlaceLinked?'선택됨':'장소를 골라주세요'}</em></div><div className="form-grid two"><label>시간(24시간)<Time24Input value={editDraft.time} onChange={time=>setEditDraft({...editDraft,time})}/></label><label>카테고리<select value={editDraft.category} onChange={e=>setEditDraft({...editDraft,category:e.target.value as PlaceType})}>{PLACE_CATEGORIES.map(t=><option key={t}>{t}</option>)}</select></label></div><label>메모<Textarea value={editDraft.memo} onChange={e=>setEditDraft({...editDraft,memo:e.target.value})} placeholder="메모를 남겨보세요"/></label></div><DialogFooter><Button variant="outline" onClick={()=>{setEditing(null);setEditDraft(null)}}>취소</Button><Button onClick={saveEdit} disabled={!editPlaceLinked||!isValidTime(editDraft.time)}>저장</Button></DialogFooter></>}</DialogContent></Dialog>
 
