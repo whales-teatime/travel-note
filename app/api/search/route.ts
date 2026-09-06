@@ -3,7 +3,10 @@ type SearchItem = { title?: string; category?: string; address?: string; roadAdd
 const resultCache = new Map<string, { expires: number; items: SearchItem[] }>();
 
 function searchQueries(query: string, near: string) {
-  const scoped = near && !query.includes(near) ? `${near} ${query}` : query;
+  const wordCount = query.split(/\s+/).filter(Boolean).length;
+  // Keep multi-word queries intact: they often contain an explicit city or district.
+  // Use the trip destination only for short, generic searches such as "카페" or "야시장".
+  const scoped = near && wordCount <= 1 && !query.includes(near) ? `${near} ${query}` : query;
   const variants = [scoped];
   const compact = scoped.replace(/\s+/g, '');
   if (query.includes('야시장')) {
