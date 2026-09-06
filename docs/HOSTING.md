@@ -4,7 +4,7 @@
 
 ## 주소와 비용
 
-- 우선 목표 주소: `travel.<Cloudflare 계정 subdomain>.workers.dev`. GitHub 닉네임과 Cloudflare의 `workers.dev` subdomain은 별개라서 `whales-teatime`이 자동으로 들어가지는 않는다. 실제 주소는 Worker 생성 후 Cloudflare가 보여 주는 값을 사용한다.
+- 공개 주소: `https://travel.whales-teatime.workers.dev/`. Cloudflare 계정 subdomain을 `whales-teatime`으로 설정했고, Worker 이름 `travel`이 앞에 붙는다.
 - 이후 소유한 도메인을 같은 Worker에 연결할 수 있다. 도메인 구입 및 갱신은 별도 비용이다.
 - Workers Free와 D1 무료 범위부터 검증한다. Workers 무료 한도는 일 100,000 요청 및 요청당 CPU 10ms이므로 실제 페이지 렌더링의 CPU 사용도 점검해야 한다. 운영 원칙은 무료 플랜 유지, 결제수단 미등록, 자동 유료 전환 금지다. 무료 한도를 넘으면 서비스 요청이 실패할 수 있지만 유료 플랜으로 자동 전환하지 않는다.
 - Workers Paid는 월 최소 $5에 초과 사용료가 더해질 수 있다. 유료 전환 전 소유자 승인을 받는다. 네이버 지도와 검색 API 요금은 별도다.
