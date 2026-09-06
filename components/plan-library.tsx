@@ -62,7 +62,7 @@ export function PlanLibrary({ compact = false, trash = false }: { compact?: bool
     let password: string | undefined;
     let editPassword: string | undefined;
     const token = localStorage.getItem(`route-note-edit-token-${plan.id}`);
-    if (!token && plan.editPolicy === 'all' && plan.passwordProtected) {
+    if (!token && plan.passwordProtected) {
       const entered = window.prompt('열람 비밀번호를 입력하세요.');
       if (entered === null) return;
       password = entered;
