@@ -19,6 +19,7 @@ const env = {
   TRAVEL_HOST: 'cloudflare',
   CLOUDFLARE_ACCOUNT_ID: process.env.CLOUDFLARE_ACCOUNT_ID || settings.accountId || '',
   CLOUDFLARE_D1_DATABASE_ID: process.env.CLOUDFLARE_D1_DATABASE_ID || settings.databaseId || '',
+  CLOUDFLARE_D1_DATABASE_NAME: process.env.CLOUDFLARE_D1_DATABASE_NAME || settings.databaseName || 'travel-note',
 };
 const placeholder = '00000000-0000-4000-8000-000000000000';
 if (command === 'deploy' && (
@@ -74,6 +75,6 @@ if (command === 'check') {
 if (command === 'deploy') {
   // The build above regenerates bindings from the selected account, so a stale
   // Sites artifact or a verification build can never be published accidentally.
-  run('../node_modules/wrangler/bin/wrangler.js', ['d1', 'migrations', 'apply', 'DB', '--remote', '--config', 'dist/server/wrangler.json']);
+  run('../node_modules/wrangler/bin/wrangler.js', ['d1', 'migrations', 'apply', env.CLOUDFLARE_D1_DATABASE_NAME, '--remote', '--config', 'dist/server/wrangler.json']);
   run('../node_modules/wrangler/bin/wrangler.js', ['deploy', '--config', 'dist/server/wrangler.json']);
 }
