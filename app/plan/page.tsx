@@ -110,12 +110,13 @@ function usePlaceSuggestions(query:string,enabled:boolean,context=''){
   },[query,enabled,context]);
   return {results,searching,error};
 }
-function PlacePicker({query,onQueryChange,results,value,onPick,searching,placeholder,selected,onEnter}:{query:string;onQueryChange:(value:string,userInput:boolean)=>void;results:SearchPlace[];value:SearchPlace|null;onPick:(place:SearchPlace|null)=>void;searching:boolean;placeholder:string;selected:boolean;onEnter?:()=>void}){
+function PlacePicker({query,onQueryChange,results,value,onPick,searching,placeholder,selected,onEnter}:{query:string;onQueryChange:(value:string,userInput:boolean)=>void;results:SearchPlace[];value:SearchPlace|null;onPick:(place:SearchPlace|null)=>void;searching:boolean;placeholder:string;selected:boolean;onEnter?:(value:string)=>void}){
   const [open,setOpen]=useState(false);
   const suppressClearRef=useRef(false);
+  const composingRef=useRef(false);
   useEffect(()=>{setOpen(query.trim().length>=2&&!selected)},[query,selected]);
-  return <Combobox<SearchPlace> items={results} filteredItems={results} filter={null} value={value} inputValue={query} open={open} onOpenChange={setOpen} onInputValueChange={(next,details)=>{if(details.reason==='input-change'||(details.reason==='input-clear'&&!suppressClearRef.current))onQueryChange(next,true)}} onValueChange={place=>{onPick(place);if(place)setOpen(false)}} itemToStringLabel={place=>cleanTitle(place.title)}>
-    <ComboboxInput className="place-combobox-input" placeholder={placeholder} showTrigger={false} onKeyDownCapture={event=>{if(event.key==='Enter'){event.preventDefault();event.stopPropagation();suppressClearRef.current=true;onQueryChange(query,false);onEnter?.();setOpen(false);window.setTimeout(()=>{suppressClearRef.current=false},250)}}}/>
+  return <Combobox<SearchPlace> items={results} filteredItems={results} filter={null} value={value} inputValue={query} open={open} onOpenChange={setOpen} onInputValueChange={(next,details)=>{if(details.reason==='item-press')return;if(details.reason==='input-change'||(details.reason==='input-clear'&&!suppressClearRef.current))onQueryChange(next,true)}} onValueChange={place=>{onPick(place);if(place)setOpen(false)}} itemToStringLabel={place=>cleanTitle(place.title)}>
+    <ComboboxInput className="place-combobox-input" placeholder={placeholder} showTrigger={false} inputMode="search" enterKeyHint="search" onFocus={()=>{if(!selected&&query.trim().length>=2)setOpen(true)}} onCompositionStart={()=>{composingRef.current=true}} onCompositionEnd={()=>{composingRef.current=false}} onKeyDown={event=>{const nativeEvent=event.nativeEvent as KeyboardEvent;if(event.key==='Enter'&&!nativeEvent.isComposing&&!composingRef.current){event.preventDefault();event.stopPropagation();const current=event.currentTarget.value;suppressClearRef.current=true;onQueryChange(current,false);onEnter?.(current);setOpen(false);window.setTimeout(()=>{suppressClearRef.current=false},350)}}}/>
     <ComboboxContent className="place-combobox-content">
       <ComboboxEmpty>{searching?'네이버 지도에서 검색 중…':'검색 결과가 없습니다.'}</ComboboxEmpty>
       <ComboboxList>{results.map((place,index)=><ComboboxItem className="place-combobox-item" key={`${place.mapx}-${place.mapy}-${index}`} value={place}><MapPin/><span><strong>{cleanTitle(place.title)}</strong><small>{place.category}</small><em>{place.roadAddress||place.address}</em></span></ComboboxItem>)}</ComboboxList>
@@ -569,12 +570,12 @@ export default function Home(){
       <div className="top-actions">
         <div className="trip-cost-total" aria-label="전체 예상 경비"><span>전체 예상 경비</span><strong>{formatWon(tripCostSummary.personal)} <small>개인별</small> · {formatWon(tripCostSummary.total)} <small>총 비용</small></strong></div>
         {planId&&<>
-          <Button variant="outline" className="plan-copy-button" onClick={()=>void duplicatePlan()} disabled={Boolean(planAction)||planLoading}><Copy/><span>{planAction==='duplicate'?'복제 중…':'계획 복제'}</span></Button>
-          <Button variant="outline" className="plan-delete-button" onClick={()=>setDeleteDialogOpen(true)} disabled={Boolean(planAction)||planLoading||!canEdit}><Trash2/><span>계획 삭제</span></Button>
+          <Button variant="outline" className="plan-copy-button" aria-label="계획 복제" onClick={()=>void duplicatePlan()} disabled={Boolean(planAction)||planLoading}><Copy/><span>{planAction==='duplicate'?'복제 중…':'계획 복제'}</span></Button>
+          <Button variant="outline" className="plan-delete-button" aria-label="계획 삭제" onClick={()=>setDeleteDialogOpen(true)} disabled={Boolean(planAction)||planLoading||!canEdit}><Trash2/><span>계획 삭제</span></Button>
         </>}
-        <Button variant="outline" className={`plan-save-button ${planSaveMessage==='저장됨'?'is-saved':''}`} onClick={()=>void savePlan()} disabled={planSaving||planLoading||Boolean(planId&&!canEdit)}><Save/><span>{planSaving?'저장 중…':'계획 저장'}</span></Button>
+        <Button variant="outline" className={`plan-save-button ${planSaveMessage==='저장됨'?'is-saved':''}`} aria-label="계획 저장" onClick={()=>void savePlan()} disabled={planSaving||planLoading||Boolean(planId&&!canEdit)}><Save/><span>{planSaving?'저장 중…':'계획 저장'}</span></Button>
         {planSaveMessage&&<span className={`save-feedback ${planSaveMessage==='저장됨'||planSaveMessage==='복제본이 저장목록에 추가됐어요.'?'is-success':'is-error'}`} role="status" aria-live="polite">{planSaveMessage}</span>}
-        <Button variant="outline" className="settings-button" onClick={()=>{setSettingsDraft(tripSettings);setSettingsOpen(true)}}><CalendarDays/><span>여행 일정</span></Button>
+        <Button variant="outline" className="settings-button" aria-label="여행 일정" onClick={()=>{setSettingsDraft(tripSettings);setSettingsOpen(true)}}><CalendarDays/><span>여행 일정</span></Button>
       </div>
     </header>
 

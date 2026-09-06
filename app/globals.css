@@ -45,6 +45,106 @@
 .home-landing.season-spring{--hero-ink:#173b2a}.home-landing.season-summer{--hero-ink:#17384a}.home-landing.season-winter{--hero-ink:#203653}.home-landing.season-spring .landing-kicker,.home-landing.season-summer .landing-kicker,.home-landing.season-winter .landing-kicker{opacity:.95;text-shadow:0 1px 8px rgba(255,255,255,.45)}.home-landing.season-spring .landing-lede,.home-landing.season-summer .landing-lede,.home-landing.season-winter .landing-lede{color:var(--hero-ink);text-shadow:0 1px 10px rgba(255,255,255,.48)}.home-landing.season-spring .landing-lede span,.home-landing.season-summer .landing-lede span,.home-landing.season-winter .landing-lede span{opacity:.9}.home-landing.season-spring .departure-question small,.home-landing.season-summer .departure-question small,.home-landing.season-winter .departure-question small{color:var(--hero-ink);opacity:.88}.home-landing.season-spring .landing-footer,.home-landing.season-summer .landing-footer,.home-landing.season-winter .landing-footer{color:color-mix(in srgb,var(--hero-ink) 70%,transparent)}
 .day-switch-wrap{display:grid;gap:6px}.day-switch{transition:max-height .24s ease,box-shadow .2s ease}.day-switch.is-collapsed{max-height:142px;overflow:hidden}.day-rollup-toggle{display:flex;align-items:center;justify-content:center;gap:5px;width:100%;height:31px;border:1px solid #d8e4dc;border-radius:9px;background:#fff;color:#47705a;font-size:11px;font-weight:900;cursor:pointer;transition:background .18s ease,color .18s ease,transform .18s ease}.day-rollup-toggle:hover{background:#effaf2;color:#1f7041;transform:translateY(-1px)}.day-rollup-toggle svg{width:14px;height:14px}
 .map-legend{align-items:center;flex-wrap:wrap;max-width:min(520px,calc(100% - 40px))}.map-legend-days{display:flex;flex-wrap:wrap;gap:4px 8px}.map-legend-toggle{display:flex;align-items:center;gap:2px;padding:4px 6px;border:0;border-radius:7px;background:#f1f8f2;color:#47705a;font:inherit;font-size:10px;font-weight:900;cursor:pointer}.map-legend-toggle:hover{background:#e4f4e7;color:#1f7041}.map-legend-toggle svg{width:13px;height:13px}
+
+/* Mobile layout: keep the planner compact while preserving clear touch areas. */
+@media(max-width:820px){
+  .topbar{min-height:60px;padding:8px 12px;gap:8px;grid-template-columns:minmax(0,1fr) auto}
+  .brand{min-width:0;gap:7px;font-size:16px;letter-spacing:-.055em;white-space:nowrap}
+  .brand>span:last-child{overflow:hidden;text-overflow:ellipsis}
+  .brand-mark{width:29px;height:29px;border-radius:9px 9px 9px 3px}
+  .brand-mark svg{width:15px}
+  .top-actions{min-width:0;gap:4px}
+  .top-actions>button{height:36px;padding:0 9px;border-radius:9px}
+  .top-actions .settings-button{height:36px;padding:0 9px}
+  .top-actions .plan-save-button{height:36px;padding:0 9px}
+  .workspace{height:auto}
+  .map-panel{height:44vh;min-height:320px;max-height:460px}
+  .planner-panel{padding:14px 10px 26px}
+  .day-switch{gap:5px;padding:4px;border-radius:12px}
+  .day-switch button{padding:8px 9px;border-radius:8px}
+  .day-switch button span{font-size:10px}
+  .day-switch button strong{font-size:12px}
+  .day-rollup-toggle{font-size:10px}
+  .panel-heading{margin:18px 2px 10px}
+  .panel-heading>div>span{font-size:11px}
+  .panel-heading strong{font-size:19px}
+  .stop-card{grid-template-columns:14px 30px minmax(0,1fr);gap:7px;min-height:86px;padding:11px 82px 11px 5px;border-radius:13px}
+  .drag-handle svg{width:15px}
+  .order-pin{width:29px;height:29px;font-size:12px}
+  .stop-time{font-size:11px}
+  .stop-time svg{width:12px}
+  .stop-time .stop-category{padding:2px 5px;font-size:9px}
+  .stop-main>strong{margin-top:4px;font-size:14px}
+  .stop-main p{font-size:11px}
+  .card-actions{right:6px;bottom:6px}
+  .move-buttons button,.edit-card-button,.remove-card-button{width:23px;height:23px}
+  .distance-chip{height:27px;margin-left:34px;font-size:10px}
+  .day-cost-summary{gap:8px;margin:2px 1px 10px;padding:10px 11px;border-radius:11px}
+  .day-cost-summary>div>span{font-size:11px}
+  .day-cost-summary small{font-size:9px}
+  .day-cost-summary>strong{gap:8px}
+  .day-cost-summary>strong>span{font-size:11px}
+  .day-cost-summary em{font-size:9px}
+  .map-toolbar{left:10px;right:10px;top:10px}
+  .map-place-search{left:10px;top:54px;width:calc(100% - 20px)}
+  .map-place-search [data-slot="input-group"]{height:42px}
+  .map-home-button{right:12px;bottom:16px;width:36px;height:36px;border-radius:10px}
+  .map-home-button svg{width:17px;height:17px}
+  .map-legend{right:58px;bottom:14px;left:10px;max-width:none;gap:6px;padding:7px 8px;font-size:10px}
+  .map-legend-days{gap:2px 4px}
+  .map-date-button{padding:3px 4px;font-size:10px}
+  .map-place-card{left:10px;bottom:64px;width:calc(100% - 20px);padding:13px;border-radius:13px}
+  .map-place-card>strong{font-size:16px}
+  .map-place-card>p{margin-bottom:10px;font-size:11px}
+  .map-place-card>div{gap:7px}
+  .map-place-card a{font-size:10px}
+  .map-place-card button{height:34px;font-size:11px}
+  .map-location-editor{bottom:64px;width:calc(100% - 20px);gap:7px;padding:10px 11px;border-radius:12px}
+  .map-location-editor strong{font-size:11px}
+  .map-location-editor span{font-size:10px}
+  .map-location-editor button{height:32px;font-size:11px}
+  .add-dialog,.settings-dialog,.edit-dialog,.custom-dialog,.password-dialog,.delete-plan-dialog{width:calc(100vw - 20px);max-height:calc(100dvh - 20px);overflow-y:auto;border-radius:16px;padding:17px}
+  .add-dialog [data-slot="dialog-title"],.settings-dialog [data-slot="dialog-title"],.edit-dialog [data-slot="dialog-title"]{font-size:18px}
+  .form-grid{gap:8px}
+  .form-grid select,.form-grid input,.edit-grid input,.trip-settings-grid input{height:40px;font-size:14px}
+  .place-combobox-input{height:42px!important;font-size:16px!important;touch-action:manipulation}
+  .place-combobox-content{max-height:min(260px,42vh)}
+  .place-combobox-item{padding:9px!important}
+}
+@media(max-width:480px){
+  .brand{font-size:15px}
+  .brand-mark{width:27px;height:27px}
+  .top-actions>button{width:36px;padding:0}
+  .top-actions>button>span{display:none}
+  .top-actions .settings-button span,.top-actions .plan-save-button span{display:none}
+  .stop-card{grid-template-columns:13px 28px minmax(0,1fr);gap:6px;padding-right:78px}
+  .order-pin{width:28px;height:28px}
+  .cost-fields{gap:5px}
+  .cost-field input{padding-left:6px;padding-right:21px;font-size:11px}
+  .map-panel{min-height:300px}
+  .map-legend{right:56px}
+  .day-cost-summary>div>span{max-width:135px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+}
+@media(max-width:760px){
+  .landing-topbar{height:62px;padding:0 14px}
+  .landing-brand{gap:7px;font-size:15px;letter-spacing:-.065em}
+  .landing-brand-mark{width:27px;height:27px;border-radius:8px}
+  .landing-brand-mark svg{width:15px;height:15px}
+  .landing-nav{gap:2px}
+  .landing-nav-link,.landing-new-link{height:36px;padding:0 8px;border-radius:9px;font-size:10px}
+  .landing-hero{min-height:calc(100vh - 62px);padding-top:48px}
+  .landing-hero h1{font-size:clamp(44px,13vw,72px)}
+  .landing-lede{margin-top:16px;font-size:15px}
+  .departure-question{margin-top:42px}
+  .departure-question span{font-size:21px}
+  .departure-card{min-height:80px;padding:14px 15px;border-radius:18px}
+  .departure-icon{width:38px;height:38px;border-radius:12px}
+  .departure-copy strong{font-size:16px}
+  .departure-copy small{font-size:9px}
+  .plans-topbar{height:62px;padding:0 14px}
+  .plans-brand{gap:7px;font-size:15px}
+  .plans-brand-mark{width:27px;height:27px;border-radius:8px}
+}
 .password-field{position:relative;display:flex;align-items:center}.password-field input{padding-right:42px}.password-eye{position:absolute;right:8px;display:grid;place-items:center;width:29px;height:29px;padding:0;border:0;border-radius:7px;background:transparent;color:#708078;cursor:pointer}.password-eye:hover:not(:disabled){background:#edf6ef;color:#237343}.password-eye:disabled{color:#b8c3bc;cursor:not-allowed}.password-eye svg{width:16px;height:16px}.password-status{margin:-6px 0 0;color:#267447}.password-clear{width:max-content;margin:-6px 0 0;padding:0;border:0;background:transparent;color:#a45b4b;font-size:10px;font-weight:800;text-decoration:underline;text-underline-offset:3px;cursor:pointer}.password-clear:hover{color:#c24732}.save-feedback{display:inline-flex;align-items:center;min-height:28px;padding:0 9px;border-radius:8px;font-size:11px;font-weight:900;white-space:nowrap;animation:save-feedback-in .2s ease-out}.save-feedback.is-success{background:#effaf1;color:#237343}.save-feedback.is-error{background:#fff3ee;color:#b94c37}@keyframes save-feedback-in{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:translateY(0)}}
 .plan-readonly-notice,.plan-settings-readonly{display:flex;align-items:center;gap:8px}.plan-readonly-notice>svg,.plan-settings-readonly>svg{flex:0 0 auto}.plan-readonly-notice>span,.plan-settings-readonly>span{flex:1}.plan-readonly-notice button,.plan-settings-readonly button{height:30px;padding:0 10px;white-space:nowrap}.edit-password-status{color:#8a5c2f}.edit-password-clear{margin-top:-2px}
 .trash-restore-button{height:30px;padding:0 11px;border:1px solid #d7b8af;border-radius:8px;background:#fff9f7;color:#974d42;font:inherit;font-size:11px;font-weight:800;cursor:pointer}.trash-restore-button:hover:not(:disabled){background:#fff0eb;border-color:#c98b7e;color:#7f3f36}.trash-restore-button:disabled{opacity:.55;cursor:wait}
