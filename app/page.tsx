@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowDown, ArrowUp, CalendarDays, CircleAlert, Clock3,
-  ExternalLink, GripVertical, Map, MapPin, Navigation, Plus,
+  ExternalLink, GripVertical, House, Map, MapPin, Navigation, Plus,
   Pencil, Sparkles, Trash2, Users, X,
 } from 'lucide-react';
 
@@ -33,6 +33,7 @@ declare global {
 }
 
 const DAY_COLOR: Record<DayKey, string> = { '9/19': '#ff5b35', '9/20': '#2279f2' };
+const DEFAULT_MAP_CENTER = { lat:35.8242, lng:127.1534 };
 const DEFAULT_TRIP: TripSettings = { title:'전주 맛집 여행', destination:'전주', startDate:'2026-09-19', endDate:'2026-09-20', people:5 };
 const PLACE_CATEGORIES: PlaceType[] = ['식사','간식','관광','숙소','기타'];
 const suggestionCache = new globalThis.Map<string, SearchPlace[]>();
@@ -162,9 +163,10 @@ function loadNaverMaps(clientId: string) {
   return window.__naverMapsLoading;
 }
 
-function NaverMap({stops,clientId,onSelect,placeResults,onPlaceSelect,dateLabels,editableStopId,onStopPositionChange,onCancelStopPositionEdit,customPin,customPinMode,onCustomLocationChange,onCustomPinContinue}:{stops:Stop[];clientId:string;onSelect:(stop:Stop)=>void;placeResults:SearchPlace[];onPlaceSelect:(place:SearchPlace)=>void;dateLabels:Record<DayKey,string>;editableStopId:string|null;onStopPositionChange:(id:string,lat:number,lng:number)=>void;onCancelStopPositionEdit:()=>void;customPin:{lat:number;lng:number}|null;customPinMode:boolean;onCustomLocationChange:(point:{lat:number;lng:number})=>void;onCustomPinContinue:()=>void}) {
+function NaverMap({stops,clientId,destination,onSelect,placeResults,onPlaceSelect,dateLabels,editableStopId,onStopPositionChange,onCancelStopPositionEdit,customPin,customPinMode,onCustomLocationChange,onCustomPinContinue}:{stops:Stop[];clientId:string;destination:string;onSelect:(stop:Stop)=>void;placeResults:SearchPlace[];onPlaceSelect:(place:SearchPlace)=>void;dateLabels:Record<DayKey,string>;editableStopId:string|null;onStopPositionChange:(id:string,lat:number,lng:number)=>void;onCancelStopPositionEdit:()=>void;customPin:{lat:number;lng:number}|null;customPinMode:boolean;onCustomLocationChange:(point:{lat:number;lng:number})=>void;onCustomPinContinue:()=>void}) {
   const containerRef=useRef<HTMLDivElement>(null), mapRef=useRef<any>(null), overlaysRef=useRef<any[]>([]), placeOverlaysRef=useRef<any[]>([]), customOverlayRef=useRef<any>(null);
   const [status,setStatus]=useState<'idle'|'loading'|'ready'|'error'>(clientId?'loading':'idle');
+  const [cityCenter,setCityCenter]=useState(DEFAULT_MAP_CENTER);
   useEffect(()=>{
     if(!clientId||!containerRef.current)return;
     let cancelled=false; setStatus('loading');
@@ -173,27 +175,61 @@ function NaverMap({stops,clientId,onSelect,placeResults,onPlaceSelect,dateLabels
     loadNaverMaps(clientId).then(()=>{
       if(cancelled||!containerRef.current)return;
       const naver=window.naver;
-      mapRef.current=new naver.maps.Map(containerRef.current,{center:new naver.maps.LatLng(35.8242,127.1534),zoom:13,minZoom:8,zoomControl:true,zoomControlOptions:{position:naver.maps.Position.RIGHT_CENTER},mapTypeControl:false,scaleControl:false,logoControlOptions:{position:naver.maps.Position.BOTTOM_LEFT}});
+      mapRef.current=new naver.maps.Map(containerRef.current,{center:new naver.maps.LatLng(DEFAULT_MAP_CENTER.lat,DEFAULT_MAP_CENTER.lng),zoom:12,minZoom:8,zoomControl:true,zoomControlOptions:{position:naver.maps.Position.RIGHT_CENTER},mapTypeControl:false,scaleControl:false,logoControlOptions:{position:naver.maps.Position.BOTTOM_LEFT}});
       setStatus('ready');
     }).catch(()=>setStatus('error'));
     return()=>{cancelled=true;window.removeEventListener('naver-map-auth-failure',handleAuthFailure)};
   },[clientId]);
   useEffect(()=>{
+    const map=mapRef.current,naver=window.naver;
+    if(!map||!naver?.maps||status!=='ready')return;
+    let cancelled=false;
+    const applyCenter=(point:{lat:number;lng:number})=>{
+      if(cancelled)return;
+      setCityCenter(point);
+      map.setCenter(new naver.maps.LatLng(point.lat,point.lng));
+      map.setZoom(12);
+    };
+    const query=destination.trim();
+    if(!query){applyCenter(DEFAULT_MAP_CENTER);return()=>{cancelled=true}};
+    geocodeAddress(query)
+      .catch(()=>geocodeAddress(`${query} 시청`))
+      .then(point=>applyCenter(point))
+      .catch(()=>{if(!cancelled){setCityCenter(DEFAULT_MAP_CENTER);map.setCenter(new naver.maps.LatLng(DEFAULT_MAP_CENTER.lat,DEFAULT_MAP_CENTER.lng));map.setZoom(12)}});
+    return()=>{cancelled=true};
+  },[destination,status]);
+  useEffect(()=>{
+    const map=mapRef.current,naver=window.naver;
+    if(!map||!naver?.maps||status!=='ready'||stops.length)return;
+    map.setCenter(new naver.maps.LatLng(cityCenter.lat,cityCenter.lng));
+    map.setZoom(12);
+  },[stops.length,cityCenter,status]);
+  useEffect(()=>{
     const map=mapRef.current, naver=window.naver;
     if(!map||!naver?.maps||status!=='ready')return;
     overlaysRef.current.forEach(o=>{try{o?.setMap(null)}catch{}}); overlaysRef.current=[];
-    const bounds=new naver.maps.LatLngBounds();
     stops.forEach((stop,index)=>{
       const position=new naver.maps.LatLng(stop.lat,stop.lng), color=DAY_COLOR[stop.day];
       const marker=new naver.maps.Marker({map,position,title:stop.name,clickable:true,draggable:editableStopId===stop.id,zIndex:100+index,icon:{content:`<button type="button" class="naver-marker" style="--pin:${color}" aria-label="${escapeHtml(stop.name)} 정보 보기"><span>${index+1}</span></button>`,anchor:new naver.maps.Point(20,45)}});
       naver.maps.Event.addListener(marker,'click',()=>onSelect(stop));
       if(editableStopId===stop.id){naver.maps.Event.addListener(marker,'dragend',()=>{const point=marker.getPosition();onStopPositionChange(stop.id,point.lat(),point.lng())})}
-      overlaysRef.current.push(marker); bounds.extend(position);
+      overlaysRef.current.push(marker);
     });
     if(stops.length>1){const line=new naver.maps.Polyline({map,path:stops.map(s=>new naver.maps.LatLng(s.lat,s.lng)),strokeColor:DAY_COLOR[stops[0].day],strokeWeight:5,strokeOpacity:.7,strokeStyle:'shortdash',zIndex:20});overlaysRef.current.push(line)}
-    if(stops.length===1)map.setCenter(bounds.getCenter());
-    if(stops.length>1)map.fitBounds(bounds,{top:80,right:80,bottom:80,left:80});
   },[stops,status,onSelect,editableStopId,onStopPositionChange]);
+  const fitItinerary=useCallback(()=>{
+    const map=mapRef.current,naver=window.naver;
+    if(!map||!naver?.maps||status!=='ready')return;
+    if(!stops.length){
+      map.setCenter(new naver.maps.LatLng(cityCenter.lat,cityCenter.lng));
+      map.setZoom(12);
+      return;
+    }
+    const bounds=new naver.maps.LatLngBounds();
+    stops.forEach(stop=>bounds.extend(new naver.maps.LatLng(stop.lat,stop.lng)));
+    if(stops.length===1){map.setCenter(bounds.getCenter());map.setZoom(15);return}
+    map.fitBounds(bounds,{top:100,right:90,bottom:105,left:90});
+  },[stops,cityCenter,status]);
   useEffect(()=>{
     const map=mapRef.current,naver=window.naver;
     if(!map||!naver?.maps||status!=='ready')return;
@@ -234,6 +270,7 @@ function NaverMap({stops,clientId,onSelect,placeResults,onPlaceSelect,dateLabels
     {status!=='ready'&&<div className="map-gate"><div className="map-gate-card">
       {status==='loading'?<><div className="loading-orbit"/><strong>네이버 지도를 연결하는 중</strong><span>잠시만 기다려주세요.</span></>:status==='error'?<><CircleAlert/><strong>네이버 지도 인증에 실패했습니다</strong><span>Maps 앱의 10자 Client ID와 등록된 웹 서비스 URL을 확인해주세요.</span></>:<><Map className="text-[#03c75a]"/><strong>네이버 지도 연결이 필요합니다</strong><span>설정에서 Maps Client ID를 입력하면 실제 지도가 열립니다.</span></>}
     </div></div>}
+    <button type="button" className="map-home-button" onClick={fitItinerary} aria-label={stops.length?'전체 동선 한눈에 보기':'여행지 전체 보기'} title={stops.length?'전체 동선 한눈에 보기':'여행지 전체 보기'}><House/></button>
     <div className="map-legend"><span><i style={{background:DAY_COLOR['9/19']}}/>{formatTripDate(dateLabels['9/19'])}</span><span><i style={{background:DAY_COLOR['9/20']}}/>{formatTripDate(dateLabels['9/20'])}</span></div>
     {customPinMode&&<div className="map-location-editor"><strong>지도에서 위치를 정하세요</strong><span>지도를 클릭하거나 초록 핀을 끌어 옮긴 뒤 계속하세요.</span><Button onClick={onCustomPinContinue} disabled={!customPin}>이 위치로 계속</Button></div>}
     {editableStopId&&<div className="map-location-editor"><strong>위치 수정 중</strong><span>선택한 장소의 핀을 드래그해 위치를 바꾸세요.</span><Button variant="outline" onClick={onCancelStopPositionEdit}>취소</Button></div>}
@@ -389,7 +426,7 @@ export default function Home(){
       <section className="map-panel">
         <div className="map-toolbar"><div><Sparkles/><span><strong>{activeDay==='9/19'?'첫째 날':'둘째 날'}</strong></span></div><span className="naver-badge"><b>N</b>NAVER 지도</span></div>
         <div className="map-place-search"><PlacePicker query={mapQuery} onQueryChange={(value,userInput)=>{setMapQuery(value);if(userInput){setMapPicked(null);setMapCandidate(null);setMapResultPlaces([])}}} results={mapSuggestions.results} value={mapPicked} onPick={place=>{setMapPicked(place);setMapCandidate(place);setMapResultPlaces(mapSuggestions.results.slice(0,8));if(place)setMapQuery(cleanTitle(place.title))}} onEnter={commitMapSearch} searching={mapSuggestions.searching} placeholder={`${tripSettings.destination} 장소 검색`} selected={Boolean(mapPicked)}/></div>
-        <NaverMap stops={dayStops} clientId={clientId} onSelect={selectStop} placeResults={mapResultPlaces} onPlaceSelect={selectMapCandidate} dateLabels={dayDates} editableStopId={locationEditingId} onStopPositionChange={updateStopPosition} onCancelStopPositionEdit={()=>setLocationEditingId(null)} customPin={customPin} customPinMode={customPinMode} onCustomLocationChange={updateCustomPin} onCustomPinContinue={continueCustomPin}/>
+        <NaverMap stops={dayStops} clientId={clientId} destination={tripSettings.destination} onSelect={selectStop} placeResults={mapResultPlaces} onPlaceSelect={selectMapCandidate} dateLabels={dayDates} editableStopId={locationEditingId} onStopPositionChange={updateStopPosition} onCancelStopPositionEdit={()=>setLocationEditingId(null)} customPin={customPin} customPinMode={customPinMode} onCustomLocationChange={updateCustomPin} onCustomPinContinue={continueCustomPin}/>
         {mapCandidate&&<div className="map-place-card"><button className="map-card-close" onClick={()=>setMapCandidate(null)} aria-label="장소 정보 닫기">×</button><span>{mapCandidate.category}</span><strong>{cleanTitle(mapCandidate.title)}</strong><p>{mapCandidate.roadAddress||mapCandidate.address}</p><div><a href={mapCandidate.link||naverPlaceUrl({name:cleanTitle(mapCandidate.title),address:mapCandidate.roadAddress||mapCandidate.address})} target="_blank" rel="noreferrer">네이버지도</a><Button onClick={prepareMapCandidate}><Plus/>이 장소로 결정</Button></div></div>}
       </section>
     </section>
