@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { ArrowRight, ChevronDown, Compass, LockKeyhole, LogOut, MapPin, Plane, Settings2, Trash2 } from 'lucide-react';
 import type { PlanSummary } from '@/components/plan-library';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 
 type Season = {
@@ -129,8 +129,8 @@ export default function HomePage() {
       {overseasMessage && <button className="overseas-toast" type="button" onClick={() => setOverseasMessage(false)}><Plane /> 해외 여행 플래너는 준비 중이에요 ㅠㅠ <span>닫기</span></button>}
       {hasDraft && <div className="draft-pill"><span><small>이 기기에 남은 초안</small><strong>{draftTitle}</strong></span><div className="draft-pill-actions"><Link className="draft-pill-action" href="/plan/new?draft=1">계속 쓰기<ArrowRight /></Link><button type="button" onClick={clearDraft}>초안 삭제</button></div></div>}
     </section>
-    <button type="button" className={`landing-admin-button ${adminAuthenticated?'is-active':''}`} onClick={()=>adminAuthenticated?void logoutAdmin():setAdminOpen(true)} title={adminAuthenticated?'관리자 모드 종료':'관리자 로그인'} aria-label={adminAuthenticated?'관리자 모드 종료':'관리자 로그인'}>{adminAuthenticated?<LogOut/>:<LockKeyhole/>}<span>{adminAuthenticated?'관리자 모드':'관리자'}</span></button>
-    <Dialog open={adminOpen} onOpenChange={open=>{setAdminOpen(open);if(!open){setAdminPassword('');setAdminError('')}}}><DialogContent className="password-dialog sm:max-w-[420px]"><DialogHeader><DialogTitle>관리자 로그인</DialogTitle><DialogDescription>관리자 모드에서는 모든 계획을 열고 관리할 수 있어요.</DialogDescription></DialogHeader><label>관리자 비밀번호<Input type="password" value={adminPassword} onChange={event=>setAdminPassword(event.target.value)} onKeyDown={event=>{if(event.key==='Enter')void loginAdmin()}} placeholder="관리자 비밀번호"/></label>{adminError&&<div className="inline-notice">{adminError}</div>}<DialogFooter><Button variant="outline" onClick={()=>setAdminOpen(false)}>취소</Button><Button onClick={()=>void loginAdmin()} disabled={!adminPassword||adminChecking}>{adminChecking?'확인 중…':'로그인'}</Button></DialogFooter></DialogContent></Dialog>
+    <button type="button" className={`landing-admin-button ${adminAuthenticated?'is-active':''}`} onClick={()=>adminAuthenticated?void logoutAdmin():setAdminOpen(true)} title={adminAuthenticated?'관리자 모드 종료':'관리자 로그인'} aria-label={adminAuthenticated?'관리자 모드 종료':'관리자 로그인'}>{adminAuthenticated?<LogOut/>:<LockKeyhole/>}</button>
+    <Dialog open={adminOpen} onOpenChange={open=>{setAdminOpen(open);if(!open){setAdminPassword('');setAdminError('')}}}><DialogContent className="password-dialog sm:max-w-[420px]"><DialogHeader><DialogTitle>관리자 로그인</DialogTitle></DialogHeader><label>관리자 비밀번호<Input type="password" value={adminPassword} onChange={event=>setAdminPassword(event.target.value)} onKeyDown={event=>{if(event.key==='Enter')void loginAdmin()}} placeholder="관리자 비밀번호"/></label>{adminError&&<div className="inline-notice">{adminError}</div>}<DialogFooter><Button variant="outline" onClick={()=>setAdminOpen(false)}>취소</Button><Button onClick={()=>void loginAdmin()} disabled={!adminPassword||adminChecking}>{adminChecking?'확인 중…':'로그인'}</Button></DialogFooter></DialogContent></Dialog>
     <footer className="landing-footer"><span>한 장씩 채워가는 우리들의 여행</span><span>TRAVEL NOTE</span></footer>
   </main>;
 }
