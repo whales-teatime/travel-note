@@ -1,8 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ArrowRight, ChevronDown, Compass, MapPin, Plane, Settings2, Trash2 } from 'lucide-react';
+import Link from 'next/link';
+import { ArrowRight, ChevronDown, Compass, LockKeyhole, LogOut, MapPin, Plane, Settings2, Trash2 } from 'lucide-react';
 import type { PlanSummary } from '@/components/plan-library';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 
 type Season = {
   key: 'spring' | 'summer' | 'autumn' | 'winter';
@@ -40,6 +44,11 @@ export default function HomePage() {
   const [overseasMessage, setOverseasMessage] = useState(false);
   const [hasDraft, setHasDraft] = useState(false);
   const [draftTitle, setDraftTitle] = useState('이 기기의 여행 초안');
+  const [adminAuthenticated, setAdminAuthenticated] = useState(false);
+  const [adminOpen, setAdminOpen] = useState(false);
+  const [adminPassword, setAdminPassword] = useState('');
+  const [adminError, setAdminError] = useState('');
+  const [adminChecking, setAdminChecking] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -47,6 +56,7 @@ export default function HomePage() {
       .then(response => response.json() as Promise<{ items?: PlanSummary[] }>)
       .then(body => { if (alive) setPlans(body.items || []); })
       .catch(() => { if (alive) setPlans([]); });
+    fetch('/api/admin/session', { cache: 'no-store' }).then(response=>response.json() as Promise<{adminAuthenticated?:boolean}>).then(body=>{if(alive)setAdminAuthenticated(Boolean(body.adminAuthenticated))}).catch(()=>{});
 
     const saved = window.localStorage.getItem('route-note-stops');
     const settings = window.localStorage.getItem('route-note-trip-settings');
@@ -73,21 +83,33 @@ export default function HomePage() {
     window.localStorage.removeItem('route-note-trip-settings');
     setHasDraft(false);
   };
+  const loginAdmin = async () => {
+    if (!adminPassword) return;
+    setAdminChecking(true); setAdminError('');
+    try {
+      const response = await fetch('/api/admin/session', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({password:adminPassword}) });
+      const body = await response.json() as {adminAuthenticated?:boolean;message?:string};
+      if (!response.ok || !body.adminAuthenticated) throw new Error(body.message || '관리자 비밀번호가 올바르지 않습니다.');
+      setAdminAuthenticated(true); setAdminPassword(''); setAdminOpen(false);
+    } catch (reason) { setAdminError(reason instanceof Error ? reason.message : '관리자 로그인을 확인하지 못했어요.'); }
+    finally { setAdminChecking(false); }
+  };
+  const logoutAdmin = async () => { await fetch('/api/admin/session',{method:'DELETE'}).catch(()=>{});setAdminAuthenticated(false); };
 
   return <main className={`home-landing season-${season.key}`}>
     <div className="home-season-wash" aria-hidden="true" />
     <header className="landing-topbar">
-      <a className="landing-brand" href="/"><span className="landing-brand-mark"><MapPin /></span><span>여행을 떠나요<span className="brand-note">♬</span></span></a>
+      <Link className="landing-brand" href="/"><span className="landing-brand-mark"><MapPin /></span><span>여행을 떠나요<span className="brand-note">♬</span></span></Link>
       <nav className="landing-nav" aria-label="주요 메뉴">
         <div className="plan-menu-wrap" onMouseEnter={() => setPlanMenuOpen(true)} onMouseLeave={() => setPlanMenuOpen(false)}>
-          <a className="landing-nav-link plan-menu-trigger" href="/plans" aria-haspopup="true" aria-expanded={planMenuOpen}><span>계획 목록</span><ChevronDown /></a>
+          <Link className="landing-nav-link plan-menu-trigger" href="/plans" aria-haspopup="true" aria-expanded={planMenuOpen}><span>계획 목록</span><ChevronDown /></Link>
           {planMenuOpen && <div className="plan-hover-menu">
-            <div className="plan-hover-heading"><span>최근 여행</span><a href="/plans">전체 보기<ArrowRight /></a></div>
-            {plans.slice(0, 4).map(plan => <a className="plan-hover-item" href={`/plan/${encodeURIComponent(plan.id)}`} key={plan.id}><span><strong>{plan.title}</strong><small>{plan.destination} · {plan.people}명</small></span><ArrowRight /></a>)}
+            <div className="plan-hover-heading"><span>최근 여행</span><Link href="/plans">전체 보기<ArrowRight /></Link></div>
+            {plans.slice(0, 4).map(plan => <Link className="plan-hover-item" href={`/plan/${encodeURIComponent(plan.id)}`} key={plan.id}><span><strong>{plan.title}</strong><small>{plan.destination} · {plan.people}명</small></span><ArrowRight /></Link>)}
             {!plans.length && <p className="plan-hover-empty">아직 저장된 계획이 없어요.</p>}
           </div>}
         </div>
-        <a className="landing-nav-link trash-nav-link" href="/trash"><Trash2 /><span>휴지통</span></a>
+        <Link className="landing-nav-link trash-nav-link" href="/trash"><Trash2 /><span>휴지통</span></Link>
         <div className="theme-menu-wrap">
           <button type="button" className="theme-button" onClick={() => setThemeOpen(value => !value)} aria-label="테마 설정" aria-haspopup="true" aria-expanded={themeOpen}><Settings2 /><span>테마</span></button>
           {themeOpen && <div className="theme-menu" role="menu"><strong>배경 테마</strong><button type="button" className={theme === 'auto' ? 'is-selected' : ''} onClick={() => chooseTheme('auto')}><span className="theme-swatch auto-swatch" />오늘의 계절<small>자동</small></button>{(['spring', 'summer', 'autumn', 'winter'] as const).map(key => <button type="button" className={theme === key ? 'is-selected' : ''} key={key} onClick={() => chooseTheme(key)}><span className={`theme-swatch ${key}-swatch`} />{seasonFor(key).label}</button>)}</div>}
@@ -101,12 +123,14 @@ export default function HomePage() {
       <p className="landing-lede">{season.message}<br /><span>오늘의 마음이 가는 곳으로.</span></p>
       <div className="departure-question"><span>어디로 떠나시나요?</span><small>여행의 첫 장면을 골라보세요</small></div>
       <div className="departure-choices">
-        <a className="departure-card domestic-card" href="/plan/new?mode=domestic"><span className="departure-icon"><Compass /></span><span className="departure-copy"><strong>국내로!</strong><small>가까운 곳부터 오늘을 채워요</small></span><ArrowRight className="departure-arrow" /><span className="sparkle-burst" aria-hidden="true">✦　✿　✧　❀　✦　❋</span></a>
+        <Link className="departure-card domestic-card" href="/plan/new?mode=domestic"><span className="departure-icon"><Compass /></span><span className="departure-copy"><strong>국내로!</strong><small>가까운 곳부터 오늘을 채워요</small></span><ArrowRight className="departure-arrow" /><span className="sparkle-burst" aria-hidden="true">✦　✿　✧　❀　✦　❋</span></Link>
         <button type="button" className="departure-card overseas-card" onClick={() => setOverseasMessage(true)}><span className="departure-icon"><Plane /></span><span className="departure-copy"><strong>해외로!</strong><small>여권 챙기면 다시 만나요</small></span><ArrowRight className="departure-arrow" /><span className="plane-trail" aria-hidden="true">·　·　·　✈</span></button>
       </div>
       {overseasMessage && <button className="overseas-toast" type="button" onClick={() => setOverseasMessage(false)}><Plane /> 해외 여행 플래너는 준비 중이에요 ㅠㅠ <span>닫기</span></button>}
-      {hasDraft && <div className="draft-pill"><span><small>이 기기에 남은 초안</small><strong>{draftTitle}</strong></span><div className="draft-pill-actions"><a className="draft-pill-action" href="/plan/new?draft=1">계속 쓰기<ArrowRight /></a><button type="button" onClick={clearDraft}>초안 삭제</button></div></div>}
+      {hasDraft && <div className="draft-pill"><span><small>이 기기에 남은 초안</small><strong>{draftTitle}</strong></span><div className="draft-pill-actions"><Link className="draft-pill-action" href="/plan/new?draft=1">계속 쓰기<ArrowRight /></Link><button type="button" onClick={clearDraft}>초안 삭제</button></div></div>}
     </section>
+    <button type="button" className={`landing-admin-button ${adminAuthenticated?'is-active':''}`} onClick={()=>adminAuthenticated?void logoutAdmin():setAdminOpen(true)} title={adminAuthenticated?'관리자 모드 종료':'관리자 로그인'} aria-label={adminAuthenticated?'관리자 모드 종료':'관리자 로그인'}>{adminAuthenticated?<LogOut/>:<LockKeyhole/>}<span>{adminAuthenticated?'관리자 모드':'관리자'}</span></button>
+    <Dialog open={adminOpen} onOpenChange={open=>{setAdminOpen(open);if(!open){setAdminPassword('');setAdminError('')}}}><DialogContent className="password-dialog sm:max-w-[420px]"><DialogHeader><DialogTitle>관리자 로그인</DialogTitle><DialogDescription>관리자 모드에서는 모든 계획을 열고 관리할 수 있어요.</DialogDescription></DialogHeader><label>관리자 비밀번호<Input type="password" value={adminPassword} onChange={event=>setAdminPassword(event.target.value)} onKeyDown={event=>{if(event.key==='Enter')void loginAdmin()}} placeholder="관리자 비밀번호"/></label>{adminError&&<div className="inline-notice">{adminError}</div>}<DialogFooter><Button variant="outline" onClick={()=>setAdminOpen(false)}>취소</Button><Button onClick={()=>void loginAdmin()} disabled={!adminPassword||adminChecking}>{adminChecking?'확인 중…':'로그인'}</Button></DialogFooter></DialogContent></Dialog>
     <footer className="landing-footer"><span>한 장씩 채워가는 우리들의 여행</span><span>TRAVEL NOTE</span></footer>
   </main>;
 }

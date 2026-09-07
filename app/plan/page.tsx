@@ -1,9 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import {
   ArrowDown, ArrowUp, CalendarDays, ChevronDown, ChevronUp, CircleAlert, Clock3,
-  Copy, Eye, EyeOff, ExternalLink, GripVertical, House, Map, MapPin, Navigation, Plus,
+  Copy, Eye, EyeOff, ExternalLink, GripVertical, House, LockKeyhole, Map, MapPin, Navigation, Plus,
   Pencil, Save, Sparkles, Trash2, Users, X,
 } from 'lucide-react';
 
@@ -33,6 +34,7 @@ type SearchPlace = { title: string; category: string; address: string; roadAddre
 type EditPolicy = 'owner' | 'all' | 'password';
 type TripSettings = { title: string; destination: string; startDate: string; endDate: string; people: number; editPolicy: EditPolicy };
 type StoredPlan = { id: string; title: string; destination: string; startDate: string; endDate: string; people: number; editPolicy?: EditPolicy; passwordProtected?: boolean; editPasswordProtected?: boolean; updatedAt?: string; version?: number; stops: Stop[] };
+type SavedDraft = { settings: TripSettings; stops: Stop[]; savedAt: string };
 
 declare global {
   interface Window { naver?: any; __naverMapsLoading?: Promise<void>; navermap_authFailure?: () => void }
@@ -326,7 +328,7 @@ function NaverMap({stops,clientId,destination,onSelect,placeResults,onPlaceSelec
       }
     });
     return()=>naver?.maps?.Event?.removeListener?.(listener);
-  },[customPinMode,status,onCustomLocationChange]);
+  },[customPinMode,status,onCustomLocationChange,onCustomAddressChange]);
   useEffect(()=>{
     const map=mapRef.current,naver=window.naver;
     if(!map||!naver?.maps||status!=='ready')return;
@@ -383,13 +385,16 @@ export default function Home(){
   const [addOpen,setAddOpen]=useState(false), [settingsOpen,setSettingsOpen]=useState(false), [clientId,setClientId]=useState('');
   const [planId,setPlanId]=useState<string|null>(null), [planUpdatedAt,setPlanUpdatedAt]=useState(''), [planVersion,setPlanVersion]=useState(1), [planLoading,setPlanLoading]=useState(true), [planSaving,setPlanSaving]=useState(false), [planSaveMessage,setPlanSaveMessage]=useState(''), [isLocalDraft,setIsLocalDraft]=useState(true), [canEdit,setCanEdit]=useState(true), [planAction,setPlanAction]=useState<'duplicate'|'delete'|null>(null), [deleteDialogOpen,setDeleteDialogOpen]=useState(false), [editPasswordWarningOpen,setEditPasswordWarningOpen]=useState(false);
   const [planPassword,setPlanPassword]=useState(''), [planPasswordAuth,setPlanPasswordAuth]=useState(''), [passwordConfigured,setPasswordConfigured]=useState(false), [planPasswordTouched,setPlanPasswordTouched]=useState(false), [showPlanPassword,setShowPlanPassword]=useState(false), [editPassword,setEditPassword]=useState(''), [editPasswordAuth,setEditPasswordAuth]=useState(''), [editPasswordConfigured,setEditPasswordConfigured]=useState(false), [editPasswordTouched,setEditPasswordTouched]=useState(false), [showEditPassword,setShowEditPassword]=useState(false), [editPasswordPromptOpen,setEditPasswordPromptOpen]=useState(false), [editPasswordPrompt,setEditPasswordPrompt]=useState(''), [editPasswordPromptError,setEditPasswordPromptError]=useState(''), [passwordPromptOpen,setPasswordPromptOpen]=useState(false), [passwordPrompt,setPasswordPrompt]=useState(''), [passwordPromptError,setPasswordPromptError]=useState(''), [protectedPlanId,setProtectedPlanId]=useState<string|null>(null), [protectedPlanTitle,setProtectedPlanTitle]=useState('');
+  const [adminMode,setAdminMode]=useState(false), [adminPromptOpen,setAdminPromptOpen]=useState(false), [adminPrompt,setAdminPrompt]=useState(''), [adminPromptError,setAdminPromptError]=useState(''), [adminChecking,setAdminChecking]=useState(false);
   const [editing,setEditing]=useState<Stop|null>(null), [editDraft,setEditDraft]=useState<Stop|null>(null), [editQuery,setEditQuery]=useState(''), [editPlaceLinked,setEditPlaceLinked]=useState(true);
   const [query,setQuery]=useState(''), [picked,setPicked]=useState<SearchPlace|null>(null);
   const [mapQuery,setMapQuery]=useState(''),[mapPicked,setMapPicked]=useState<SearchPlace|null>(null),[mapCandidate,setMapCandidate]=useState<SearchPlace|null>(null),[mapResultPlaces,setMapResultPlaces]=useState<SearchPlace[]>([]);
   const [customPinMode,setCustomPinMode]=useState(false),[customPin,setCustomPin]=useState<{lat:number;lng:number}|null>(null),[customPinOpen,setCustomPinOpen]=useState(false),[locationEditingId,setLocationEditingId]=useState<string|null>(null);
   const [customDay,setCustomDay]=useState<DayKey>(firstDefaultDay),[customName,setCustomName]=useState(''),[customAddress,setCustomAddress]=useState(''),[customMemo,setCustomMemo]=useState(''),[customTime,setCustomTime]=useState('12:00'),[customCategory,setCustomCategory]=useState<PlaceType>('관광'),[customAddressSearching,setCustomAddressSearching]=useState(false),[customAddressError,setCustomAddressError]=useState('');
   const [newTime,setNewTime]=useState('12:00'), [newCategory,setNewCategory]=useState<PlaceType>('식사'), [newMemo,setNewMemo]=useState(''), [draggedId,setDraggedId]=useState<string|null>(null), [dragOverId,setDragOverId]=useState<string|null>(null), [justMovedId,setJustMovedId]=useState<string|null>(null), [daysExpanded,setDaysExpanded]=useState(false);
+  const [canDragCards,setCanDragCards]=useState(false);
   const savedSnapshotRef=useRef('');
+  const saveInFlightRef=useRef(false);
   const savePlanRef=useRef<(silent?:boolean)=>Promise<void>>(async()=>{});
   const itineraryDays=useMemo(()=>{
     const days=tripDaysBetween(tripSettings.startDate,tripSettings.endDate);
@@ -400,11 +405,13 @@ export default function Home(){
   const dayKeys=useMemo(()=>itineraryDays.map(day=>day.key),[itineraryDays]);
   const dayDates=useMemo(()=>Object.fromEntries(itineraryDays.map(day=>[day.key,day.date])) as Record<DayKey,string>,[itineraryDays]);
   const addSuggestions=usePlaceSuggestions(query,addOpen,tripSettings.destination),editSuggestions=usePlaceSuggestions(editQuery,Boolean(editing),tripSettings.destination),mapSuggestions=usePlaceSuggestions(mapQuery,true,tripSettings.destination);
-  const applyStoredPlan=useCallback((data:StoredPlan,editToken?:string,permission?:boolean)=>{
+  useEffect(()=>{const media=window.matchMedia('(hover: hover) and (pointer: fine)');const update=()=>setCanDragCards(media.matches);update();media.addEventListener('change',update);return()=>media.removeEventListener('change',update)},[]);
+  const applyStoredPlan=useCallback((data:StoredPlan,editToken?:string,permission?:boolean,adminAuthenticated=false)=>{
     const settings={title:data.title,destination:data.destination,startDate:data.startDate,endDate:data.endDate,people:data.people,editPolicy:data.editPolicy==='all'?'all':data.editPolicy==='password'?'password':'owner' as EditPolicy};
     const normalizedStops=(data.stops||[]).map(stop=>({...stop,day:normalizeStoredDay(String(stop.day),data.startDate,data.endDate),category:normalizeCategory(String(stop.category))}));
-    setPlanId(data.id);setPlanUpdatedAt(data.updatedAt||'');setPlanVersion(Math.max(1,Number(data.version)||1));setIsLocalDraft(false);setCanEdit(permission??Boolean(editToken));setTripSettings(settings);setSettingsDraft(settings);setStops(normalizedStops);setActiveDay(dateDayKey(data.startDate)||firstDefaultDay);setCustomDay(dateDayKey(data.startDate)||firstDefaultDay);setPlanPassword('');setPlanPasswordAuth('');setPasswordConfigured(Boolean(data.passwordProtected));setPlanPasswordTouched(false);setShowPlanPassword(false);setEditPassword('');setEditPasswordAuth('');setEditPasswordConfigured(Boolean(data.editPasswordProtected));setEditPasswordTouched(false);setShowEditPassword(false);setPlanLoading(false);savedSnapshotRef.current=itinerarySnapshot(settings,normalizedStops);
+    const editable=permission??Boolean(editToken);setPlanId(data.id);setPlanUpdatedAt(data.updatedAt||'');setPlanVersion(Math.max(1,Number(data.version)||1));setIsLocalDraft(false);setCanEdit(editable);setAdminMode(adminAuthenticated);setTripSettings(settings);setSettingsDraft(settings);setStops(normalizedStops);setActiveDay(dateDayKey(data.startDate)||firstDefaultDay);setCustomDay(dateDayKey(data.startDate)||firstDefaultDay);setPlanPassword('');setPlanPasswordAuth('');setPasswordConfigured(Boolean(data.passwordProtected));setPlanPasswordTouched(false);setShowPlanPassword(false);setEditPassword('');setEditPasswordAuth('');setEditPasswordConfigured(Boolean(data.editPasswordProtected));setEditPasswordTouched(false);setShowEditPassword(false);setPlanLoading(false);savedSnapshotRef.current=itinerarySnapshot(settings,normalizedStops);
     if(editToken)localStorage.setItem(`route-note-edit-token-${data.id}`,editToken);
+    if(editable){const key=`route-note-server-draft-${data.id}`,raw=localStorage.getItem(key);if(raw){try{const draft=JSON.parse(raw) as SavedDraft;if(draft?.settings&&Array.isArray(draft.stops)&&itinerarySnapshot(draft.settings,draft.stops)!==savedSnapshotRef.current){if(window.confirm('이 기기에 저장되지 않은 변경이 남아 있어요. 이어서 편집할까요?')){setTripSettings(draft.settings);setSettingsDraft(draft.settings);setStops(draft.stops);setActiveDay(dateDayKey(draft.settings.startDate)||firstDefaultDay)}else localStorage.removeItem(key)}else localStorage.removeItem(key)}catch{localStorage.removeItem(key)}}}
   },[firstDefaultDay]);
   useEffect(()=>{
     let alive=true;
@@ -422,10 +429,10 @@ export default function Home(){
       if(routeId){
         try{
           const token=localStorage.getItem(`route-note-edit-token-${routeId}`);
-          const response=await fetch(`/api/plans/${encodeURIComponent(routeId)}`,{cache:'no-store',headers:token?{'x-plan-edit-token':token}:undefined}), body=await response.json() as {plan?:StoredPlan;canEdit?:boolean;requiresPassword?:boolean;message?:string};
+          const response=await fetch(`/api/plans/${encodeURIComponent(routeId)}`,{cache:'no-store',headers:token?{'x-plan-edit-token':token}:undefined}), body=await response.json() as {plan?:StoredPlan;canEdit?:boolean;adminAuthenticated?:boolean;requiresPassword?:boolean;message?:string};
           if(body.requiresPassword){if(alive){setProtectedPlanId(routeId);setProtectedPlanTitle(body.plan?.title||'이 여행 계획');setPasswordPromptOpen(true);setStops([]);setPlanLoading(false)}return}
           if(!response.ok||!body.plan)throw new Error(body.message||'계획을 불러오지 못했습니다.');
-          if(alive)applyStoredPlan(body.plan,undefined,body.canEdit);
+          if(alive)applyStoredPlan(body.plan,undefined,body.canEdit,body.adminAuthenticated);
         }catch{if(alive){setPlanLoading(false);setStops([])}}
       }else if(isDraft){loadLocalDraft();if(alive)setPlanLoading(false)}
       else if(alive){setStops([]);const clean={...DEFAULT_TRIP,title:'나의 여행',destination:'',people:1,editPolicy:'owner' as EditPolicy};setTripSettings(clean);setSettingsDraft(clean);setPlanPassword('');setPlanPasswordAuth('');setPasswordConfigured(false);setPlanPasswordTouched(false);setShowPlanPassword(false);setEditPassword('');setEditPasswordAuth('');setEditPasswordConfigured(false);setEditPasswordTouched(false);setShowEditPassword(false);setCanEdit(true);setPlanUpdatedAt('');setPlanVersion(1);setPlanLoading(false);savedSnapshotRef.current=itinerarySnapshot(clean,[]);if(mode==='domestic')window.setTimeout(()=>{if(alive)setSettingsOpen(true)},0)}
@@ -450,6 +457,19 @@ export default function Home(){
       localStorage.removeItem('route-note-trip-settings');
     }
   },[stops,tripSettings,planLoading,isLocalDraft]);
+  useEffect(()=>{
+    if(planLoading||isLocalDraft||!planId||protectedPlanId||!canEdit)return;
+    const key=`route-note-server-draft-${planId}`,snapshot=itinerarySnapshot(tripSettings,stops);
+    if(snapshot===savedSnapshotRef.current){localStorage.removeItem(key);return}
+    const timer=window.setTimeout(()=>localStorage.setItem(key,JSON.stringify({settings:tripSettings,stops,savedAt:new Date().toISOString()} satisfies SavedDraft)),500);
+    return()=>window.clearTimeout(timer);
+  },[stops,tripSettings,planLoading,isLocalDraft,planId,protectedPlanId,canEdit]);
+  useEffect(()=>{
+    const dirty=!planLoading&&canEdit&&itinerarySnapshot(tripSettings,stops)!==savedSnapshotRef.current;
+    if(!dirty)return;
+    const warn=(event:BeforeUnloadEvent)=>event.preventDefault();
+    window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn);
+  },[stops,tripSettings,planLoading,canEdit]);
   useEffect(()=>{
     const people=Math.max(1,tripSettings.people||1);
     setStops(current=>{
@@ -519,42 +539,48 @@ export default function Home(){
     if(!protectedPlanId||!passwordPrompt)return;
     setPasswordPromptError('');
     try{
-      const response=await fetch(`/api/plans/${encodeURIComponent(protectedPlanId)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:passwordPrompt})}),body=await response.json() as {plan?:StoredPlan;canEdit?:boolean;message?:string};
+      const response=await fetch(`/api/plans/${encodeURIComponent(protectedPlanId)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:passwordPrompt})}),body=await response.json() as {plan?:StoredPlan;canEdit?:boolean;adminAuthenticated?:boolean;message?:string};
       if(!response.ok||!body.plan)throw new Error(body.message||'비밀번호가 맞지 않습니다.');
-      applyStoredPlan(body.plan,undefined,body.canEdit);setPlanPassword(passwordPrompt);setPlanPasswordAuth(passwordPrompt);setPlanPasswordTouched(false);setPasswordPrompt('');setProtectedPlanId(null);setPasswordPromptOpen(false);
+      applyStoredPlan(body.plan,undefined,body.canEdit,body.adminAuthenticated);if(!body.adminAuthenticated){setPlanPassword(passwordPrompt);setPlanPasswordAuth(passwordPrompt);setPlanPasswordTouched(false)}setPasswordPrompt('');setProtectedPlanId(null);setPasswordPromptOpen(false);
     }catch(error){setPasswordPromptError(error instanceof Error?error.message:'비밀번호가 맞지 않습니다.')}
   };
   const unlockEditPlan=async()=>{
     if(!planId||!editPasswordPrompt)return;
     setEditPasswordPromptError('');
     try{
-      const response=await fetch(`/api/plans/${encodeURIComponent(planId)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'edit-auth',password:planPassword||undefined,editPassword:editPasswordPrompt})}),body=await response.json() as {plan?:StoredPlan;canEdit?:boolean;message?:string};
+      const response=await fetch(`/api/plans/${encodeURIComponent(planId)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'edit-auth',password:planPassword||undefined,editPassword:editPasswordPrompt})}),body=await response.json() as {plan?:StoredPlan;canEdit?:boolean;adminAuthenticated?:boolean;message?:string};
       if(!response.ok||!body.plan)throw new Error(body.message||'편집 비밀번호가 맞지 않습니다.');
-      setCanEdit(Boolean(body.canEdit));setEditPassword(editPasswordPrompt);setEditPasswordAuth(editPasswordPrompt);setEditPasswordTouched(false);setEditPasswordConfigured(true);setEditPasswordPrompt('');setEditPasswordPromptOpen(false);
+      setCanEdit(Boolean(body.canEdit));setAdminMode(Boolean(body.adminAuthenticated));if(!body.adminAuthenticated){setEditPassword(editPasswordPrompt);setEditPasswordAuth(editPasswordPrompt);setEditPasswordTouched(false);setEditPasswordConfigured(true)}setEditPasswordPrompt('');setEditPasswordPromptOpen(false);
     }catch(error){setEditPasswordPromptError(error instanceof Error?error.message:'편집 비밀번호가 맞지 않습니다.')}
   };
+  const unlockAdmin=async()=>{
+    if(!adminPrompt)return;setAdminChecking(true);setAdminPromptError('');
+    try{const response=await fetch('/api/admin/session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:adminPrompt})}),body=await response.json() as {adminAuthenticated?:boolean;message?:string};if(!response.ok||!body.adminAuthenticated)throw new Error(body.message||'관리자 비밀번호가 맞지 않습니다.');setAdminMode(true);setCanEdit(true);setAdminPrompt('');setAdminPromptOpen(false);setPlanSaveMessage('관리자 편집 권한을 열었어요.');window.setTimeout(()=>setPlanSaveMessage(current=>current==='관리자 편집 권한을 열었어요.'?'':current),3200)}catch(error){setAdminPromptError(error instanceof Error?error.message:'관리자 비밀번호가 맞지 않습니다.')}finally{setAdminChecking(false)}
+  };
+  const logoutAdmin=async()=>{await fetch('/api/admin/session',{method:'DELETE'}).catch(()=>{});window.location.reload()};
   const savePlan=async(silent=false)=>{
+    if(saveInFlightRef.current){if(!silent)setPlanSaveMessage('이미 저장 중이에요.');return}
     if(planId&&!canEdit){if(!silent)setPlanSaveMessage('보기 전용 계획이라 저장할 수 없습니다.');return}
     if(!tripSettings.destination.trim()||!tripSettings.startDate||!tripSettings.endDate){if(!silent){setPlanSaveMessage('여행지와 날짜를 먼저 입력해주세요.');setSettingsOpen(true)}return}
     if(tripSettings.editPolicy==='password'&&((!editPasswordConfigured&&!editPassword)||(editPasswordTouched&&!editPassword))){if(silent)setPlanSaveMessage('자동저장하지 못했어요. 편집 비밀번호는 빈칸으로 저장할 수 없습니다.');else{setEditPasswordWarningOpen(true);setSettingsOpen(true)}return}
     if(silent&&savedSnapshotRef.current===itinerarySnapshot(tripSettings,stops,planPassword,planPasswordTouched,editPassword,editPasswordTouched))return;
-    if(!silent){setPlanSaving(true);setPlanSaveMessage('')}
+    saveInFlightRef.current=true;if(!silent){setPlanSaving(true);setPlanSaveMessage('')}
     const payload={title:tripSettings.title,destination:tripSettings.destination,startDate:tripSettings.startDate,endDate:tripSettings.endDate,people:tripSettings.people,editPolicy:tripSettings.editPolicy,stops};
     try{
       const existing=Boolean(planId),token=planId?localStorage.getItem(`route-note-edit-token-${planId}`):null;
       const viewPasswordPayload=!existing?{password:planPassword}:planPasswordTouched?{password:planPassword,...(planPasswordAuth?{passwordAuth:planPasswordAuth}:{})}:(tripSettings.editPolicy==='all'&&passwordConfigured&&planPassword)?{password:planPassword,passwordAuth:planPasswordAuth||planPassword}:{};
       const editPasswordPayload={...(existing&&editPasswordAuth?{editPasswordAuth}:{}),...((!existing||editPasswordTouched||(tripSettings.editPolicy!=='password'&&editPasswordConfigured))?{editPassword:tripSettings.editPolicy==='password'?editPassword:''}:{})};
-      const response=await fetch(existing?`/api/plans/${encodeURIComponent(planId as string)}`:'/api/plans',{method:existing?'PUT':'POST',headers:{'Content-Type':'application/json',...(token?{'x-plan-edit-token':token}:{})},body:JSON.stringify({...payload,...(existing?{baseVersion:planVersion}:{}),...viewPasswordPayload,...editPasswordPayload})}),body=await response.json() as {id?:string;editToken?:string;conflict?:boolean;message?:string;plan?:StoredPlan};
+      const response=await fetch(existing?`/api/plans/${encodeURIComponent(planId as string)}`:'/api/plans',{method:existing?'PUT':'POST',headers:{'Content-Type':'application/json',...(token?{'x-plan-edit-token':token}:{})},body:JSON.stringify({...payload,...(existing?{baseVersion:planVersion}:{}),...viewPasswordPayload,...editPasswordPayload})}),body=await response.json() as {id?:string;editToken?:string;conflict?:boolean;adminAuthenticated?:boolean;message?:string;plan?:StoredPlan};
       if(!response.ok)throw new Error(body.message||'계획을 저장하지 못했습니다.');
       if(body.id&&body.editToken&&(!existing||body.conflict)){setPlanId(body.id);setCanEdit(true);localStorage.setItem(`route-note-edit-token-${body.id}`,body.editToken);window.history.replaceState({},'',`/plan/${encodeURIComponent(body.id)}`)}
       if(body.plan){const savedSettings=body.conflict?{...tripSettings,title:body.plan.title}:tripSettings;setTripSettings(savedSettings);setSettingsDraft(savedSettings);setPlanUpdatedAt(body.plan.updatedAt||planUpdatedAt);setPlanVersion(Math.max(1,Number(body.plan.version)||planVersion));setPasswordConfigured(Boolean(body.plan.passwordProtected));setEditPasswordConfigured(Boolean(body.plan.editPasswordProtected));if(planPasswordTouched)setPlanPasswordAuth(planPassword);if(tripSettings.editPolicy==='password'&&editPassword){setEditPasswordAuth(editPassword)}else if(tripSettings.editPolicy!=='password'){setEditPasswordAuth('')}savedSnapshotRef.current=itinerarySnapshot(savedSettings,body.plan.stops||stops)}
-      setIsLocalDraft(false);localStorage.removeItem('route-note-stops');localStorage.removeItem('route-note-trip-settings');
+      setAdminMode(current=>body.adminAuthenticated??current);setIsLocalDraft(false);localStorage.removeItem('route-note-stops');localStorage.removeItem('route-note-trip-settings');if(planId)localStorage.removeItem(`route-note-server-draft-${planId}`);if(body.id)localStorage.removeItem(`route-note-server-draft-${body.id}`);
       setPlanPasswordTouched(false);setEditPasswordTouched(false);
       if(!silent||body.conflict){const message=body.conflict?'동시 편집 내용은 별도 계획으로 저장했어요.':'저장됨';setPlanSaveMessage(message);window.setTimeout(()=>setPlanSaveMessage(current=>current===message?'':current),3200)}
     }catch(error){setPlanSaveMessage(silent?'자동저장하지 못했어요. 다시 시도해주세요.':error instanceof Error?error.message:'계획을 저장하지 못했습니다.')}
-    finally{setPlanSaving(false)}
+    finally{saveInFlightRef.current=false;setPlanSaving(false)}
   };
-  savePlanRef.current=savePlan;
+  useEffect(()=>{savePlanRef.current=savePlan});
 
   const duplicatePlan=async()=>{
     if(!planId||planAction)return;
@@ -594,16 +620,17 @@ export default function Home(){
 
   return <main className="app-shell">
     <header className="topbar">
-      <a className="brand" href="/"><span className="brand-mark"><Navigation/></span><span>여행을 떠나요</span></a>
+      <Link className="brand" href="/"><span className="brand-mark"><Navigation/></span><span>여행을 떠나요</span></Link>
       <div className="trip-title"><strong>{tripSettings.title}</strong><span>{formatTripDate(tripSettings.startDate)} — {formatTripDate(tripSettings.endDate)} · {tripSettings.people}명</span></div>
       <div className="top-actions">
         <div className="trip-cost-total" aria-label="전체 예상 경비"><span>전체 예상 경비</span><strong>{formatWon(tripCostSummary.personal)} <small>개인별</small> · {formatWon(tripCostSummary.total)} <small>총 비용</small></strong></div>
+        {adminMode&&<Button variant="outline" className="admin-mode-button" onClick={()=>void logoutAdmin()} title="관리자 세션 종료"><LockKeyhole/><span>관리자</span></Button>}
         {planId&&<>
           <Button variant="outline" className="plan-copy-button" aria-label="계획 복제" onClick={()=>void duplicatePlan()} disabled={Boolean(planAction)||planLoading}><Copy/><span>{planAction==='duplicate'?'복제 중…':'계획 복제'}</span></Button>
           <Button variant="outline" className="plan-delete-button" aria-label="계획 삭제" onClick={()=>setDeleteDialogOpen(true)} disabled={Boolean(planAction)||planLoading||!canEdit}><Trash2/><span>계획 삭제</span></Button>
         </>}
         <Button variant="outline" className={`plan-save-button ${planSaveMessage==='저장됨'?'is-saved':''}`} aria-label="계획 저장" onClick={()=>void savePlan()} disabled={planSaving||planLoading||Boolean(planId&&!canEdit)}><Save/><span>{planSaving?'저장 중…':'계획 저장'}</span></Button>
-        {planSaveMessage&&<span className={`save-feedback ${planSaveMessage==='저장됨'||planSaveMessage==='복제본이 저장목록에 추가됐어요.'?'is-success':'is-error'}`} role="status" aria-live="polite">{planSaveMessage}</span>}
+        {planSaveMessage&&<output className={`save-feedback ${planSaveMessage==='저장됨'||planSaveMessage==='복제본이 저장목록에 추가됐어요.'?'is-success':'is-error'}`} aria-live="polite">{planSaveMessage}</output>}
         <Button variant="outline" className="settings-button" aria-label="여행 일정" onClick={()=>{setSettingsDraft(tripSettings);setSettingsOpen(true)}}><CalendarDays/><span>여행 일정</span></Button>
       </div>
     </header>
@@ -622,7 +649,8 @@ export default function Home(){
       </AlertDialogContent>
     </AlertDialog>
 
-    <Dialog open={passwordPromptOpen} onOpenChange={open=>{if(!open){setPasswordPromptOpen(false);setPasswordPromptError('')}}}><DialogContent className="password-dialog sm:max-w-[420px]"><DialogHeader><DialogTitle>비밀번호가 있는 계획이에요</DialogTitle><DialogDescription>{protectedPlanTitle}을(를) 열려면 비밀번호를 입력하세요.</DialogDescription></DialogHeader><label>비밀번호<Input type="password" autoFocus value={passwordPrompt} onChange={e=>setPasswordPrompt(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')void unlockPlan()}} placeholder="계획 비밀번호"/></label>{passwordPromptError&&<div className="inline-notice"><CircleAlert/>{passwordPromptError}</div>}<DialogFooter><Button variant="outline" onClick={()=>setPasswordPromptOpen(false)}>취소</Button><Button onClick={unlockPlan} disabled={!passwordPrompt}>계획 열기</Button></DialogFooter></DialogContent></Dialog>
+    <Dialog open={passwordPromptOpen} onOpenChange={open=>{if(!open){setPasswordPromptOpen(false);setPasswordPromptError('')}}}><DialogContent className="password-dialog sm:max-w-[420px]"><DialogHeader><DialogTitle>비밀번호가 있는 계획이에요</DialogTitle><DialogDescription>{protectedPlanTitle}을(를) 열려면 비밀번호를 입력하세요.</DialogDescription></DialogHeader><label>비밀번호<Input type="password" value={passwordPrompt} onChange={e=>setPasswordPrompt(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')void unlockPlan()}} placeholder="계획 비밀번호"/></label>{passwordPromptError&&<div className="inline-notice"><CircleAlert/>{passwordPromptError}</div>}<DialogFooter><Button variant="outline" onClick={()=>setPasswordPromptOpen(false)}>취소</Button><Button onClick={unlockPlan} disabled={!passwordPrompt}>계획 열기</Button></DialogFooter></DialogContent></Dialog>
+    <Dialog open={adminPromptOpen} onOpenChange={open=>{setAdminPromptOpen(open);if(!open){setAdminPrompt('');setAdminPromptError('')}}}><DialogContent className="password-dialog sm:max-w-[420px]"><DialogHeader><DialogTitle>관리자 권한 열기</DialogTitle><DialogDescription>관리자 비밀번호는 계획의 열람 비밀번호나 편집 비밀번호로 저장되지 않아요.</DialogDescription></DialogHeader><label>관리자 비밀번호<Input type="password" value={adminPrompt} onChange={event=>setAdminPrompt(event.target.value)} onKeyDown={event=>{if(event.key==='Enter')void unlockAdmin()}} placeholder="관리자 비밀번호"/></label>{adminPromptError&&<div className="inline-notice"><CircleAlert/>{adminPromptError}</div>}<DialogFooter><Button variant="outline" onClick={()=>setAdminPromptOpen(false)}>취소</Button><Button onClick={()=>void unlockAdmin()} disabled={!adminPrompt||adminChecking}>{adminChecking?'확인 중…':'관리자 로그인'}</Button></DialogFooter></DialogContent></Dialog>
 
     <Dialog open={addOpen} onOpenChange={open=>{setAddOpen(open);if(!open){setQuery('');setPicked(null)}}}>
       <DialogContent className="add-dialog sm:max-w-[540px]">
@@ -659,7 +687,7 @@ export default function Home(){
 
     <section className={`workspace ${mapFocused?'map-focused':''}`}>
       <aside className="planner-panel">
-        {planId&&!canEdit&&<div className="inline-notice plan-readonly-notice"><CircleAlert/><span>{tripSettings.editPolicy==='password'?'편집 비밀번호를 입력하면 일정을 수정할 수 있어요.':tripSettings.editPolicy==='all'?'열람 비밀번호로 계획을 열면 수정할 수 있어요.':'작성자의 편집 토큰이 있어야 일정을 바꿀 수 있어요.'}</span>{tripSettings.editPolicy==='password'&&<Button variant="outline" onClick={()=>setEditPasswordPromptOpen(true)}>편집 비밀번호 입력</Button>}</div>}
+        {planId&&!canEdit&&<div className="inline-notice plan-readonly-notice"><CircleAlert/><span>{tripSettings.editPolicy==='password'?'편집 비밀번호를 입력하면 일정을 수정할 수 있어요.':tripSettings.editPolicy==='all'?'열람 비밀번호로 계획을 열면 수정할 수 있어요.':'작성자의 편집 토큰이 있어야 일정을 바꿀 수 있어요.'}</span>{tripSettings.editPolicy==='password'&&<Button variant="outline" onClick={()=>setEditPasswordPromptOpen(true)}>편집 비밀번호 입력</Button>}<Button variant="outline" onClick={()=>setAdminPromptOpen(true)}>관리자 로그인</Button></div>}
         <div className="day-switch-wrap"><div className={`day-switch ${dayKeys.length>6&&!daysExpanded?'is-collapsed':''}`} role="tablist" aria-label="여행 날짜">{visibleDayKeys.map(day=>{const index=dayKeys.indexOf(day);return <button key={day} role="tab" aria-selected={activeDay===day} onClick={()=>setActiveDay(day)}><span style={{color:dayColor(day,dayKeys)}}>DAY {index+1}</span><strong>{formatTripDate(dayDates[day],true)}</strong></button>})}</div>{dayKeys.length>6&&<button type="button" className="day-rollup-toggle" onClick={()=>setDaysExpanded(current=>!current)} aria-expanded={daysExpanded}>{daysExpanded?<><ChevronUp/> 일정 접기</>:<><ChevronDown/> 전체 {dayKeys.length}일 보기</>}</button>}</div>
         <div className="panel-heading"><div><span><CalendarDays/>방문 순서</span><strong>{dayStops.length}개 장소</strong></div></div>
         <div className="stop-list">
@@ -667,7 +695,7 @@ export default function Home(){
             const previous=dayStops[index-1],gap=previous?distanceKm(previous,stop):null,reverse=previous&&timeMinutes(stop.time)<timeMinutes(previous.time);
             return <div key={stop.id}>
               {gap!==null&&<div className="distance-chip"><span/>직선 {gap<1?`${Math.round(gap*1000)}m`:`${gap.toFixed(1)}km`}</div>}
-              <article className={`stop-card ${draggedId===stop.id?'is-dragging':''} ${dragOverId===stop.id&&draggedId!==stop.id?'is-drag-over':''} ${justMovedId===stop.id?'just-moved':''}`} draggable onDragStart={()=>setDraggedId(stop.id)} onDragOver={e=>{e.preventDefault();if(draggedId!==stop.id)setDragOverId(stop.id)}} onDragLeave={()=>setDragOverId(current=>current===stop.id?null:current)} onDrop={()=>reorderByDrop(stop.id)} onDragEnd={()=>{setDraggedId(null);setDragOverId(null)}} onClick={()=>setSelected(stop)}>
+              <article className={`stop-card ${draggedId===stop.id?'is-dragging':''} ${dragOverId===stop.id&&draggedId!==stop.id?'is-drag-over':''} ${justMovedId===stop.id?'just-moved':''}`} draggable={canDragCards} onContextMenu={event=>{if(!canDragCards)event.preventDefault()}} onDragStart={()=>{if(canDragCards)setDraggedId(stop.id)}} onDragOver={event=>{if(!canDragCards)return;event.preventDefault();if(draggedId!==stop.id)setDragOverId(stop.id)}} onDragLeave={()=>setDragOverId(current=>current===stop.id?null:current)} onDrop={()=>{if(canDragCards)reorderByDrop(stop.id)}} onDragEnd={()=>{setDraggedId(null);setDragOverId(null)}} onClick={()=>setSelected(stop)}>
                 <div className="drag-handle" aria-hidden="true"><GripVertical/></div>
                 <div className="order-pin" style={{background:dayColor(activeDay,dayKeys)}}>{index+1}</div>
                 <div className="stop-main">
@@ -699,7 +727,7 @@ export default function Home(){
 
     <Dialog open={Boolean(editing)} onOpenChange={open=>{if(!open){setEditing(null);setEditDraft(null)}}}><DialogContent className="edit-dialog sm:max-w-[500px]">{editDraft&&<><DialogHeader><DialogTitle>장소 수정</DialogTitle><DialogDescription>장소를 바꾸려면 검색 결과에서 선택하세요.</DialogDescription></DialogHeader><div className="edit-grid"><label>장소 <PlacePicker query={editQuery} onQueryChange={(value,userInput)=>{setEditQuery(value);if(userInput)setEditPlaceLinked(false)}} results={editSuggestions.results} value={null} onPick={place=>{if(!place)return;const name=cleanTitle(place.title);setEditQuery(name);setEditPlaceLinked(true);setEditDraft({...editDraft,name,address:place.roadAddress||place.address,lat:Number(place.mapy)/1e7,lng:Number(place.mapx)/1e7})}} searching={editSuggestions.searching} placeholder="장소 검색" selected={editPlaceLinked}/></label>{editSuggestions.error&&editQuery.trim().length>=2&&!editPlaceLinked&&<div className="inline-notice"><CircleAlert/>{editSuggestions.error}</div>}<div className={`linked-place ${editPlaceLinked?'':'unlinked'}`}><MapPin/><span><strong>{editDraft.name}</strong><small>{editDraft.address}</small></span><em>{editPlaceLinked?'선택됨':'장소를 골라주세요'}</em></div><div className="form-grid two"><label>시간(24시간)<Time24Input value={editDraft.time} onChange={time=>setEditDraft({...editDraft,time})}/></label><label>카테고리<select value={editDraft.category} onChange={e=>setEditDraft({...editDraft,category:e.target.value as PlaceType})}>{PLACE_CATEGORIES.map(t=><option key={t}>{t}</option>)}</select></label></div><label>메모<Textarea value={editDraft.memo} onChange={e=>setEditDraft({...editDraft,memo:e.target.value})} placeholder="메모를 남겨보세요"/></label></div><DialogFooter><Button variant="outline" onClick={()=>{setEditing(null);setEditDraft(null)}}>취소</Button><Button onClick={saveEdit} disabled={!editPlaceLinked||!isValidTime(editDraft.time)}>저장</Button></DialogFooter></>}</DialogContent></Dialog>
 
-    <Dialog open={editPasswordPromptOpen} onOpenChange={open=>{if(!open){setEditPasswordPromptOpen(false);setEditPasswordPromptError('')}}}><DialogContent className="password-dialog sm:max-w-[420px]"><DialogHeader><DialogTitle>편집 비밀번호가 필요해요</DialogTitle><DialogDescription>이 계획을 수정하려면 편집 비밀번호를 입력하세요.</DialogDescription></DialogHeader><label>편집 비밀번호<Input type="password" autoFocus value={editPasswordPrompt} onChange={e=>setEditPasswordPrompt(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')void unlockEditPlan()}} placeholder="편집 비밀번호"/></label>{editPasswordPromptError&&<div className="inline-notice"><CircleAlert/>{editPasswordPromptError}</div>}<DialogFooter><Button variant="outline" onClick={()=>setEditPasswordPromptOpen(false)}>취소</Button><Button onClick={unlockEditPlan} disabled={!editPasswordPrompt}>편집 권한 확인</Button></DialogFooter></DialogContent></Dialog>
+    <Dialog open={editPasswordPromptOpen} onOpenChange={open=>{if(!open){setEditPasswordPromptOpen(false);setEditPasswordPromptError('')}}}><DialogContent className="password-dialog sm:max-w-[420px]"><DialogHeader><DialogTitle>편집 비밀번호가 필요해요</DialogTitle><DialogDescription>이 계획을 수정하려면 편집 비밀번호를 입력하세요.</DialogDescription></DialogHeader><label>편집 비밀번호<Input type="password" value={editPasswordPrompt} onChange={e=>setEditPasswordPrompt(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')void unlockEditPlan()}} placeholder="편집 비밀번호"/></label>{editPasswordPromptError&&<div className="inline-notice"><CircleAlert/>{editPasswordPromptError}</div>}<DialogFooter><Button variant="outline" onClick={()=>setEditPasswordPromptOpen(false)}>취소</Button><Button onClick={unlockEditPlan} disabled={!editPasswordPrompt}>편집 권한 확인</Button></DialogFooter></DialogContent></Dialog>
 
     <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}><DialogContent className="settings-dialog sm:max-w-[500px]"><DialogHeader><DialogTitle>여행 일정</DialogTitle><DialogDescription>어디로, 언제 떠날지 정하세요.</DialogDescription></DialogHeader><div className="trip-settings-grid"><label>여행 이름<Input value={settingsDraft.title} onChange={e=>setSettingsDraft({...settingsDraft,title:e.target.value})} placeholder="전주 맛집 여행"/></label><label>여행지<Input value={settingsDraft.destination} onChange={e=>setSettingsDraft({...settingsDraft,destination:e.target.value})} placeholder="전주"/></label><div className="date-fields"><label>출발일<Input type="date" value={settingsDraft.startDate} onChange={e=>setSettingsDraft({...settingsDraft,startDate:e.target.value})}/></label><label>돌아오는 날<Input type="date" min={settingsDraft.startDate} value={settingsDraft.endDate} onChange={e=>setSettingsDraft({...settingsDraft,endDate:e.target.value})}/></label></div><label>인원<div className="people-input"><Users/><Input type="number" min="1" max="99" value={settingsDraft.people} onChange={e=>setSettingsDraft({...settingsDraft,people:Number(e.target.value)})}/><span>명</span></div></label><label>편집 권한<select value={settingsDraft.editPolicy} onChange={e=>setSettingsDraft({...settingsDraft,editPolicy:e.target.value as EditPolicy})}><option value="owner">작성자만</option><option value="all">모두가</option><option value="password">편집 비밀번호 설정</option></select></label>{settingsDraft.editPolicy==='password'&&<label>편집 비밀번호 <div className="password-field"><Input type={showEditPassword?'text':'password'} value={editPassword} onChange={e=>{setEditPassword(e.target.value);setEditPasswordTouched(true)}} placeholder={editPasswordConfigured&&!editPasswordTouched?'****':'편집 비밀번호 입력'} aria-label="편집 비밀번호"/><button type="button" className="password-eye" onClick={()=>{if(!editPassword){setPlanSaveMessage(editPasswordConfigured?'현재 편집 비밀번호는 보안상 확인할 수 없어요. 새 비밀번호를 입력하세요.':'편집 비밀번호를 먼저 입력하세요.');return}setShowEditPassword(current=>!current)}} aria-label={showEditPassword?'편집 비밀번호 숨기기':'입력한 편집 비밀번호 보기'} title={editPassword?'입력한 편집 비밀번호 보기':'기존 편집 비밀번호는 확인할 수 없어요'}>{showEditPassword?<EyeOff/>:<Eye/>}</button></div></label>}<label>열람 비밀번호 <div className="password-field"><Input type={showPlanPassword?'text':'password'} value={planPassword} onChange={e=>{setPlanPassword(e.target.value);setPlanPasswordTouched(true)}} placeholder={passwordConfigured&&!planPasswordTouched?'****':'선택 입력'} aria-label="열람 비밀번호"/><button type="button" className="password-eye" onClick={()=>{if(!planPassword){setPlanSaveMessage(passwordConfigured?'현재 비밀번호는 보안상 확인할 수 없어요. 새 비밀번호를 입력하세요.':'비밀번호를 먼저 입력하세요.');return}setShowPlanPassword(current=>!current)}} aria-label={showPlanPassword?'열람 비밀번호 숨기기':'입력한 열람 비밀번호 보기'} title={planPassword?'입력한 열람 비밀번호 보기':'기존 비밀번호는 확인할 수 없어요'}>{showPlanPassword?<EyeOff/>:<Eye/>}</button></div></label></div><p className="settings-hint edit-policy-hint">{settingsDraft.editPolicy==='all'?'열람할 수 있는 사람은 일정도 수정하거나 삭제할 수 있어요.':settingsDraft.editPolicy==='password'?'편집 비밀번호를 아는 사람만 일정도 수정하거나 삭제할 수 있어요.':'작성자 토큰이 있어야 수정하거나 삭제할 수 있어요. 열람 비밀번호는 보기 전용이에요.'}</p><p className="settings-hint password-status">편집 권한이 있으면 열람 비밀번호와 편집 비밀번호를 변경할 수 있어요.</p>{settingsDraft.editPolicy==='password'&&<p className="settings-hint password-status edit-password-status">{editPasswordTouched?(editPassword?'새 편집 비밀번호 입력됨 · 상단 계획 저장 후 적용돼요.':editPasswordConfigured?'편집 비밀번호를 유지하려면 새 값을 입력하세요.':'편집 비밀번호는 필수예요.'):(editPasswordConfigured?'편집 비밀번호 설정됨 · 기존 비밀번호는 확인할 수 없어요.':'편집 비밀번호 없음 · 입력이 필요해요.')}</p>}<p className="settings-hint password-status">{planPasswordTouched?(planPassword?'새 열람 비밀번호 입력됨 · 상단 계획 저장 후 적용돼요.':passwordConfigured?'저장하면 열람 비밀번호를 해제해요.':'열람 비밀번호 없이 저장돼요.'):(passwordConfigured?'열람 비밀번호 설정됨 · 기존 비밀번호는 확인할 수 없어요.':'열람 비밀번호 없음 · 선택 입력')}</p>{settingsDraft.editPolicy==='owner'&&!passwordConfigured&&!planPassword&&<div className="inline-notice owner-recovery-notice"><CircleAlert/>열람 비밀번호 없이 작성자만을 선택하면 이 브라우저의 저장정보를 지울 때 편집 권한을 잃을 수 있어요. 편집 비밀번호 설정을 사용하면 별도 비밀번호로 복구할 수 있어요.</div>}{!canEdit&&planId&&<div className="inline-notice plan-settings-readonly"><CircleAlert/><span>{settingsDraft.editPolicy==='password'?'편집 비밀번호를 입력하면 일정을 수정할 수 있어요.':settingsDraft.editPolicy==='all'?'열람 비밀번호로 계획을 열면 수정할 수 있어요.':'이 계획은 보기 전용으로 열려 있어 설정을 저장할 수 없어요.'}</span>{settingsDraft.editPolicy==='password'&&<Button variant="outline" onClick={()=>setEditPasswordPromptOpen(true)}>편집 비밀번호 입력</Button>}</div>}{passwordConfigured&&!planPasswordTouched&&<button type="button" className="password-clear" onClick={()=>{setPlanPassword('');setPlanPasswordTouched(true);setShowPlanPassword(false)}}>열람 비밀번호 해제</button>}{!settingsDraft.destination.trim()&&<div className="inline-notice"><CircleAlert/>여행지를 입력하면 계획을 저장할 수 있어요.</div>}{planSaveMessage&&planSaveMessage!=='저장됨'&&<div className="inline-notice"><CircleAlert/>{planSaveMessage}</div>}{settingsDraft.startDate>settingsDraft.endDate&&<div className="inline-notice"><CircleAlert/>날짜를 다시 확인해주세요.</div>}<DialogFooter><Button variant="outline" onClick={()=>setSettingsOpen(false)}>취소</Button><Button onClick={saveTripSettings} disabled={!settingsDraft.startDate||!settingsDraft.endDate||settingsDraft.startDate>settingsDraft.endDate||Boolean(planId&&!canEdit)}>저장</Button></DialogFooter></DialogContent></Dialog>  </main>
 }

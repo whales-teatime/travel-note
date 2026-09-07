@@ -1,7 +1,7 @@
-import { bodyTooLarge, checkRateLimit, getDb, passwordHash, publicPlan, purgeExpiredPlans, randomHex, rateLimitResponse, sanitizePlan, sha256 } from '@/lib/plan-store';
+import { checkRateLimit, getDb, passwordHash, publicPlan, purgeExpiredPlans, randomHex, rateLimitResponse, readJsonObject, sanitizePlan, sha256 } from '@/lib/plan-store';
 
 export async function GET(request: Request) {
-  const quota = checkRateLimit(request, 'plans-read', 120);
+  const quota = await checkRateLimit(request, 'plans-read', 120);
   if (!quota.allowed) return rateLimitResponse(quota.retryAfter);
   const db = getDb();
   if (!db) return Response.json({ message: '계획 저장소가 아직 연결되지 않았습니다.' }, { status: 503 });
@@ -9,22 +9,26 @@ export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
   const search = params.get('search')?.trim() || '';
   const trash = params.get('trash') === '1';
+  const limit = Math.min(50, Math.max(1, Number.parseInt(params.get('limit') || '30', 10) || 30));
+  const offset = Math.min(10_000, Math.max(0, Number.parseInt(params.get('offset') || '0', 10) || 0));
+  if (new TextEncoder().encode(search).byteLength > 40) return Response.json({ message: '검색어는 40바이트 이하로 입력해주세요.' }, { status: 400 });
   const pattern = `%${search.replace(/[%_]/g, char => `\\${char}`)}%`;
   const deletedClause = trash ? 'deleted_at IS NOT NULL' : 'deleted_at IS NULL';
   const result = search
-    ? await db.prepare(`SELECT id,title,destination,start_date,end_date,people,edit_policy,(password_hash IS NOT NULL) AS password_protected,(edit_password_hash IS NOT NULL) AS edit_password_protected,created_at,updated_at,deleted_at,version FROM plans WHERE ${deletedClause} AND (title LIKE ? ESCAPE '\\' OR destination LIKE ? ESCAPE '\\') ORDER BY updated_at DESC LIMIT 100`).bind(pattern, pattern).all()
-    : await db.prepare(`SELECT id,title,destination,start_date,end_date,people,edit_policy,(password_hash IS NOT NULL) AS password_protected,(edit_password_hash IS NOT NULL) AS edit_password_protected,created_at,updated_at,deleted_at,version FROM plans WHERE ${deletedClause} ORDER BY updated_at DESC LIMIT 100`).all();
-  return Response.json({ items: (result.results || []).map(row => publicPlan(row as Record<string, unknown>)) });
+    ? await db.prepare(`SELECT id,title,destination,start_date,end_date,people,edit_policy,(password_hash IS NOT NULL) AS password_protected,(edit_password_hash IS NOT NULL) AS edit_password_protected,created_at,updated_at,deleted_at,version FROM plans WHERE ${deletedClause} AND (title LIKE ? ESCAPE '\\' OR destination LIKE ? ESCAPE '\\') ORDER BY updated_at DESC,id DESC LIMIT ? OFFSET ?`).bind(pattern, pattern, limit + 1, offset).all()
+    : await db.prepare(`SELECT id,title,destination,start_date,end_date,people,edit_policy,(password_hash IS NOT NULL) AS password_protected,(edit_password_hash IS NOT NULL) AS edit_password_protected,created_at,updated_at,deleted_at,version FROM plans WHERE ${deletedClause} ORDER BY updated_at DESC,id DESC LIMIT ? OFFSET ?`).bind(limit + 1, offset).all();
+  const rows = result.results || [], hasMore = rows.length > limit;
+  return Response.json({ items: rows.slice(0, limit).map(row => publicPlan(row as Record<string, unknown>)), nextOffset: hasMore ? offset + limit : null });
 }
 
 export async function POST(request: Request) {
-  const quota = checkRateLimit(request, 'plans-create', 20);
+  const quota = await checkRateLimit(request, 'plans-create', 20);
   if (!quota.allowed) return rateLimitResponse(quota.retryAfter);
-  if (bodyTooLarge(request)) return Response.json({ message: '계획 데이터가 너무 큽니다.' }, { status: 413 });
   const db = getDb();
   if (!db) return Response.json({ message: '계획 저장소가 아직 연결되지 않았습니다.' }, { status: 503 });
-  let body: Record<string, unknown>;
-  try { body = await request.json() as Record<string, unknown>; } catch { return Response.json({ message: '잘못된 요청입니다.' }, { status: 400 }); }
+  const parsed = await readJsonObject(request);
+  if (!parsed.body) return Response.json({ message: parsed.message }, { status: parsed.status });
+  const body = parsed.body;
   const plan = sanitizePlan(body);
   if (!plan) return Response.json({ message: '여행 이름, 여행지, 날짜를 입력해주세요.' }, { status: 400 });
   const password = typeof body.password === 'string' ? body.password.trim().slice(0, 100) : '';

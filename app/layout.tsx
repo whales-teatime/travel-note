@@ -7,5 +7,5 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="ko"><head><meta name="naver-map-client-id" content={process.env.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID ?? ''} /></head><body>{children}</body></html>;
+  return <html lang="ko"><head><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" /><meta name="naver-map-client-id" content={process.env.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID ?? ''} /></head><body>{children}</body></html>;
 }

@@ -22,7 +22,7 @@ function searchQueries(query: string, near: string) {
 }
 
 export async function GET(request: Request) {
-  const quota = checkRateLimit(request, 'place-search', 60);
+  const quota = await checkRateLimit(request, 'place-search', 60);
   if (!quota.allowed) return rateLimitResponse(quota.retryAfter);
   const url = new URL(request.url);
   const query = url.searchParams.get('q')?.trim();

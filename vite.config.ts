@@ -2,7 +2,7 @@ import { sites } from '@openai/sites-vite-plugin';
 import tailwindcss from '@tailwindcss/postcss';
 import vinext from 'vinext';
 import { defineConfig } from 'vite';
-import hostingConfig from './.openai/hosting.json';
+import hostingConfig from './.openai/hosting.json' with { type: 'json' };
 
 const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
   '00000000-0000-4000-8000-000000000000';
@@ -28,6 +28,13 @@ const independentBindingConfig = {
     database_id: process.env.CLOUDFLARE_D1_DATABASE_ID || SITE_CREATOR_PLACEHOLDER_DATABASE_ID,
     migrations_dir: 'drizzle',
   }],
+  ratelimits: [
+    { name: 'PLAN_READ_RATE_LIMITER', namespace_id: '420101', simple: { limit: 120, period: 60 as const } },
+    { name: 'PLAN_WRITE_RATE_LIMITER', namespace_id: '420102', simple: { limit: 30, period: 60 as const } },
+    { name: 'PLAN_CREATE_RATE_LIMITER', namespace_id: '420103', simple: { limit: 20, period: 60 as const } },
+    { name: 'SEARCH_RATE_LIMITER', namespace_id: '420104', simple: { limit: 60, period: 60 as const } },
+    { name: 'ADMIN_RATE_LIMITER', namespace_id: '420105', simple: { limit: 5, period: 60 as const } },
+  ],
   // Run the seven-day trash cleanup once a day at 03:00 KST (18:00 UTC).
   triggers: { crons: ['0 18 * * *'] },
 };
