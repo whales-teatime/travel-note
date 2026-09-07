@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowRight, CalendarDays, ExternalLink, LockKeyhole, MapPin, Search, Trash2 } from 'lucide-react';
+import { ArrowRight, CalendarDays, ExternalLink, LockKeyhole, MapPin, Search, Star, Trash2 } from 'lucide-react';
+import { readFavoritePlans, readRecentPlans, rememberPlanVisit, togglePlanFavorite, type LocalPlanSummary } from '@/lib/client-plan-history';
 
 export type PlanSummary = {
   id: string;
@@ -50,6 +51,8 @@ export function PlanLibrary({ compact = false, trash = false }: { compact?: bool
   const [adminAuthenticated, setAdminAuthenticated] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [adminBusy, setAdminBusy] = useState(false);
+  const [recentPlans, setRecentPlans] = useState<LocalPlanSummary[]>([]);
+  const [favoritePlans, setFavoritePlans] = useState<LocalPlanSummary[]>([]);
 
   const loadPlans = useCallback(async (value: string, append = false, offset = 0) => {
     if (append) setLoadingMore(true); else setLoading(true); setError('');
@@ -119,8 +122,11 @@ export function PlanLibrary({ compact = false, trash = false }: { compact?: bool
   };
 
   const toggleSelection = (id: string) => setSelectedIds(current => { const next=new Set(current);if(next.has(id))next.delete(id);else next.add(id);return next; });
+  const rememberVisit = (plan: LocalPlanSummary) => rememberPlanVisit(plan);
+  const toggleFavorite = (plan: LocalPlanSummary) => { togglePlanFavorite(plan); setFavoritePlans(readFavoritePlans()); };
 
   useEffect(() => { void loadPlans(''); }, [loadPlans]);
+  useEffect(() => { setRecentPlans(readRecentPlans()); setFavoritePlans(readFavoritePlans()); }, []);
   useEffect(() => { void fetch('/api/admin/session', {cache:'no-store'}).then(response=>response.json() as Promise<{adminAuthenticated?:boolean}>).then(body=>setAdminAuthenticated(Boolean(body.adminAuthenticated))).catch(()=>{}); }, []);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -133,7 +139,7 @@ export function PlanLibrary({ compact = false, trash = false }: { compact?: bool
   }, [search, loadPlans, compact]);
 
   if (compact) return <div className="compact-plan-list">
-    {plans.slice(0, 4).map(plan => <Link className="compact-plan-item" href={`/plan/${encodeURIComponent(plan.id)}`} key={plan.id}><span><strong>{plan.title}</strong><small>{plan.destination} · {formatDate(plan.startDate)}</small></span><ArrowRight /></Link>)}
+    {plans.slice(0, 4).map(plan => <Link className="compact-plan-item" href={`/plan/${encodeURIComponent(plan.id)}`} onClick={()=>rememberVisit(plan)} key={plan.id}><span><strong>{plan.title}</strong><small>{plan.destination} · {formatDate(plan.startDate)}</small></span><ArrowRight /></Link>)}
     {!loading && !plans.length && <p className="compact-plan-empty">저장된 계획이 없어요.</p>}
   </div>;
 
@@ -143,9 +149,19 @@ export function PlanLibrary({ compact = false, trash = false }: { compact?: bool
     {adminAuthenticated&&<div className="library-admin-bar"><span><LockKeyhole/>관리자 모드</span><label><input type="checkbox" checked={plans.length>0&&plans.every(plan=>selectedIds.has(plan.id))} onChange={event=>setSelectedIds(event.target.checked?new Set(plans.map(plan=>plan.id)):new Set())}/>현재 목록 전체 선택</label><button type="button" disabled={!selectedIds.size||adminBusy} onClick={()=>void runAdminDelete(trash?'purge':'trash',[...selectedIds])}>{trash?'선택 영구 삭제':'선택 삭제'}</button>{trash&&<button type="button" className="is-danger" disabled={!plans.length||adminBusy} onClick={()=>void runAdminDelete('empty-trash')}>휴지통 비우기</button>}</div>}
     {notice && <output className="library-notice is-success">{notice}</output>}
     {error && <div className="library-notice">{error}</div>}
+    {!trash && !search.trim() && (recentPlans.length > 0 || favoritePlans.length > 0) && <div className="library-device-lists">
+      {recentPlans.length > 0 && <section className="library-device-list" aria-labelledby="recent-plans-title"><div className="library-device-list-heading"><h2 id="recent-plans-title">최근 접속한 계획</h2><span>이 기기에만 표시</span></div><div className="library-device-items">{recentPlans.slice(0, 6).map(plan => <Link key={plan.id} href={`/plan/${encodeURIComponent(plan.id)}`} onClick={()=>rememberVisit(plan)}><span><strong>{plan.title}</strong><small>{plan.destination} · {formatDate(plan.startDate)}</small></span><ArrowRight /></Link>)}</div></section>}
+      {favoritePlans.length > 0 && <section className="library-device-list" aria-labelledby="favorite-plans-title"><div className="library-device-list-heading"><h2 id="favorite-plans-title">즐겨찾기</h2><span>이 기기에만 저장</span></div><div className="library-device-items">{favoritePlans.slice(0, 6).map(plan => <Link key={plan.id} href={`/plan/${encodeURIComponent(plan.id)}`} onClick={()=>rememberVisit(plan)}><span><strong>{plan.title}</strong><small>{plan.destination} · {formatDate(plan.startDate)}</small></span><ArrowRight /></Link>)}</div></section>}
+    </div>}
     <div className="library-grid">
       {!loading && !plans.length && !error && <div className="library-empty"><CalendarDays /><strong>{search ? '검색 결과가 없어요.' : trash ? '휴지통이 비어 있어요.' : '아직 저장된 계획이 없어요.'}</strong><span>{search ? '다른 이름이나 도시로 찾아보세요.' : trash ? '삭제한 계획은 7일 동안 이곳에 보관돼요.' : '첫 여행 계획을 만들어 목록에 저장해보세요.'}</span>{!trash && <Link href="/plan/new?mode=domestic">새 계획 세우기<ArrowRight /></Link>}</div>}
-      {plans.map(plan => trash ? <article className="library-card trash-card" key={plan.id}>{adminAuthenticated&&<input className="library-card-check" type="checkbox" checked={selectedIds.has(plan.id)} onChange={()=>toggleSelection(plan.id)} aria-label={`${plan.title} 선택`}/>}<div className="library-card-top"><span className="library-destination"><MapPin />{plan.destination}</span><span className="library-lock"><Trash2 />휴지통</span></div><h2>{plan.title}</h2><p><CalendarDays />{formatDate(plan.startDate)} — {formatDate(plan.endDate)}<span>·</span>{plan.people}명</p><div className="library-card-bottom"><small>{formatTrashExpiry(plan.deletedAt)}</small><div className="trash-card-actions"><button type="button" className="trash-restore-button" onClick={()=>void restorePlan(plan)} disabled={restoringId===plan.id||adminBusy}>{restoringId===plan.id?'복원 중…':'복원'}</button>{adminAuthenticated&&<button type="button" className="trash-restore-button is-danger" onClick={()=>void runAdminDelete('purge',[plan.id])} disabled={adminBusy}>영구 삭제</button>}</div></div></article> : adminAuthenticated ? <article className="library-card admin-library-card" key={plan.id}><input className="library-card-check" type="checkbox" checked={selectedIds.has(plan.id)} onChange={()=>toggleSelection(plan.id)} aria-label={`${plan.title} 선택`}/><Link className="admin-card-link" href={`/plan/${encodeURIComponent(plan.id)}`}><div className="library-card-top"><span className="library-destination"><MapPin />{plan.destination}</span>{plan.passwordProtected&&<span className="library-lock"><LockKeyhole/>비밀번호</span>}</div><h2>{plan.title}</h2><p><CalendarDays />{formatDate(plan.startDate)} — {formatDate(plan.endDate)}<span>·</span>{plan.people}명</p></Link><div className="library-card-bottom"><small>최근 수정 {formatUpdated(plan.updatedAt)}</small><div className="admin-card-actions"><Link href={`/plan/${encodeURIComponent(plan.id)}`}><ExternalLink/>열기·수정</Link><button type="button" onClick={()=>void runAdminDelete('trash',[plan.id])} disabled={adminBusy}><Trash2/>삭제</button></div></div></article> : <Link className="library-card" href={`/plan/${encodeURIComponent(plan.id)}`} key={plan.id}><div className="library-card-top"><span className="library-destination"><MapPin />{plan.destination}</span>{plan.passwordProtected && <span className="library-lock"><LockKeyhole />비밀번호</span>}</div><h2>{plan.title}</h2><p><CalendarDays />{formatDate(plan.startDate)} — {formatDate(plan.endDate)}<span>·</span>{plan.people}명</p><div className="library-card-bottom"><small>최근 수정 {formatUpdated(plan.updatedAt)}</small><ArrowRight /></div></Link>)}
+      {plans.map(plan => {
+        const favorite = favoritePlans.some(item => item.id === plan.id);
+        const planHref = `/plan/${encodeURIComponent(plan.id)}`;
+        if (trash) return <article className="library-card trash-card" key={plan.id}>{adminAuthenticated&&<input className="library-card-check" type="checkbox" checked={selectedIds.has(plan.id)} onChange={()=>toggleSelection(plan.id)} aria-label={`${plan.title} 선택`}/>}<div className="library-card-top"><span className="library-destination"><MapPin />{plan.destination}</span><span className="library-lock"><Trash2 />휴지통</span></div><h2>{plan.title}</h2><p><CalendarDays />{formatDate(plan.startDate)} — {formatDate(plan.endDate)}<span>·</span>{plan.people}명</p><div className="library-card-bottom"><small>{formatTrashExpiry(plan.deletedAt)}</small><div className="trash-card-actions"><button type="button" className="trash-restore-button" onClick={()=>void restorePlan(plan)} disabled={restoringId===plan.id||adminBusy}>{restoringId===plan.id?'복원 중…':'복원'}</button>{adminAuthenticated&&<button type="button" className="trash-restore-button is-danger" onClick={()=>void runAdminDelete('purge',[plan.id])} disabled={adminBusy}>영구 삭제</button>}</div></div></article>;
+        if (adminAuthenticated) return <article className="library-card admin-library-card" key={plan.id}><input className="library-card-check" type="checkbox" checked={selectedIds.has(plan.id)} onChange={()=>toggleSelection(plan.id)} aria-label={`${plan.title} 선택`}/><Link className="admin-card-link" href={planHref} onClick={()=>rememberVisit(plan)}><div className="library-card-top"><span className="library-destination"><MapPin />{plan.destination}</span>{plan.passwordProtected&&<span className="library-lock"><LockKeyhole/>비밀번호</span>}</div><h2>{plan.title}</h2><p><CalendarDays />{formatDate(plan.startDate)} — {formatDate(plan.endDate)}<span>·</span>{plan.people}명</p></Link><div className="library-card-bottom"><small>최근 수정 {formatUpdated(plan.updatedAt)}</small><div className="admin-card-actions"><button type="button" className={`library-favorite-button ${favorite?'is-favorite':''}`} onClick={()=>toggleFavorite(plan)} aria-label={favorite?'즐겨찾기에서 제거':'즐겨찾기에 추가'}><Star /></button><Link href={planHref} onClick={()=>rememberVisit(plan)}><ExternalLink/>열기·수정</Link><button type="button" onClick={()=>void runAdminDelete('trash',[plan.id])} disabled={adminBusy}><Trash2/>삭제</button></div></div></article>;
+        return <article className="library-card" key={plan.id}><Link className="library-card-link" href={planHref} onClick={()=>rememberVisit(plan)}><div className="library-card-top"><span className="library-destination"><MapPin />{plan.destination}</span>{plan.passwordProtected && <span className="library-lock"><LockKeyhole />비밀번호</span>}</div><h2>{plan.title}</h2><p><CalendarDays />{formatDate(plan.startDate)} — {formatDate(plan.endDate)}<span>·</span>{plan.people}명</p><div className="library-card-bottom"><small>최근 수정 {formatUpdated(plan.updatedAt)}</small><ArrowRight /></div></Link><button type="button" className={`library-favorite-button ${favorite?'is-favorite':''}`} onClick={()=>toggleFavorite(plan)} aria-label={favorite?'즐겨찾기에서 제거':'즐겨찾기에 추가'}><Star /></button></article>;
+      })}
     </div>
     {nextOffset!==null&&<button type="button" className="trash-restore-button library-more-button" onClick={()=>void loadPlans(search,true,nextOffset)} disabled={loadingMore}>{loadingMore?'불러오는 중…':'계획 더 보기'}</button>}
   </section>;

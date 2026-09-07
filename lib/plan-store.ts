@@ -45,6 +45,7 @@ type RuntimeEnv = {
   PLAN_WRITE_RATE_LIMITER?: RateLimiter;
   PLAN_CREATE_RATE_LIMITER?: RateLimiter;
   SEARCH_RATE_LIMITER?: RateLimiter;
+  FEEDBACK_RATE_LIMITER?: RateLimiter;
   ADMIN_RATE_LIMITER?: RateLimiter;
 };
 
@@ -117,6 +118,7 @@ function clientKey(request: Request) {
 function rateLimiterFor(scope: string) {
   const runtime = runtimeEnv();
   if (scope === 'place-search') return runtime.SEARCH_RATE_LIMITER;
+  if (scope === 'feedback') return runtime.FEEDBACK_RATE_LIMITER;
   if (scope === 'plans-create') return runtime.PLAN_CREATE_RATE_LIMITER;
   if (scope === 'admin-auth') return runtime.ADMIN_RATE_LIMITER;
   if (scope === 'plans-read' || scope === 'plan-read') return runtime.PLAN_READ_RATE_LIMITER;

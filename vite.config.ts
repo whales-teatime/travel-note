@@ -33,6 +33,7 @@ const independentBindingConfig = {
     { name: 'PLAN_WRITE_RATE_LIMITER', namespace_id: '420102', simple: { limit: 30, period: 60 as const } },
     { name: 'PLAN_CREATE_RATE_LIMITER', namespace_id: '420103', simple: { limit: 20, period: 60 as const } },
     { name: 'SEARCH_RATE_LIMITER', namespace_id: '420104', simple: { limit: 60, period: 60 as const } },
+    { name: 'FEEDBACK_RATE_LIMITER', namespace_id: '420106', simple: { limit: 10, period: 60 as const } },
     { name: 'ADMIN_RATE_LIMITER', namespace_id: '420105', simple: { limit: 5, period: 60 as const } },
   ],
   // Run the seven-day trash cleanup once a day at 03:00 KST (18:00 UTC).

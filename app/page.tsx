@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowRight, ChevronDown, Compass, LockKeyhole, LogOut, MapPin, Plane, Settings2, Trash2 } from 'lucide-react';
+import { ArrowRight, ChevronDown, Compass, LockKeyhole, LogOut, MapPin, MessageSquareText, Plane, Settings2, Trash2 } from 'lucide-react';
 import type { PlanSummary } from '@/components/plan-library';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -110,6 +110,7 @@ export default function HomePage() {
           </div>}
         </div>
         <Link className="landing-nav-link trash-nav-link" href="/trash"><Trash2 /><span>휴지통</span></Link>
+        <Link className="landing-nav-link feedback-nav-link" href="/feedback"><MessageSquareText /><span>피드백</span></Link>
         <div className="theme-menu-wrap">
           <button type="button" className="theme-button" onClick={() => setThemeOpen(value => !value)} aria-label="테마 설정" aria-haspopup="true" aria-expanded={themeOpen}><Settings2 /><span>테마</span></button>
           {themeOpen && <div className="theme-menu" role="menu"><strong>배경 테마</strong><button type="button" className={theme === 'auto' ? 'is-selected' : ''} onClick={() => chooseTheme('auto')}><span className="theme-swatch auto-swatch" />오늘의 계절<small>자동</small></button>{(['spring', 'summer', 'autumn', 'winter'] as const).map(key => <button type="button" className={theme === key ? 'is-selected' : ''} key={key} onClick={() => chooseTheme(key)}><span className={`theme-swatch ${key}-swatch`} />{seasonFor(key).label}</button>)}</div>}
