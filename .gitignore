@@ -41,3 +41,6 @@ next-env.d.ts
 /outputs/
 /work/
 *.tsbuildinfo
+
+# original guide captures (optimized WebP files are committed)
+/public/guide/*.png
