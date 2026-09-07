@@ -221,7 +221,7 @@ function loadNaverMaps(clientId: string) {
   return window.__naverMapsLoading;
 }
 
-function NaverMap({stops,clientId,destination,onSelect,placeResults,onPlaceSelect,dateLabels,activeDay,onDayChange,editableStopId,onStopPositionChange,onCancelStopPositionEdit,customPin,customPinMode,onCustomLocationChange,onCustomAddressChange,onCustomPinContinue,onMapTap,mapFocused,onToggleMapFocus}:{stops:Stop[];clientId:string;destination:string;onSelect:(stop:Stop)=>void;placeResults:SearchPlace[];onPlaceSelect:(place:SearchPlace)=>void;dateLabels:Record<DayKey,string>;activeDay:DayKey;onDayChange:(day:DayKey)=>void;editableStopId:string|null;onStopPositionChange:(id:string,lat:number,lng:number)=>void;onCancelStopPositionEdit:()=>void;customPin:{lat:number;lng:number}|null;customPinMode:boolean;onCustomLocationChange:(point:{lat:number;lng:number})=>void;onCustomAddressChange:(address:string)=>void;onCustomPinContinue:()=>void;onMapTap:()=>void;mapFocused:boolean;onToggleMapFocus:()=>void}) {
+function NaverMap({stops,clientId,destination,onSelect,placeResults,onPlaceSelect,dateLabels,activeDay,onDayChange,editableStopId,onStopPositionChange,onCancelStopPositionEdit,customPin,customPinMode,onCustomLocationChange,onCustomAddressChange,onCustomPinContinue,onMapTap,mapFocused,onToggleMapFocus,plannerCollapsed}:{stops:Stop[];clientId:string;destination:string;onSelect:(stop:Stop)=>void;placeResults:SearchPlace[];onPlaceSelect:(place:SearchPlace)=>void;dateLabels:Record<DayKey,string>;activeDay:DayKey;onDayChange:(day:DayKey)=>void;editableStopId:string|null;onStopPositionChange:(id:string,lat:number,lng:number)=>void;onCancelStopPositionEdit:()=>void;customPin:{lat:number;lng:number}|null;customPinMode:boolean;onCustomLocationChange:(point:{lat:number;lng:number})=>void;onCustomAddressChange:(address:string)=>void;onCustomPinContinue:()=>void;onMapTap:()=>void;mapFocused:boolean;onToggleMapFocus:()=>void;plannerCollapsed:boolean}) {
   const containerRef=useRef<HTMLDivElement>(null), mapRef=useRef<any>(null), overlaysRef=useRef<any[]>([]), placeOverlaysRef=useRef<any[]>([]), customOverlayRef=useRef<any>(null);
   const orderedDays=useMemo(()=>Object.keys(dateLabels),[dateLabels]);
   const [status,setStatus]=useState<'idle'|'loading'|'ready'|'error'>(clientId?'loading':'idle');
@@ -242,6 +242,27 @@ function NaverMap({stops,clientId,destination,onSelect,placeResults,onPlaceSelec
     }).catch(()=>setStatus('error'));
     return()=>{cancelled=true;window.removeEventListener('naver-map-auth-failure',handleAuthFailure)};
   },[clientId]);
+  useEffect(()=>{
+    const canvas=containerRef.current, map=mapRef.current, naver=window.naver;
+    if(!canvas||!map||!naver?.maps||status!=='ready')return;
+    let frame=0;
+    const resize=()=>{
+      cancelAnimationFrame(frame);
+      frame=requestAnimationFrame(()=>{
+        const rect=canvas.getBoundingClientRect();
+        if(rect.width<=0||rect.height<=0)return;
+        try{
+          if(typeof map.setSize==='function')map.setSize(new naver.maps.Size(Math.round(rect.width),Math.round(rect.height)));
+          naver.maps.Event.trigger(map,'resize');
+        }catch{}
+      });
+    };
+    const observer=new ResizeObserver(resize);
+    observer.observe(canvas);
+    resize();
+    const settleTimer=window.setTimeout(resize,360);
+    return()=>{observer.disconnect();cancelAnimationFrame(frame);window.clearTimeout(settleTimer)};
+  },[status,plannerCollapsed]);
   useEffect(()=>{
     const canvas=containerRef.current,stage=canvas?.parentElement;
     if(!stage)return;
@@ -638,7 +659,7 @@ export default function Home(){
 
     <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
       <AlertDialogContent className="delete-plan-dialog">
-        <AlertDialogHeader><AlertDialogTitle>이 계획을 휴지통으로 옮길까요?</AlertDialogTitle><AlertDialogDescription>계획은 목록에서 바로 숨겨지고 7일 동안 휴지통에 보관된 뒤 자동으로 삭제됩니다.</AlertDialogDescription></AlertDialogHeader>
+        <AlertDialogHeader><AlertDialogTitle>정말 삭제하시겠어요?</AlertDialogTitle><AlertDialogDescription>계획은 바로 지워지지 않고 휴지통으로 이동합니다. 7일 동안 복원할 수 있고, 그 뒤에는 자동으로 삭제됩니다.</AlertDialogDescription></AlertDialogHeader>
         <AlertDialogFooter><AlertDialogCancel disabled={planAction==='delete'}>취소</AlertDialogCancel><AlertDialogAction className="delete-plan-confirm" onClick={()=>void deletePlan()} disabled={planAction==='delete'}>{planAction==='delete'?'옮기는 중…':'휴지통으로 이동'}</AlertDialogAction></AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
@@ -718,7 +739,7 @@ export default function Home(){
       <section className="map-panel">
         <div className="map-toolbar"><div className="map-toolbar-left"><Sparkles/><span><strong>DAY {Math.max(1,dayKeys.indexOf(activeDay)+1)}</strong></span></div><div className="map-toolbar-right"><button type="button" className="planner-toggle-button" onClick={()=>setPlannerCollapsed(current=>!current)} aria-expanded={!plannerCollapsed} aria-label={plannerCollapsed?'일정 패널 펼치기':'일정 패널 접기'} title={plannerCollapsed?'일정 패널 펼치기':'일정 패널 접기'}>{plannerCollapsed?<PanelLeftOpen/>:<PanelLeftClose/>}<span>{plannerCollapsed?'일정 펼치기':'일정 접기'}</span></button><span className="naver-badge"><b>N</b>NAVER 지도</span></div></div>
         <div className="map-place-search"><PlacePicker query={mapQuery} onQueryChange={(value,userInput)=>{setMapQuery(value);if(userInput){setMapPicked(null);setMapCandidate(null);setMapResultPlaces([])}}} results={mapSuggestions.results} value={mapPicked} onPick={place=>{setMapPicked(place);setMapCandidate(place);setMapResultPlaces(mapSuggestions.results.slice(0,8));if(place)setMapQuery(cleanTitle(place.title))}} onEnter={commitMapSearch} searching={mapSuggestions.searching} placeholder={`${tripSettings.destination} 장소 검색`} selected={Boolean(mapPicked)}/></div>
-        <NaverMap stops={dayStops} clientId={clientId} destination={tripSettings.destination} onSelect={selectStop} placeResults={mapResultPlaces} onPlaceSelect={selectMapCandidate} dateLabels={dayDates} activeDay={activeDay} onDayChange={setActiveDay} editableStopId={locationEditingId} onStopPositionChange={updateStopPosition} onCancelStopPositionEdit={()=>setLocationEditingId(null)} customPin={customPin} customPinMode={customPinMode} onCustomLocationChange={updateCustomPin} onCustomAddressChange={setCustomAddress} onCustomPinContinue={continueCustomPin} onMapTap={toggleMapFocus} mapFocused={mapFocused} onToggleMapFocus={toggleMapFocus}/>
+        <NaverMap stops={dayStops} clientId={clientId} destination={tripSettings.destination} onSelect={selectStop} placeResults={mapResultPlaces} onPlaceSelect={selectMapCandidate} dateLabels={dayDates} activeDay={activeDay} onDayChange={setActiveDay} editableStopId={locationEditingId} onStopPositionChange={updateStopPosition} onCancelStopPositionEdit={()=>setLocationEditingId(null)} customPin={customPin} customPinMode={customPinMode} onCustomLocationChange={updateCustomPin} onCustomAddressChange={setCustomAddress} onCustomPinContinue={continueCustomPin} onMapTap={toggleMapFocus} mapFocused={mapFocused} onToggleMapFocus={toggleMapFocus} plannerCollapsed={plannerCollapsed}/>
         {mapCandidate&&<div className="map-place-card"><button className="map-card-close" onClick={()=>setMapCandidate(null)} aria-label="장소 정보 닫기">×</button><span>{mapCandidate.category}</span><strong>{cleanTitle(mapCandidate.title)}</strong><p>{mapCandidate.roadAddress||mapCandidate.address}</p><div><a href={naverPlaceUrl({name:cleanTitle(mapCandidate.title),address:mapCandidate.roadAddress||mapCandidate.address})} target="_blank" rel="noreferrer">네이버지도에서 상세보기</a><Button onClick={prepareMapCandidate}><Plus/>이 장소로 결정</Button></div></div>}
       </section>
     </section>

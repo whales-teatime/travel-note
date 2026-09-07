@@ -53,7 +53,7 @@ export default function GuidePage() {
           <article><House /><div><h3>동선 한눈에 보기</h3><p>지도 오른쪽 아래 집 모양 버튼을 누르면 현재 일정의 모든 핀이 한 화면에 들어오도록 지도가 맞춰집니다.</p></div></article>
           <article><PanelLeftClose /><div><h3>PC에서 일정 패널 접기</h3><p>지도 오른쪽 위 <strong>일정 접기</strong>를 누르면 지도가 넓어집니다. 다시 <strong>일정 펼치기</strong>를 누르면 카드 목록이 돌아옵니다.</p></div></article>
           <article><Clock3 /><div><h3>시간 입력과 순서</h3><p><strong>0839</strong>처럼 숫자만 입력해도 <strong>08:39</strong>로 바뀝니다. 카드 순서와 시간이 어긋나면 해당 시간이 붉게 표시됩니다.</p></div></article>
-          <article><LockKeyhole /><div><h3>비밀번호로 나눠 지키기</h3><p>열람 비밀번호는 계획을 볼 수 있는 사람을 정하고, 편집 비밀번호는 수정할 수 있는 사람을 정합니다. 두 비밀번호를 따로 설정해 우리끼리만 여행 내용을 공유할 수 있어요.</p></div></article>
+          <article><LockKeyhole /><div><h3>비밀번호로 내 계획 지키기</h3><p>열람 비밀번호는 계획을 볼 수 있는 사람을 정하고, 편집 비밀번호는 수정할 수 있는 사람을 정합니다. 두 비밀번호를 따로 설정해 우리끼리만 여행 내용을 공유할 수 있어요.</p></div></article>
         </div>
       </TabsContent>
 

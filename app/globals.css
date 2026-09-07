@@ -220,7 +220,7 @@
 
 /* Desktop planner controls: give the map more room while keeping the schedule easy to scan. */
 @media (min-width:821px){
-  .workspace{grid-template-columns:minmax(360px,39%) 1fr;transition:grid-template-columns .3s cubic-bezier(.2,.8,.2,1)}
+  .workspace{grid-template-columns:minmax(360px,39%) minmax(0,1fr);transition:grid-template-columns .3s cubic-bezier(.2,.8,.2,1)}
   .planner-panel{padding:20px 22px 28px;transition:padding .3s ease,opacity .22s ease,visibility .22s ease}
   .day-switch button{padding:8px 11px}
   .panel-heading{margin:20px 2px 12px}
@@ -232,7 +232,7 @@
   .distance-chip{height:27px}
   .day-cost-summary{padding:10px 12px}
   .wide-add{height:41px}
-  .workspace.planner-collapsed{grid-template-columns:0 1fr}
+  .workspace.planner-collapsed{grid-template-columns:0 minmax(0,1fr)}
   .workspace.planner-collapsed .planner-panel{min-width:0;padding-left:0;padding-right:0;border-right:0;opacity:0;visibility:hidden;pointer-events:none;overflow:hidden}
   .map-toolbar-right{display:flex!important;align-items:center;gap:8px!important;padding:0!important;border:0!important;background:transparent!important;box-shadow:none!important;backdrop-filter:none!important;pointer-events:auto!important}
   .planner-toggle-button{display:flex;align-items:center;gap:6px;height:36px;padding:0 10px;border:1px solid rgba(213,222,216,.95);border-radius:10px;background:rgba(255,255,255,.95);box-shadow:0 8px 24px rgba(24,40,32,.12);color:#53645a;font-size:11px;font-weight:800;white-space:nowrap;cursor:pointer;transition:color .16s ease,background .16s ease,box-shadow .16s ease}
