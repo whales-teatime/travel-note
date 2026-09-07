@@ -132,6 +132,6 @@ export default function HomePage() {
     </section>
     <button type="button" className={`landing-admin-button ${adminAuthenticated?'is-active':''}`} onClick={()=>adminAuthenticated?void logoutAdmin():setAdminOpen(true)} title={adminAuthenticated?'관리자 모드 종료':'관리자 로그인'} aria-label={adminAuthenticated?'관리자 모드 종료':'관리자 로그인'}>{adminAuthenticated?<LogOut/>:<LockKeyhole/>}</button>
     <Dialog open={adminOpen} onOpenChange={open=>{setAdminOpen(open);if(!open){setAdminPassword('');setAdminError('')}}}><DialogContent className="password-dialog sm:max-w-[420px]"><DialogHeader><DialogTitle>관리자 로그인</DialogTitle></DialogHeader><label>관리자 비밀번호<Input type="password" value={adminPassword} onChange={event=>setAdminPassword(event.target.value)} onKeyDown={event=>{if(event.key==='Enter')void loginAdmin()}} placeholder="관리자 비밀번호"/></label>{adminError&&<div className="inline-notice">{adminError}</div>}<DialogFooter><Button variant="outline" onClick={()=>setAdminOpen(false)}>취소</Button><Button onClick={()=>void loginAdmin()} disabled={!adminPassword||adminChecking}>{adminChecking?'확인 중…':'로그인'}</Button></DialogFooter></DialogContent></Dialog>
-    <footer className="landing-footer"><span>한 장씩 채워가는 우리들의 여행</span><span>TRAVEL NOTE</span></footer>
+    <footer className="landing-footer"><span className="landing-meta"><small>ver. 1.0</small><a href="https://github.com/whales-teatime/travel-note/releases" target="_blank" rel="noreferrer">GitHub Releases</a></span><span>TRAVEL NOTE</span></footer>
   </main>;
 }
