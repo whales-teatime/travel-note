@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
-import { ArrowRight, BookOpen, ChevronDown, Compass, LockKeyhole, LogOut, MapPin, MessageSquareText, Monitor, Plane, Search, Settings2, Smartphone, Trash2 } from 'lucide-react';
+import { ArrowRight, BookOpen, ChevronDown, Compass, LockKeyhole, LogOut, MapPin, MessageSquareText, Plane, Settings2, Trash2 } from 'lucide-react';
 import type { PlanSummary } from '@/components/plan-library';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -50,8 +49,6 @@ export default function HomePage() {
   const [adminPassword, setAdminPassword] = useState('');
   const [adminError, setAdminError] = useState('');
   const [adminChecking, setAdminChecking] = useState(false);
-  const [guideOpen, setGuideOpen] = useState(false);
-  const [guideDevice, setGuideDevice] = useState<'pc' | 'mobile'>('pc');
 
   useEffect(() => {
     let alive = true;
@@ -73,14 +70,6 @@ export default function HomePage() {
       } catch {}
     }
     return () => { alive = false; };
-  }, []);
-
-  useEffect(() => {
-    const media = window.matchMedia('(max-width: 760px)');
-    const syncDevice = () => setGuideDevice(media.matches ? 'mobile' : 'pc');
-    syncDevice();
-    media.addEventListener?.('change', syncDevice);
-    return () => media.removeEventListener?.('change', syncDevice);
   }, []);
 
   const chooseTheme = (next: ThemeKey) => {
@@ -120,7 +109,7 @@ export default function HomePage() {
             {!plans.length && <p className="plan-hover-empty">아직 저장된 계획이 없어요.</p>}
           </div>}
         </div>
-        <button type="button" className="landing-nav-link guide-nav-link" onClick={() => setGuideOpen(true)}><BookOpen /><span>사용 안내</span></button>
+        <Link className="landing-nav-link guide-nav-link" href="/guide"><BookOpen /><span>사용 안내</span></Link>
         <Link className="landing-nav-link trash-nav-link" href="/trash"><Trash2 /><span>휴지통</span></Link>
         <Link className="landing-nav-link feedback-nav-link" href="/feedback"><MessageSquareText /><span>피드백</span></Link>
         <div className="theme-menu-wrap">
@@ -144,7 +133,6 @@ export default function HomePage() {
     </section>
     <button type="button" className={`landing-admin-button ${adminAuthenticated?'is-active':''}`} onClick={()=>adminAuthenticated?void logoutAdmin():setAdminOpen(true)} title={adminAuthenticated?'관리자 모드 종료':'관리자 로그인'} aria-label={adminAuthenticated?'관리자 모드 종료':'관리자 로그인'}>{adminAuthenticated?<LogOut/>:<LockKeyhole/>}</button>
     <Dialog open={adminOpen} onOpenChange={open=>{setAdminOpen(open);if(!open){setAdminPassword('');setAdminError('')}}}><DialogContent className="password-dialog sm:max-w-[420px]"><DialogHeader><DialogTitle>관리자 로그인</DialogTitle></DialogHeader><label>관리자 비밀번호<Input type="password" value={adminPassword} onChange={event=>setAdminPassword(event.target.value)} onKeyDown={event=>{if(event.key==='Enter')void loginAdmin()}} placeholder="관리자 비밀번호"/></label>{adminError&&<div className="inline-notice">{adminError}</div>}<DialogFooter><Button variant="outline" onClick={()=>setAdminOpen(false)}>취소</Button><Button onClick={()=>void loginAdmin()} disabled={!adminPassword||adminChecking}>{adminChecking?'확인 중…':'로그인'}</Button></DialogFooter></DialogContent></Dialog>
-    <Dialog open={guideOpen} onOpenChange={setGuideOpen}><DialogContent className="guide-dialog sm:max-w-[820px]"><DialogHeader><DialogTitle><BookOpen /> 사용 안내</DialogTitle><p>처음이라면 아래 순서대로 가볍게 시작해 보세요.</p></DialogHeader><div className="guide-device-tabs" role="tablist" aria-label="사용 환경 선택"><button type="button" role="tab" aria-selected={guideDevice==='pc'} className={guideDevice==='pc'?'is-selected':''} onClick={() => setGuideDevice('pc')}><Monitor /> PC에서 사용하기</button><button type="button" role="tab" aria-selected={guideDevice==='mobile'} className={guideDevice==='mobile'?'is-selected':''} onClick={() => setGuideDevice('mobile')}><Smartphone /> 모바일에서 사용하기</button></div><div className="guide-shot-wrap"><div className="guide-shot-heading"><span>{guideDevice==='pc'?'PC 화면':'모바일 화면'}</span><small>실제 여행을 떠나요 화면</small></div><figure className={`guide-shot guide-shot-${guideDevice}`}><Image src={guideDevice==='pc'?'/guide/pc-home.webp':'/guide/mobile-planner.webp'} alt={guideDevice==='pc'?'PC에서 여행을 떠나요 메인 화면':'모바일에서 여행 일정을 작성하는 화면'} width={guideDevice==='pc'?1440:430} height={guideDevice==='pc'?900:932} unoptimized /></figure></div><ol className="guide-step-list">{(guideDevice==='pc'?[{icon:<Compass />,title:'국내로!를 눌러 시작',body:'여행지와 날짜, 인원을 먼저 입력해요.'},{icon:<Search />,title:'장소를 검색해 추가',body:'검색 후보를 고르고 시간과 메모를 채워요.'},{icon:<ArrowRight />,title:'저장하고 공유',body:'저장한 계획은 목록에서 다시 열거나 링크로 공유해요.'}]:[{icon:<MapPin />,title:'지도와 일정 패널 전환',body:'지도를 탭하면 넓게 보고, 다시 탭하면 일정으로 돌아와요.'},{icon:<Search />,title:'장소와 시간을 입력',body:'검색 후보를 선택하거나 지도에 임의 핀을 찍을 수 있어요.'},{icon:<ArrowRight />,title:'카드 순서 정리',body:'카드를 드래그하거나 화살표로 순서를 다듬어요.'}]).map((step,index)=><li key={step.title}><span className="guide-step-number">{index+1}</span><span className="guide-step-icon">{step.icon}</span><span><strong>{step.title}</strong><small>{step.body}</small></span></li>)}</ol><div className="guide-tip"><span>작은 팁</span><p>여행 중에는 홈 버튼을 누르면 그날의 동선이 한눈에 들어오도록 지도가 자동으로 맞춰져요.</p></div></DialogContent></Dialog>
     <footer className="landing-footer"><span className="landing-meta"><small>ver. 1.0</small><a href="https://github.com/whales-teatime/travel-note/releases" target="_blank" rel="noreferrer">GitHub Releases</a></span><span>TRAVEL NOTE</span></footer>
   </main>;
 }

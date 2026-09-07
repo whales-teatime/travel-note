@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, CalendarDays, Heart, MapPin, Send } from 'lucide-react';
+import { ArrowLeft, CalendarDays, Heart, MapPin, Send, ShieldCheck, Trash2 } from 'lucide-react';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 
@@ -33,6 +34,9 @@ export default function FeedbackPage() {
   const [error, setError] = useState('');
   const [nextOffset, setNextOffset] = useState<number | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [adminMode, setAdminMode] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<Feedback | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const loadFeedback = async (append = false, offset = 0) => {
     if (append) setLoadingMore(true); else setError('');
@@ -46,7 +50,14 @@ export default function FeedbackPage() {
     finally { setLoadingMore(false); }
   };
 
-  useEffect(() => { setLiked(readLiked()); void loadFeedback(); }, []);
+  useEffect(() => {
+    setLiked(readLiked());
+    void loadFeedback();
+    void fetch('/api/admin/session', { cache: 'no-store' })
+      .then(response => response.json() as Promise<{ adminAuthenticated?: boolean }>)
+      .then(body => setAdminMode(Boolean(body.adminAuthenticated)))
+      .catch(() => setAdminMode(false));
+  }, []);
 
   const sendFeedback = async () => {
     if (!message.trim() || sending) return;
@@ -75,6 +86,19 @@ export default function FeedbackPage() {
     finally { setBusyLike(null); }
   };
 
+  const deleteFeedback = async () => {
+    if (!pendingDelete || deletingId) return;
+    setDeletingId(pendingDelete.id); setError('');
+    try {
+      const response = await fetch(`/api/feedback/${encodeURIComponent(pendingDelete.id)}`, { method: 'DELETE' });
+      const body = await response.json() as { deleted?: boolean; message?: string };
+      if (!response.ok || !body.deleted) throw new Error(body.message || '피드백을 삭제하지 못했어요.');
+      setFeedback(current => current.filter(item => item.id !== pendingDelete.id));
+      setPendingDelete(null); setNotice('피드백을 삭제했어요.');
+    } catch (reason) { setError(reason instanceof Error ? reason.message : '피드백을 삭제하지 못했어요.'); }
+    finally { setDeletingId(null); }
+  };
+
   return <main className="feedback-shell">
     <header className="plans-topbar feedback-topbar"><Link className="plans-brand" href="/"><span className="plans-brand-mark"><MapPin /></span>여행을 떠나요<span>♬</span></Link><Link className="plans-back" href="/plans"><ArrowLeft /> 계획 목록</Link></header>
     <div className="feedback-content">
@@ -89,10 +113,12 @@ export default function FeedbackPage() {
       </section>
       <section className="feedback-list" aria-labelledby="feedback-list-title">
         <div className="feedback-list-heading"><div><span className="library-kicker"><CalendarDays /> COMMUNITY</span><h2 id="feedback-list-title">모두의 피드백</h2><p>공감되는 의견에 좋아요를 눌러주세요.</p></div><span>{feedback.length}개</span></div>
+        {adminMode && <div className="feedback-admin-notice"><ShieldCheck /> 관리자 모드 · 피드백을 삭제할 수 있어요.</div>}
         {!feedback.length && !error && <div className="feedback-empty">아직 남겨진 피드백이 없어요.</div>}
-        <div className="feedback-items">{feedback.map(item => <article className="feedback-item" key={item.id}><div className="feedback-item-meta"><span className="feedback-category">{item.category}</span><time dateTime={item.createdAt}>{formatCreatedAt(item.createdAt)}</time></div><p>{item.message}</p><button type="button" className={`feedback-like ${liked.has(item.id) ? 'is-liked' : ''}`} onClick={()=>void likeFeedback(item)} disabled={liked.has(item.id)||busyLike===item.id} aria-label={liked.has(item.id) ? '좋아요 취소 불가' : '이 피드백에 공감'}><Heart /> {item.likes}</button></article>)}</div>
+        <div className="feedback-items">{feedback.map(item => <article className={`feedback-item ${adminMode ? 'is-admin' : ''}`} key={item.id}><div className="feedback-item-meta"><span className="feedback-category">{item.category}</span><time dateTime={item.createdAt}>{formatCreatedAt(item.createdAt)}</time></div><p>{item.message}</p>{adminMode && <button type="button" className="feedback-delete" onClick={() => setPendingDelete(item)} aria-label="이 피드백 삭제" title="피드백 삭제"><Trash2 /></button>}<button type="button" className={`feedback-like ${liked.has(item.id) ? 'is-liked' : ''}`} onClick={()=>void likeFeedback(item)} disabled={liked.has(item.id)||busyLike===item.id} aria-label={liked.has(item.id) ? '좋아요 취소 불가' : '이 피드백에 공감'}><Heart /> {item.likes}</button></article>)}</div>
         {nextOffset !== null && <Button variant="outline" className="feedback-more" onClick={()=>void loadFeedback(true,nextOffset)} disabled={loadingMore}>{loadingMore ? '불러오는 중…' : '피드백 더 보기'}</Button>}
       </section>
     </div>
+    <AlertDialog open={Boolean(pendingDelete)} onOpenChange={open => { if (!open && !deletingId) setPendingDelete(null); }}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>이 피드백을 삭제할까요?</AlertDialogTitle><AlertDialogDescription>삭제하면 다시 복구할 수 없습니다.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={Boolean(deletingId)}>취소</AlertDialogCancel><AlertDialogAction variant="destructive" onClick={() => void deleteFeedback()} disabled={Boolean(deletingId)}>{deletingId ? '삭제 중…' : '삭제'}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
   </main>;
 }
