@@ -659,7 +659,8 @@ export default function Home(){
 
     <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
       <AlertDialogContent className="delete-plan-dialog">
-        <AlertDialogHeader className="delete-plan-header"><AlertDialogTitle className="delete-plan-title">정말 삭제하시겠어요?</AlertDialogTitle><AlertDialogDescription className="delete-plan-description">계획은 바로 지워지지 않고 휴지통으로 이동합니다. 7일 동안 복원할 수 있고, 그 뒤에는 자동으로 삭제됩니다.</AlertDialogDescription></AlertDialogHeader>
+        <AlertDialogHeader className="sr-only"><AlertDialogTitle>정말 삭제하시겠어요?</AlertDialogTitle><AlertDialogDescription>계획은 바로 지워지지 않고 휴지통으로 이동합니다. 7일 동안 복원할 수 있고, 그 뒤에는 자동으로 삭제됩니다.</AlertDialogDescription></AlertDialogHeader>
+        <div className="delete-plan-copy"><strong>정말 삭제하시겠어요?</strong><p>계획은 바로 지워지지 않고 휴지통으로 이동합니다. 7일 동안 복원할 수 있고, 그 뒤에는 자동으로 삭제됩니다.</p></div>
         <AlertDialogFooter><AlertDialogCancel disabled={planAction==='delete'}>취소</AlertDialogCancel><AlertDialogAction className="delete-plan-confirm" onClick={()=>void deletePlan()} disabled={planAction==='delete'}>{planAction==='delete'?'옮기는 중…':'휴지통으로 이동'}</AlertDialogAction></AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
