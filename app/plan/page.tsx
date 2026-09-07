@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   ArrowDown, ArrowUp, CalendarDays, ChevronDown, ChevronUp, CircleAlert, Clock3,
-  Copy, Eye, EyeOff, ExternalLink, GripVertical, House, LockKeyhole, Map, MapPin, Navigation, Plus,
+  Copy, Eye, EyeOff, ExternalLink, GripVertical, House, LockKeyhole, Map, MapPin, Navigation, PanelLeftClose, PanelLeftOpen, Plus,
   Pencil, Save, Sparkles, Trash2, Users, X,
 } from 'lucide-react';
 
@@ -381,7 +381,7 @@ function PanoramaView({stop,clientId}:{stop:Stop;clientId:string}) {
 
 export default function Home(){
   const firstDefaultDay=dateDayKey(DEFAULT_TRIP.startDate);
-  const [activeDay,setActiveDay]=useState<DayKey>(firstDefaultDay), [stops,setStops]=useState<Stop[]>(seedStops), [selected,setSelected]=useState<Stop|null>(null), [mapFocused,setMapFocused]=useState(false);
+  const [activeDay,setActiveDay]=useState<DayKey>(firstDefaultDay), [stops,setStops]=useState<Stop[]>(seedStops), [selected,setSelected]=useState<Stop|null>(null), [mapFocused,setMapFocused]=useState(false), [plannerCollapsed,setPlannerCollapsed]=useState(false);
   const [tripSettings,setTripSettings]=useState<TripSettings>(DEFAULT_TRIP), [settingsDraft,setSettingsDraft]=useState<TripSettings>(DEFAULT_TRIP);
   const [addOpen,setAddOpen]=useState(false), [settingsOpen,setSettingsOpen]=useState(false), [clientId,setClientId]=useState('');
   const [planId,setPlanId]=useState<string|null>(null), [planUpdatedAt,setPlanUpdatedAt]=useState(''), [planVersion,setPlanVersion]=useState(1), [planLoading,setPlanLoading]=useState(true), [planSaving,setPlanSaving]=useState(false), [planSaveMessage,setPlanSaveMessage]=useState(''), [isLocalDraft,setIsLocalDraft]=useState(true), [canEdit,setCanEdit]=useState(true), [planAction,setPlanAction]=useState<'duplicate'|'delete'|null>(null), [deleteDialogOpen,setDeleteDialogOpen]=useState(false), [editPasswordWarningOpen,setEditPasswordWarningOpen]=useState(false);
@@ -681,7 +681,7 @@ export default function Home(){
       </DialogContent>
     </Dialog>
 
-    <section className={`workspace ${mapFocused?'map-focused':''}`}>
+    <section className={`workspace ${mapFocused?'map-focused':''} ${plannerCollapsed?'planner-collapsed':''}`}>
       <aside className="planner-panel">
         {planId&&!canEdit&&<div className="inline-notice plan-readonly-notice"><CircleAlert/><span>{tripSettings.editPolicy==='password'?'편집 비밀번호를 입력하면 일정을 수정할 수 있어요.':tripSettings.editPolicy==='all'?'열람 비밀번호로 계획을 열면 수정할 수 있어요.':'작성자의 편집 토큰이 있어야 일정을 바꿀 수 있어요.'}</span>{tripSettings.editPolicy==='password'&&<Button variant="outline" onClick={()=>setEditPasswordPromptOpen(true)}>편집 비밀번호 입력</Button>}</div>}
         <div className="day-switch-wrap"><div className={`day-switch ${dayKeys.length>6&&!daysExpanded?'is-collapsed':''}`} role="tablist" aria-label="여행 날짜">{visibleDayKeys.map(day=>{const index=dayKeys.indexOf(day);return <button key={day} role="tab" aria-selected={activeDay===day} onClick={()=>setActiveDay(day)}><span style={{color:dayColor(day,dayKeys)}}>DAY {index+1}</span><strong>{formatTripDate(dayDates[day],true)}</strong></button>})}</div>{dayKeys.length>6&&<button type="button" className="day-rollup-toggle" onClick={()=>setDaysExpanded(current=>!current)} aria-expanded={daysExpanded}>{daysExpanded?<><ChevronUp/> 일정 접기</>:<><ChevronDown/> 전체 {dayKeys.length}일 보기</>}</button>}</div>
@@ -712,7 +712,7 @@ export default function Home(){
         <div className="planner-add-actions"><Button variant="outline" className="wide-add" onClick={()=>setAddOpen(true)}><Plus/>이 날짜에 장소 추가</Button><Button variant="ghost" className="custom-add-button" onClick={openCustomPin}><MapPin/>지도에 임의 핀 추가</Button></div>
       </aside>
       <section className="map-panel">
-        <div className="map-toolbar"><div><Sparkles/><span><strong>DAY {Math.max(1,dayKeys.indexOf(activeDay)+1)}</strong></span></div><span className="naver-badge"><b>N</b>NAVER 지도</span></div>
+        <div className="map-toolbar"><div className="map-toolbar-left"><Sparkles/><span><strong>DAY {Math.max(1,dayKeys.indexOf(activeDay)+1)}</strong></span></div><div className="map-toolbar-right"><button type="button" className="planner-toggle-button" onClick={()=>setPlannerCollapsed(current=>!current)} aria-expanded={!plannerCollapsed} aria-label={plannerCollapsed?'일정 패널 펼치기':'일정 패널 접기'} title={plannerCollapsed?'일정 패널 펼치기':'일정 패널 접기'}>{plannerCollapsed?<PanelLeftOpen/>:<PanelLeftClose/>}<span>{plannerCollapsed?'일정 펼치기':'일정 접기'}</span></button><span className="naver-badge"><b>N</b>NAVER 지도</span></div></div>
         <div className="map-place-search"><PlacePicker query={mapQuery} onQueryChange={(value,userInput)=>{setMapQuery(value);if(userInput){setMapPicked(null);setMapCandidate(null);setMapResultPlaces([])}}} results={mapSuggestions.results} value={mapPicked} onPick={place=>{setMapPicked(place);setMapCandidate(place);setMapResultPlaces(mapSuggestions.results.slice(0,8));if(place)setMapQuery(cleanTitle(place.title))}} onEnter={commitMapSearch} searching={mapSuggestions.searching} placeholder={`${tripSettings.destination} 장소 검색`} selected={Boolean(mapPicked)}/></div>
         <NaverMap stops={dayStops} clientId={clientId} destination={tripSettings.destination} onSelect={selectStop} placeResults={mapResultPlaces} onPlaceSelect={selectMapCandidate} dateLabels={dayDates} activeDay={activeDay} onDayChange={setActiveDay} editableStopId={locationEditingId} onStopPositionChange={updateStopPosition} onCancelStopPositionEdit={()=>setLocationEditingId(null)} customPin={customPin} customPinMode={customPinMode} onCustomLocationChange={updateCustomPin} onCustomAddressChange={setCustomAddress} onCustomPinContinue={continueCustomPin} onMapTap={toggleMapFocus} mapFocused={mapFocused} onToggleMapFocus={toggleMapFocus}/>
         {mapCandidate&&<div className="map-place-card"><button className="map-card-close" onClick={()=>setMapCandidate(null)} aria-label="장소 정보 닫기">×</button><span>{mapCandidate.category}</span><strong>{cleanTitle(mapCandidate.title)}</strong><p>{mapCandidate.roadAddress||mapCandidate.address}</p><div><a href={naverPlaceUrl({name:cleanTitle(mapCandidate.title),address:mapCandidate.roadAddress||mapCandidate.address})} target="_blank" rel="noreferrer">네이버지도에서 상세보기</a><Button onClick={prepareMapCandidate}><Plus/>이 장소로 결정</Button></div></div>}

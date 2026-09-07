@@ -2,7 +2,7 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { ArrowLeft, ArrowRight, CircleDollarSign, Clock3, Compass, GripVertical, House, MapPin, MousePointer2, Save, Search, Smartphone, Sparkles } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CircleDollarSign, Clock3, Compass, GripVertical, House, MapPin, MousePointer2, PanelLeftClose, Save, Search, Smartphone, Sparkles } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 const pcGuides = [
@@ -51,6 +51,7 @@ export default function GuidePage() {
           <article><CircleDollarSign /><div><h3>예상 경비 입력</h3><p>개인별 비용이나 총 비용 중 하나만 입력하면 인원수에 맞춰 다른 값이 자동 계산됩니다. 직접 입력한 값과 계산된 값은 색으로 구분됩니다.</p></div></article>
           <article><Save /><div><h3>계획 저장과 공유</h3><p>오른쪽 위 <strong>계획 저장</strong>을 누르면 목록에 보관됩니다. 저장 후 주소창의 링크를 보내면 친구들도 같은 계획을 볼 수 있습니다.</p></div></article>
           <article><House /><div><h3>동선 한눈에 보기</h3><p>지도 오른쪽 아래 집 모양 버튼을 누르면 현재 일정의 모든 핀이 한 화면에 들어오도록 지도가 맞춰집니다.</p></div></article>
+          <article><PanelLeftClose /><div><h3>PC에서 일정 패널 접기</h3><p>지도 오른쪽 위 <strong>일정 접기</strong>를 누르면 지도가 넓어집니다. 다시 <strong>일정 펼치기</strong>를 누르면 카드 목록이 돌아옵니다.</p></div></article>
           <article><Clock3 /><div><h3>시간 입력과 순서</h3><p><strong>0839</strong>처럼 숫자만 입력해도 <strong>08:39</strong>로 바뀝니다. 카드 순서와 시간이 어긋나면 해당 시간이 붉게 표시됩니다.</p></div></article>
         </div>
       </TabsContent>
