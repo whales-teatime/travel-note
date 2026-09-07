@@ -2,7 +2,7 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { ArrowLeft, ArrowRight, CircleDollarSign, Clock3, Compass, GripVertical, House, MapPin, MousePointer2, PanelLeftClose, Save, Search, Smartphone, Sparkles } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CircleDollarSign, Clock3, Compass, GripVertical, House, LockKeyhole, MapPin, MousePointer2, PanelLeftClose, Save, Search, Smartphone, Sparkles } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 const pcGuides = [
@@ -37,8 +37,8 @@ export default function GuidePage() {
     <header className="guide-page-topbar"><Link className="plans-brand" href="/"><span className="plans-brand-mark"><MapPin /></span>여행을 떠나요<span>♬</span></Link><Link className="plans-back" href="/"><ArrowLeft /> 메인으로</Link></header>
     <section className="guide-page-hero">
       <span className="guide-page-kicker"><Sparkles /> QUICK GUIDE</span>
-      <h1>처음 써도 바로 여행 계획 완성</h1>
-      <p>여행 일정부터 지도 동선, 예상 경비와 공유까지 필요한 기능만 순서대로 모았습니다.</p>
+      <h1>여행 가기 전, 우리끼리 한 번 맞춰봐요</h1>
+      <p>날짜와 장소를 하나씩 채우면 동선과 경비가 자연스럽게 정리돼요.</p>
       <div className="guide-quick-flow" aria-label="기본 사용 순서"><span><b>1</b>여행 일정 설정</span><ArrowRight /><span><b>2</b>장소 추가</span><ArrowRight /><span><b>3</b>순서 정리</span><ArrowRight /><span><b>4</b>저장·공유</span></div>
     </section>
 
@@ -53,6 +53,7 @@ export default function GuidePage() {
           <article><House /><div><h3>동선 한눈에 보기</h3><p>지도 오른쪽 아래 집 모양 버튼을 누르면 현재 일정의 모든 핀이 한 화면에 들어오도록 지도가 맞춰집니다.</p></div></article>
           <article><PanelLeftClose /><div><h3>PC에서 일정 패널 접기</h3><p>지도 오른쪽 위 <strong>일정 접기</strong>를 누르면 지도가 넓어집니다. 다시 <strong>일정 펼치기</strong>를 누르면 카드 목록이 돌아옵니다.</p></div></article>
           <article><Clock3 /><div><h3>시간 입력과 순서</h3><p><strong>0839</strong>처럼 숫자만 입력해도 <strong>08:39</strong>로 바뀝니다. 카드 순서와 시간이 어긋나면 해당 시간이 붉게 표시됩니다.</p></div></article>
+          <article><LockKeyhole /><div><h3>비밀번호로 나눠 지키기</h3><p>열람 비밀번호는 계획을 볼 수 있는 사람을 정하고, 편집 비밀번호는 수정할 수 있는 사람을 정합니다. 두 비밀번호를 따로 설정해 우리끼리만 여행 내용을 공유할 수 있어요.</p></div></article>
         </div>
       </TabsContent>
 
@@ -66,7 +67,7 @@ export default function GuidePage() {
       </TabsContent>
     </Tabs>
 
-    <section className="guide-faq"><span className="guide-page-kicker"><Compass /> 알아두면 편해요</span><div className="guide-faq-grid"><article><h3>검색 결과가 애매해요</h3><p>여행 일정에 입력한 도시가 우선 반영됩니다. 그래도 찾기 어렵다면 <strong>도시명 + 장소명</strong>으로 검색해 보세요.</p></article><article><h3>친구도 수정할 수 있나요?</h3><p>여행 일정의 편집 권한을 <strong>모두가</strong> 또는 <strong>편집 비밀번호</strong>로 설정하면 함께 수정할 수 있습니다.</p></article><article><h3>실수로 계획을 삭제했어요</h3><p>메인의 <strong>휴지통</strong>에서 7일 안에 복원할 수 있습니다. 7일이 지나면 자동으로 완전히 삭제됩니다.</p></article></div></section>
+    <section className="guide-faq"><span className="guide-page-kicker"><Compass /> 알아두면 편해요</span><div className="guide-faq-grid"><article><h3>검색 결과가 애매해요</h3><p>여행 일정에 입력한 도시가 우선 반영됩니다. 그래도 찾기 어렵다면 <strong>도시명 + 장소명</strong>으로 검색해 보세요.</p></article><article><h3>친구도 수정할 수 있나요?</h3><p>열람 비밀번호는 계획을 볼 수 있는 사람을, 편집 비밀번호는 수정할 수 있는 사람을 정합니다. 둘을 따로 설정해 함께 쓰면 됩니다.</p></article><article><h3>실수로 계획을 삭제했어요</h3><p>메인의 <strong>휴지통</strong>에서 7일 안에 복원할 수 있습니다. 7일이 지나면 자동으로 완전히 삭제됩니다.</p></article></div></section>
     <div className="guide-page-cta"><div><span>준비됐나요?</span><strong>여행 계획을 시작해 보세요.</strong></div><Link href="/plan/new?mode=domestic">새 계획 만들기 <ArrowRight /></Link></div>
   </main>;
 }

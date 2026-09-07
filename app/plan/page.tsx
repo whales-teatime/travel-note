@@ -602,6 +602,10 @@ export default function Home(){
       const response=await fetch(`/api/plans/${encodeURIComponent(planId)}`,{method:'DELETE',headers:{'Content-Type':'application/json',...(token?{'x-plan-edit-token':token}:{})},body:JSON.stringify({...passwordPayload,...editPasswordPayload})});
       const body=await response.json() as {message?:string};
       if(!response.ok)throw new Error(body.message||'계획을 휴지통으로 옮기지 못했습니다.');
+      // Keep the result visible after the page leaves the planner. The query string
+      // is useful for a fresh navigation, while sessionStorage also survives
+      // redirects that normalize or cache the plans URL.
+      sessionStorage.setItem('route-note-delete-notice','계획을 휴지통으로 옮겼어요. 7일 후 자동 삭제됩니다.');
       window.location.href='/plans?deleted=1';
     }catch(error){setPlanSaveMessage(error instanceof Error?error.message:'계획을 휴지통으로 옮기지 못했습니다.');setDeleteDialogOpen(false)}
     finally{setPlanAction(null)}

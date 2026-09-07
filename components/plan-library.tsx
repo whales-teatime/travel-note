@@ -130,7 +130,12 @@ export function PlanLibrary({ compact = false, trash = false }: { compact?: bool
   useEffect(() => { void fetch('/api/admin/session', {cache:'no-store'}).then(response=>response.json() as Promise<{adminAuthenticated?:boolean}>).then(body=>setAdminAuthenticated(Boolean(body.adminAuthenticated))).catch(()=>{}); }, []);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('deleted') === '1') setNotice('계획을 휴지통으로 옮겼어요. 7일 후 자동 삭제됩니다.');
+    const deleteNotice = sessionStorage.getItem('route-note-delete-notice');
+    if (params.get('deleted') === '1' || deleteNotice) {
+      setNotice(deleteNotice || '계획을 휴지통으로 옮겼어요. 7일 후 자동 삭제됩니다.');
+      sessionStorage.removeItem('route-note-delete-notice');
+      if (params.get('deleted') === '1') window.history.replaceState({}, '', '/plans');
+    }
   }, []);
   useEffect(() => {
     if (compact) return;
@@ -147,7 +152,7 @@ export function PlanLibrary({ compact = false, trash = false }: { compact?: bool
     <div className="library-heading"><div><span className="library-kicker"><CalendarDays /> {trash ? 'TRASH' : 'TRIP PLANS'}</span><h1 id="plan-list-title">{trash ? '휴지통' : '여행 계획 목록'}</h1><p>{trash ? '7일 동안 보관된 계획이에요.' : '함께 만든 여행을 다시 열어보세요.'}</p></div><span className="library-count">{loading ? '불러오는 중' : `${plans.length}개`}</span></div>
     <label className="library-search"><Search /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="여행 이름이나 도시로 검색" aria-label="여행 계획 검색" /></label>
     {adminAuthenticated&&<div className="library-admin-bar"><span><LockKeyhole/>관리자 모드</span><label><input type="checkbox" checked={plans.length>0&&plans.every(plan=>selectedIds.has(plan.id))} onChange={event=>setSelectedIds(event.target.checked?new Set(plans.map(plan=>plan.id)):new Set())}/>현재 목록 전체 선택</label><button type="button" disabled={!selectedIds.size||adminBusy} onClick={()=>void runAdminDelete(trash?'purge':'trash',[...selectedIds])}>{trash?'선택 영구 삭제':'선택 삭제'}</button>{trash&&<button type="button" className="is-danger" disabled={!plans.length||adminBusy} onClick={()=>void runAdminDelete('empty-trash')}>휴지통 비우기</button>}</div>}
-    {notice && <output className="library-notice is-success">{notice}</output>}
+    {notice && <output className="library-notice is-success" aria-live="polite">{notice}</output>}
     {error && <div className="library-notice">{error}</div>}
     {!trash && !search.trim() && (recentPlans.length > 0 || favoritePlans.length > 0) && <div className="library-device-lists">
       {recentPlans.length > 0 && <section className="library-device-list" aria-labelledby="recent-plans-title"><div className="library-device-list-heading"><h2 id="recent-plans-title">최근 접속한 계획</h2><span>이 기기에만 표시</span></div><div className="library-device-items">{recentPlans.slice(0, 6).map(plan => <Link key={plan.id} href={`/plan/${encodeURIComponent(plan.id)}`} onClick={()=>rememberVisit(plan)}><span><strong>{plan.title}</strong><small>{plan.destination} · {formatDate(plan.startDate)}</small></span><ArrowRight /></Link>)}</div></section>}
