@@ -17,14 +17,11 @@ export function WhaleSupportButton() {
         <strong>제작자는 배가 고파요</strong>
         <small>커피 한 잔 보태기 ☕</small>
       </span>
-      <span className="whale-support-bubble" aria-hidden="true">와앙!</span>
       <span className="whale-support-mascot" aria-hidden="true">
-        <span className="whale-support-progress">
-          <span>배고파</span><span>배고파.</span><span>배고파..</span><span>배고파...</span>
-        </span>
         <span className="whale-support-art-frame">
-          <Image className="whale-support-image whale-support-image-rest" src="/whale/whale-hungry.webp" width={1536} height={1024} alt="" priority />
-          <Image className="whale-support-image whale-support-image-open" src="/whale/whale-burger.webp" width={1536} height={1024} alt="" />
+          <Image className="whale-support-image whale-support-image-rest" src="/whale/whale-hungry-cutout.png" width={1346} height={659} alt="" priority />
+          <Image className="whale-support-image whale-support-image-open" src="/whale/whale-burger-cutout.png" width={1410} height={818} alt="" />
+          <span className="whale-support-ellipsis-mask" />
         </span>
       </span>
     </a>

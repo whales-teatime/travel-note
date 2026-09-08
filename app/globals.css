@@ -222,6 +222,21 @@
 @media(max-width:540px){.plans-top-actions{gap:8px}.plans-top-actions .plans-feedback-link,.plans-top-actions .plans-trash-link{font-size:0;gap:0}.plans-top-actions .plans-feedback-link svg,.plans-top-actions .plans-trash-link svg{width:16px}.feedback-topbar{padding:0 16px}.feedback-content{width:calc(100% - 24px);padding-top:24px}.feedback-compose h1{font-size:24px}.feedback-list-heading h2{font-size:23px}}
 .feedback-admin-notice{display:flex;align-items:center;gap:7px;margin:-5px 0 13px;padding:9px 11px;border:1px solid #bde2c9;border-radius:10px;background:#f3fff6;color:#286f43;font-size:11px;font-weight:800}.feedback-admin-notice svg{width:14px;height:14px}.feedback-item.is-admin{padding-right:82px}.feedback-delete{position:absolute;top:12px;right:12px;display:grid;place-items:center;width:29px;height:29px;padding:0;border:1px solid #efd4cf;border-radius:8px;background:#fff8f6;color:#b75547;cursor:pointer}.feedback-delete:hover{border-color:#d99488;background:#fff0ec;color:#913d31}.feedback-delete svg{width:13px;height:13px}
 
+/* The support mascot uses the user's original drawings with their outer canvas removed. */
+.whale-support-button{width:196px;min-height:132px}
+.whale-support-copy{z-index:5}
+.whale-support-mascot{left:-2px;bottom:15px;width:176px;height:112px;transform:rotate(-2deg)}
+.whale-support-art-frame{inset:0;width:176px;height:112px;overflow:visible}
+.whale-support-image{inset:0;width:100%;height:100%;max-width:100%;object-fit:contain;mix-blend-mode:normal;filter:none}
+.whale-support-image-open{opacity:0;transform:scale(.97)}
+.whale-support-button:hover .whale-support-image-rest,.whale-support-button:focus-visible .whale-support-image-rest{opacity:0;transform:scale(.98)}
+.whale-support-button:hover .whale-support-image-open,.whale-support-button:focus-visible .whale-support-image-open{opacity:1;animation:whale-burger-wiggle .9s ease-in-out infinite}
+.whale-support-ellipsis-mask{position:absolute;z-index:3;top:27px;right:108px;width:19px;height:14px;border-radius:2px;background:#fff;animation:whale-ellipsis-reveal 4.8s steps(1,end) infinite;transition:opacity .14s ease}
+.whale-support-button:hover .whale-support-ellipsis-mask,.whale-support-button:focus-visible .whale-support-ellipsis-mask{opacity:0}
+@keyframes whale-ellipsis-reveal{0%,24%{width:19px}25%,49%{width:13px}50%,74%{width:7px}75%,100%{width:0}}
+@media(max-width:760px){.whale-support-button{transform:scale(.76)}.whale-support-button:hover,.whale-support-button:focus-visible{transform:scale(.8) translateY(-3px)}}
+@media(prefers-reduced-motion:reduce){.whale-support-ellipsis-mask{width:0;animation:none}}
+
 /* Desktop planner controls: give the map more room while keeping the schedule easy to scan. */
 @media (min-width:821px){
   .workspace{grid-template-columns:minmax(360px,39%) minmax(0,1fr);transition:grid-template-columns .3s cubic-bezier(.2,.8,.2,1)}
