@@ -16,6 +16,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { rememberPlanVisit } from '@/lib/client-plan-history';
+import { readJsonResponse } from '@/lib/client-json';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -103,7 +104,7 @@ function usePlaceSuggestions(query:string,enabled:boolean,context=''){
     const timer=window.setTimeout(async()=>{
       setSearching(true);setError('');
       try{
-        const response=await fetch(`/api/search?q=${encodeURIComponent(value)}&near=${encodeURIComponent(context)}`,{signal:controller.signal}),body=await response.json() as {items?:SearchPlace[];message?:string};
+        const response=await fetch(`/api/search?q=${encodeURIComponent(value)}&near=${encodeURIComponent(context)}`,{signal:controller.signal}),body=await readJsonResponse<{items?:SearchPlace[];message?:string}>(response);
         if(!response.ok)throw new Error(body.message||'검색에 실패했습니다.');
         const items=body.items||[];suggestionCache.set(cacheKey,items);setResults(items);if(!items.length)setError('검색 결과가 없습니다.');
       }catch(reason){if(!controller.signal.aborted)setError(reason instanceof Error?reason.message:'검색에 실패했습니다.')}
@@ -451,17 +452,17 @@ export default function Home(){
       if(routeId){
         try{
           const token=localStorage.getItem(`route-note-edit-token-${routeId}`);
-          const response=await fetch(`/api/plans/${encodeURIComponent(routeId)}`,{cache:'no-store',headers:token?{'x-plan-edit-token':token}:undefined}), body=await response.json() as {plan?:StoredPlan;canEdit?:boolean;adminAuthenticated?:boolean;requiresPassword?:boolean;message?:string};
+          const response=await fetch(`/api/plans/${encodeURIComponent(routeId)}`,{cache:'no-store',headers:token?{'x-plan-edit-token':token}:undefined}), body=await readJsonResponse<{plan?:StoredPlan;canEdit?:boolean;adminAuthenticated?:boolean;requiresPassword?:boolean;message?:string}>(response);
           if(body.requiresPassword){if(alive){setProtectedPlanId(routeId);setProtectedPlanTitle(body.plan?.title||'이 여행 계획');setPasswordPromptOpen(true);setStops([]);setPlanLoading(false)}return}
           if(!response.ok||!body.plan)throw new Error(body.message||'계획을 불러오지 못했습니다.');
           if(alive)applyStoredPlan(body.plan,undefined,body.canEdit,body.adminAuthenticated);
-        }catch{if(alive){setPlanLoading(false);setStops([])}}
+        }catch(error){if(alive){setPlanLoading(false);setPlanSaveMessage(error instanceof Error?error.message:'계획을 불러오지 못했습니다. 다시 시도해주세요.')}}
       }else if(isDraft){loadLocalDraft();if(alive)setPlanLoading(false)}
       else if(alive){setStops([]);const clean={...DEFAULT_TRIP,title:'나의 여행',destination:'',people:1,editPolicy:'owner' as EditPolicy};setTripSettings(clean);setSettingsDraft(clean);setPlanPassword('');setPlanPasswordAuth('');setPasswordConfigured(false);setPlanPasswordTouched(false);setShowPlanPassword(false);setEditPassword('');setEditPasswordAuth('');setEditPasswordConfigured(false);setEditPasswordTouched(false);setShowEditPassword(false);setCanEdit(true);setPlanUpdatedAt('');setPlanVersion(1);setPlanLoading(false);savedSnapshotRef.current=itinerarySnapshot(clean,[]);if(mode==='domestic')window.setTimeout(()=>{if(alive)setSettingsOpen(true)},0)}
     };
     void loadRoute();
     const embedded=document.querySelector<HTMLMetaElement>('meta[name="naver-map-client-id"]')?.content;
-    if(embedded)setClientId(embedded);else void fetch('/api/config').then(response=>response.json() as Promise<{mapClientId?:string}>).then(data=>{if(data.mapClientId&&alive)setClientId(data.mapClientId)}).catch(()=>{});
+    if(embedded)setClientId(embedded);else void fetch('/api/config').then(response=>readJsonResponse<{mapClientId?:string}>(response)).then(data=>{if(data.mapClientId&&alive)setClientId(data.mapClientId)}).catch(()=>{});
     return()=>{alive=false};
   },[applyStoredPlan]);
   useEffect(()=>{
@@ -561,7 +562,7 @@ export default function Home(){
     if(!protectedPlanId||!passwordPrompt)return;
     setPasswordPromptError('');
     try{
-      const response=await fetch(`/api/plans/${encodeURIComponent(protectedPlanId)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:passwordPrompt})}),body=await response.json() as {plan?:StoredPlan;canEdit?:boolean;adminAuthenticated?:boolean;message?:string};
+      const response=await fetch(`/api/plans/${encodeURIComponent(protectedPlanId)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:passwordPrompt})}),body=await readJsonResponse<{plan?:StoredPlan;canEdit?:boolean;adminAuthenticated?:boolean;message?:string}>(response);
       if(!response.ok||!body.plan)throw new Error(body.message||'비밀번호가 맞지 않습니다.');
       applyStoredPlan(body.plan,undefined,body.canEdit,body.adminAuthenticated);if(!body.adminAuthenticated){setPlanPassword(passwordPrompt);setPlanPasswordAuth(passwordPrompt);setPlanPasswordTouched(false)}setPasswordPrompt('');setProtectedPlanId(null);setPasswordPromptOpen(false);
     }catch(error){setPasswordPromptError(error instanceof Error?error.message:'비밀번호가 맞지 않습니다.')}
@@ -570,7 +571,7 @@ export default function Home(){
     if(!planId||!editPasswordPrompt)return;
     setEditPasswordPromptError('');
     try{
-      const response=await fetch(`/api/plans/${encodeURIComponent(planId)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'edit-auth',password:planPassword||undefined,editPassword:editPasswordPrompt})}),body=await response.json() as {plan?:StoredPlan;canEdit?:boolean;adminAuthenticated?:boolean;message?:string};
+      const response=await fetch(`/api/plans/${encodeURIComponent(planId)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'edit-auth',password:planPassword||undefined,editPassword:editPasswordPrompt})}),body=await readJsonResponse<{plan?:StoredPlan;canEdit?:boolean;adminAuthenticated?:boolean;message?:string}>(response);
       if(!response.ok||!body.plan)throw new Error(body.message||'편집 비밀번호가 맞지 않습니다.');
       setCanEdit(Boolean(body.canEdit));setAdminMode(Boolean(body.adminAuthenticated));if(!body.adminAuthenticated){setEditPassword(editPasswordPrompt);setEditPasswordAuth(editPasswordPrompt);setEditPasswordTouched(false);setEditPasswordConfigured(true)}setEditPasswordPrompt('');setEditPasswordPromptOpen(false);
     }catch(error){setEditPasswordPromptError(error instanceof Error?error.message:'편집 비밀번호가 맞지 않습니다.')}
@@ -588,7 +589,7 @@ export default function Home(){
       const existing=Boolean(planId),token=planId?localStorage.getItem(`route-note-edit-token-${planId}`):null;
       const viewPasswordPayload=!existing?{password:planPassword}:planPasswordTouched?{password:planPassword,...(planPasswordAuth?{passwordAuth:planPasswordAuth}:{})}:(tripSettings.editPolicy==='all'&&passwordConfigured&&planPassword)?{password:planPassword,passwordAuth:planPasswordAuth||planPassword}:{};
       const editPasswordPayload={...(existing&&editPasswordAuth?{editPasswordAuth}:{}),...((!existing||editPasswordTouched||(tripSettings.editPolicy!=='password'&&editPasswordConfigured))?{editPassword:tripSettings.editPolicy==='password'?editPassword:''}:{})};
-      const response=await fetch(existing?`/api/plans/${encodeURIComponent(planId as string)}`:'/api/plans',{method:existing?'PUT':'POST',headers:{'Content-Type':'application/json',...(token?{'x-plan-edit-token':token}:{})},body:JSON.stringify({...payload,...(existing?{baseVersion:planVersion}:{}),...viewPasswordPayload,...editPasswordPayload})}),body=await response.json() as {id?:string;editToken?:string;conflict?:boolean;adminAuthenticated?:boolean;message?:string;plan?:StoredPlan};
+      const response=await fetch(existing?`/api/plans/${encodeURIComponent(planId as string)}`:'/api/plans',{method:existing?'PUT':'POST',headers:{'Content-Type':'application/json',...(token?{'x-plan-edit-token':token}:{})},body:JSON.stringify({...payload,...(existing?{baseVersion:planVersion}:{}),...viewPasswordPayload,...editPasswordPayload})}),body=await readJsonResponse<{id?:string;editToken?:string;conflict?:boolean;adminAuthenticated?:boolean;message?:string;plan?:StoredPlan}>(response);
       if(!response.ok)throw new Error(body.message||'계획을 저장하지 못했습니다.');
       if(body.id&&body.editToken&&(!existing||body.conflict)){setPlanId(body.id);setCanEdit(true);localStorage.setItem(`route-note-edit-token-${body.id}`,body.editToken);window.history.replaceState({},'',`/plan/${encodeURIComponent(body.id)}`)}
       if(body.plan){const savedSettings=body.conflict?{...tripSettings,title:body.plan.title}:tripSettings;setTripSettings(savedSettings);setSettingsDraft(savedSettings);setPlanUpdatedAt(body.plan.updatedAt||planUpdatedAt);setPlanVersion(Math.max(1,Number(body.plan.version)||planVersion));setPasswordConfigured(Boolean(body.plan.passwordProtected));setEditPasswordConfigured(Boolean(body.plan.editPasswordProtected));if(planPasswordTouched)setPlanPasswordAuth(planPassword);if(tripSettings.editPolicy==='password'&&editPassword){setEditPasswordAuth(editPassword)}else if(tripSettings.editPolicy!=='password'){setEditPasswordAuth('')}savedSnapshotRef.current=itinerarySnapshot(savedSettings,body.plan.stops||stops)}
@@ -606,7 +607,7 @@ export default function Home(){
     try{
       const token=localStorage.getItem(`route-note-edit-token-${planId}`),passwordPayload=planPassword?{password:planPassword}:{};
       const response=await fetch(`/api/plans/${encodeURIComponent(planId)}`,{method:'POST',headers:{'Content-Type':'application/json',...(token?{'x-plan-edit-token':token}:{})},body:JSON.stringify({action:'duplicate',...passwordPayload})});
-      const body=await response.json() as {id?:string;editToken?:string;message?:string};
+      const body=await readJsonResponse<{id?:string;editToken?:string;message?:string}>(response);
       if(!response.ok||!body.id)throw new Error(body.message||'계획을 복제하지 못했습니다.');
       if(body.editToken)localStorage.setItem(`route-note-edit-token-${body.id}`,body.editToken);
       setPlanSaveMessage('복제본이 저장목록에 추가됐어요.');
@@ -621,7 +622,7 @@ export default function Home(){
     try{
       const token=localStorage.getItem(`route-note-edit-token-${planId}`),passwordPayload=tripSettings.editPolicy==='all'&&planPassword?{password:planPassword,passwordAuth:planPasswordAuth||planPassword}:{},editPasswordPayload=tripSettings.editPolicy==='password'&&editPassword?{editPassword,editPasswordAuth:editPasswordAuth||editPassword}:{};
       const response=await fetch(`/api/plans/${encodeURIComponent(planId)}`,{method:'DELETE',headers:{'Content-Type':'application/json',...(token?{'x-plan-edit-token':token}:{})},body:JSON.stringify({...passwordPayload,...editPasswordPayload})});
-      const body=await response.json() as {message?:string};
+      const body=await readJsonResponse<{message?:string}>(response);
       if(!response.ok)throw new Error(body.message||'계획을 휴지통으로 옮기지 못했습니다.');
       // Keep the result visible after the page leaves the planner. The query string
       // is useful for a fresh navigation, while sessionStorage also survives

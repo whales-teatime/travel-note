@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowRight, CalendarDays, ExternalLink, LockKeyhole, MapPin, Search, Star, Trash2 } from 'lucide-react';
 import { readFavoritePlans, readRecentPlans, rememberPlanVisit, togglePlanFavorite, type LocalPlanSummary } from '@/lib/client-plan-history';
+import { readJsonResponse } from '@/lib/client-json';
 
 export type PlanSummary = {
   id: string;
@@ -59,7 +60,7 @@ export function PlanLibrary({ compact = false, trash = false }: { compact?: bool
     try {
       const limit = compact ? 4 : 24;
       const response = await fetch(`/api/plans?search=${encodeURIComponent(value.trim())}${trash ? '&trash=1' : ''}&limit=${limit}&offset=${offset}`, { cache: 'no-store' });
-      const body = await response.json() as { items?: PlanSummary[]; nextOffset?: number | null; message?: string };
+      const body = await readJsonResponse<{ items?: PlanSummary[]; nextOffset?: number | null; message?: string }>(response);
       if (!response.ok) throw new Error(body.message || '계획 목록을 불러오지 못했어요.');
       setPlans(current => append ? [...current, ...(body.items || [])] : body.items || []);
       if (!append) setSelectedIds(new Set());
@@ -79,7 +80,7 @@ export function PlanLibrary({ compact = false, trash = false }: { compact?: bool
       const entered = window.prompt('작성자 토큰이 없는 계획입니다. 관리자 비밀번호를 입력하세요.');
       if (entered === null) return;
       const response = await fetch('/api/admin/session', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({password: entered}) });
-      const body = await response.json() as {adminAuthenticated?: boolean; message?: string};
+      const body = await readJsonResponse<{adminAuthenticated?: boolean; message?: string}>(response);
       if (!response.ok || !body.adminAuthenticated) { setError(body.message || '관리자 비밀번호가 올바르지 않습니다.'); return; }
       admin = true; setAdminAuthenticated(true);
     }
@@ -99,7 +100,7 @@ export function PlanLibrary({ compact = false, trash = false }: { compact?: bool
         method: 'POST', headers: {'Content-Type': 'application/json', ...(token ? {'x-plan-edit-token': token} : {})},
         body: JSON.stringify({action: 'restore', ...(password ? {password, passwordAuth: password} : {}), ...(editPassword ? {editPassword, editPasswordAuth: editPassword} : {})}),
       });
-      const body = await response.json() as {message?: string};
+      const body = await readJsonResponse<{message?: string}>(response);
       if (!response.ok) throw new Error(body.message || '계획을 복원하지 못했어요.');
       setNotice('계획을 복원했어요.');
       await loadPlans(search);
@@ -114,7 +115,7 @@ export function PlanLibrary({ compact = false, trash = false }: { compact?: bool
     setAdminBusy(true); setError('');
     try {
       const response = await fetch('/api/admin/plans', { method:'DELETE', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action, ...(action!=='empty-trash'?{ids}:{})}) });
-      const body = await response.json() as {message?:string};
+      const body = await readJsonResponse<{message?:string}>(response);
       if (!response.ok) throw new Error(body.message || '삭제 작업을 완료하지 못했어요.');
       setNotice(body.message || '삭제 작업을 완료했어요.'); setSelectedIds(new Set()); await loadPlans(search);
     } catch (reason) { setError(reason instanceof Error ? reason.message : '삭제 작업을 완료하지 못했어요.'); }
@@ -127,7 +128,7 @@ export function PlanLibrary({ compact = false, trash = false }: { compact?: bool
 
   useEffect(() => { void loadPlans(''); }, [loadPlans]);
   useEffect(() => { setRecentPlans(readRecentPlans()); setFavoritePlans(readFavoritePlans()); }, []);
-  useEffect(() => { void fetch('/api/admin/session', {cache:'no-store'}).then(response=>response.json() as Promise<{adminAuthenticated?:boolean}>).then(body=>setAdminAuthenticated(Boolean(body.adminAuthenticated))).catch(()=>{}); }, []);
+  useEffect(() => { void fetch('/api/admin/session', {cache:'no-store'}).then(response=>readJsonResponse<{adminAuthenticated?:boolean}>(response)).then(body=>setAdminAuthenticated(Boolean(body.adminAuthenticated))).catch(()=>{}); }, []);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const deleteNotice = sessionStorage.getItem('route-note-delete-notice');

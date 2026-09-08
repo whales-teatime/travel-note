@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { WhaleSupportButton } from '@/components/whale-support-button';
+import { readJsonResponse } from '@/lib/client-json';
 
 type Season = {
   key: 'spring' | 'summer' | 'autumn' | 'winter';
@@ -54,10 +55,10 @@ export default function HomePage() {
   useEffect(() => {
     let alive = true;
     fetch('/api/plans', { cache: 'no-store' })
-      .then(response => response.json() as Promise<{ items?: PlanSummary[] }>)
+      .then(response => readJsonResponse<{ items?: PlanSummary[] }>(response))
       .then(body => { if (alive) setPlans(body.items || []); })
-      .catch(() => { if (alive) setPlans([]); });
-    fetch('/api/admin/session', { cache: 'no-store' }).then(response=>response.json() as Promise<{adminAuthenticated?:boolean}>).then(body=>{if(alive)setAdminAuthenticated(Boolean(body.adminAuthenticated))}).catch(()=>{});
+      .catch(() => { /* Keep the current list when a transient response is empty. */ });
+    fetch('/api/admin/session', { cache: 'no-store' }).then(response=>readJsonResponse<{adminAuthenticated?:boolean}>(response)).then(body=>{if(alive)setAdminAuthenticated(Boolean(body.adminAuthenticated))}).catch(()=>{});
 
     const saved = window.localStorage.getItem('route-note-stops');
     const settings = window.localStorage.getItem('route-note-trip-settings');
@@ -89,7 +90,7 @@ export default function HomePage() {
     setAdminChecking(true); setAdminError('');
     try {
       const response = await fetch('/api/admin/session', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({password:adminPassword}) });
-      const body = await response.json() as {adminAuthenticated?:boolean;message?:string};
+      const body = await readJsonResponse<{adminAuthenticated?:boolean;message?:string}>(response);
       if (!response.ok || !body.adminAuthenticated) throw new Error(body.message || '관리자 비밀번호가 올바르지 않습니다.');
       setAdminAuthenticated(true); setAdminPassword(''); setAdminOpen(false);
     } catch (reason) { setAdminError(reason instanceof Error ? reason.message : '관리자 로그인을 확인하지 못했어요.'); }
