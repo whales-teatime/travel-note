@@ -24,6 +24,7 @@ export function useLanguage() {
     const apply = (next: Language) => {
       setLanguageState(next);
       document.documentElement.lang = next === 'en' ? 'en' : 'ko';
+      document.title = next === 'en' ? 'Let’s Travel — Trip Planner' : '여행을 떠나요 — 여행 동선 플래너';
     };
     apply(storedLanguage());
     const handleChange = (event: Event) => {
@@ -38,6 +39,7 @@ export function useLanguage() {
     setLanguageState(next);
     window.localStorage.setItem(LANGUAGE_KEY, next);
     document.documentElement.lang = next === 'en' ? 'en' : 'ko';
+    document.title = next === 'en' ? 'Let’s Travel — Trip Planner' : '여행을 떠나요 — 여행 동선 플래너';
     window.dispatchEvent(new CustomEvent<Language>(LANGUAGE_EVENT, { detail: next }));
   }, []);
 
