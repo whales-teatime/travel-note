@@ -232,6 +232,7 @@
 .whale-support-button:hover .whale-support-copy,.whale-support-button:focus-visible .whale-support-copy{transform:none}
 .whale-support-art-frame{inset:0;width:154px;height:98px;overflow:visible}
 .whale-support-image{inset:0;width:100%;height:100%;max-width:100%;object-fit:contain;mix-blend-mode:normal;filter:none;will-change:transform,opacity}
+.whale-support-image-rest{transform:translateY(7px)}
 .whale-support-image-open{opacity:0;transform:none}
 .whale-support-burger-piece{position:absolute;z-index:2;left:26px;top:55px;width:14px;height:14px;object-fit:contain;opacity:0;transform-origin:50% 50%;will-change:transform,opacity}
 .whale-support-button:hover .whale-support-image-rest,.whale-support-button:focus-visible .whale-support-image-rest{opacity:0;transform:none}
