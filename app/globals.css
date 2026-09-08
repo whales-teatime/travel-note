@@ -226,16 +226,21 @@
 .whale-support-button{width:176px;min-height:118px}
 .whale-support-copy{z-index:5}
 .whale-support-mascot{left:-1px;bottom:13px;width:154px;height:98px;transform:rotate(-2deg)}
+.whale-support-button:hover,.whale-support-button:focus-visible{transform:none}
+.whale-support-button:hover .whale-support-mascot,.whale-support-button:focus-visible .whale-support-mascot{transform:rotate(-2deg)}
+.whale-support-button:hover .whale-support-copy,.whale-support-button:focus-visible .whale-support-copy{transform:none}
 .whale-support-art-frame{inset:0;width:154px;height:98px;overflow:visible}
 .whale-support-image{inset:0;width:100%;height:100%;max-width:100%;object-fit:contain;mix-blend-mode:normal;filter:none;will-change:transform,opacity}
-.whale-support-image-open{opacity:0;transform:scale(.97)}
-.whale-support-button:hover .whale-support-image-rest,.whale-support-button:focus-visible .whale-support-image-rest{opacity:0;transform:scale(.98)}
-.whale-support-button:hover .whale-support-image-open,.whale-support-button:focus-visible .whale-support-image-open{opacity:1;animation:whale-burger-wiggle-visible .62s ease-in-out infinite}
-.whale-support-ellipsis-mask{position:absolute;z-index:3;top:24px;right:94px;width:17px;height:12px;border-radius:2px;background:#fff;animation:whale-ellipsis-reveal 4.8s steps(1,end) infinite;transition:opacity .14s ease}
+.whale-support-image-open{opacity:0;transform:none}
+.whale-support-burger-piece{position:absolute;z-index:2;left:26px;top:55px;width:14px;height:14px;object-fit:contain;opacity:0;transform-origin:50% 50%;will-change:transform,opacity}
+.whale-support-button:hover .whale-support-image-rest,.whale-support-button:focus-visible .whale-support-image-rest{opacity:0;transform:none}
+.whale-support-button:hover .whale-support-image-open,.whale-support-button:focus-visible .whale-support-image-open{opacity:1;transform:none;animation:none}
+.whale-support-button:hover .whale-support-burger-piece,.whale-support-button:focus-visible .whale-support-burger-piece{opacity:1;animation:whale-burger-rock .88s ease-in-out infinite alternate}
+.whale-support-ellipsis-mask{position:absolute;z-index:3;top:28px;right:96px;width:11px;height:5px;border-radius:1px;background:#fff;animation:whale-ellipsis-reveal 3.6s steps(1,end) infinite;transition:opacity .14s ease}
 .whale-support-button:hover .whale-support-ellipsis-mask,.whale-support-button:focus-visible .whale-support-ellipsis-mask{opacity:0}
-@keyframes whale-burger-wiggle-visible{0%,100%{transform:rotate(-2deg) translate(0,0) scale(1)}25%{transform:rotate(-7deg) translate(-3px,1px) scale(1.025)}50%{transform:rotate(5deg) translate(3px,-3px) scale(1.045)}75%{transform:rotate(-5deg) translate(-2px,-1px) scale(1.02)}}
-@keyframes whale-ellipsis-reveal{0%,24%{width:19px}25%,49%{width:13px}50%,74%{width:7px}75%,100%{width:0}}
-@media(max-width:760px){.whale-support-button{transform:scale(.72)}.whale-support-button:hover,.whale-support-button:focus-visible{transform:scale(.76) translateY(-3px)}}
+@keyframes whale-burger-rock{from{transform:rotate(-5deg)}to{transform:rotate(5deg)}}
+@keyframes whale-ellipsis-reveal{0%,32%{width:11px}33%,65%{width:7px}66%,100%{width:3px}}
+@media(max-width:760px){.whale-support-button,.whale-support-button:hover,.whale-support-button:focus-visible{transform:scale(.72)}}
 
 /* Desktop planner controls: give the map more room while keeping the schedule easy to scan. */
 @media (min-width:821px){
