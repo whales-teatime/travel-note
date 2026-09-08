@@ -235,10 +235,10 @@
 .whale-support-burger-piece{position:absolute;z-index:2;left:26px;top:55px;width:14px;height:14px;object-fit:contain;opacity:0;transform-origin:50% 50%;will-change:transform,opacity}
 .whale-support-button:hover .whale-support-image-rest,.whale-support-button:focus-visible .whale-support-image-rest{opacity:0;transform:none}
 .whale-support-button:hover .whale-support-image-open,.whale-support-button:focus-visible .whale-support-image-open{opacity:1;transform:none;animation:none}
-.whale-support-button:hover .whale-support-burger-piece,.whale-support-button:focus-visible .whale-support-burger-piece{opacity:1;animation:whale-burger-rock .62s ease-in-out infinite alternate}
+.whale-support-button:hover .whale-support-burger-piece,.whale-support-button:focus-visible .whale-support-burger-piece{opacity:1;animation:whale-burger-cross .44s linear infinite}
 .whale-support-ellipsis-mask{position:absolute;z-index:3;top:28px;right:96px;width:11px;height:5px;border-radius:1px;background:#fff;animation:whale-ellipsis-reveal 3.6s steps(1,end) infinite;transition:opacity .14s ease}
 .whale-support-button:hover .whale-support-ellipsis-mask,.whale-support-button:focus-visible .whale-support-ellipsis-mask{opacity:0}
-@keyframes whale-burger-rock{from{transform:rotate(-8deg)}to{transform:rotate(8deg)}}
+@keyframes whale-burger-cross{0%,43%{transform:rotate(-10deg)}44%,93%{transform:rotate(10deg)}94%,100%{transform:rotate(-10deg)}}
 @keyframes whale-ellipsis-reveal{0%,32%{width:11px}33%,65%{width:7px}66%,100%{width:3px}}
 @media(max-width:760px){.whale-support-button,.whale-support-button:hover,.whale-support-button:focus-visible{transform:scale(.72)}}
 
