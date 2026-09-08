@@ -1,20 +1,23 @@
 "use client";
 
 import Image from 'next/image';
+import { tr, useLanguage } from '@/lib/i18n';
 
 const BUY_ME_A_COFFEE_URL = 'https://buymeacoffee.com/whales_teatime';
 
 export function WhaleSupportButton() {
+  const { language } = useLanguage();
+  const label = tr(language, '고래밥 보태기', 'Feed the whale');
   return (
     <a
       className="whale-support-button"
       href={BUY_ME_A_COFFEE_URL}
       target="_blank"
       rel="noreferrer"
-      aria-label="고래밥 보태기. Buy Me a Coffee에서 후원하기"
+      aria-label={`${label}. Support on Buy Me a Coffee`}
     >
       <span className="whale-support-copy" aria-hidden="true">
-        <strong>고래밥 보태기</strong>
+        <strong>{label}</strong>
       </span>
       <span className="whale-support-mascot" aria-hidden="true">
         <span className="whale-support-art-frame">
