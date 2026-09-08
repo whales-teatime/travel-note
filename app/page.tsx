@@ -52,7 +52,7 @@ export default function HomePage() {
   const [planMenuOpen, setPlanMenuOpen] = useState(false);
   const [overseasMessage, setOverseasMessage] = useState(false);
   const [hasDraft, setHasDraft] = useState(false);
-  const [draftTitle, setDraftTitle] = useState('이 기기의 여행 초안');
+  const [draftTitle, setDraftTitle] = useState('');
   const [adminAuthenticated, setAdminAuthenticated] = useState(false);
   const [adminOpen, setAdminOpen] = useState(false);
   const [adminPassword, setAdminPassword] = useState('');
@@ -138,7 +138,7 @@ export default function HomePage() {
         <button type="button" className="departure-card overseas-card" onClick={() => setOverseasMessage(true)}><span className="departure-icon"><Plane /></span><span className="departure-copy"><strong>{text('해외로!', 'Go abroad!')}</strong><small>{text('여권 챙기면 다시 만나요', 'Pack your passport — see you soon.')}</small></span><ArrowRight className="departure-arrow" /><span className="plane-trail" aria-hidden="true">·　·　·　✈</span></button>
       </div>
       {overseasMessage && <button className="overseas-toast" type="button" onClick={() => setOverseasMessage(false)}><Plane /> {text('해외 여행 플래너는 준비 중이에요 ㅠㅠ', 'The international planner is still on its way.')} <span>{text('닫기', 'Close')}</span></button>}
-      {hasDraft && <div className="draft-pill"><span><small>{text('이 기기에 남은 초안', 'Draft on this device')}</small><strong>{draftTitle}</strong></span><div className="draft-pill-actions"><Link className="draft-pill-action" href="/plan/new?draft=1">{text('계속 쓰기', 'Continue')}<ArrowRight /></Link><button type="button" onClick={clearDraft}>{text('초안 삭제', 'Delete draft')}</button></div></div>}
+      {hasDraft && <div className="draft-pill"><span><small>{text('이 기기에 남은 초안', 'Draft on this device')}</small><strong>{draftTitle || text('이 기기의 여행 초안', 'Untitled trip draft')}</strong></span><div className="draft-pill-actions"><Link className="draft-pill-action" href="/plan/new?draft=1">{text('계속 쓰기', 'Continue')}<ArrowRight /></Link><button type="button" onClick={clearDraft}>{text('초안 삭제', 'Delete draft')}</button></div></div>}
     </section>
     <WhaleSupportButton />
     <button type="button" className={`landing-admin-button ${adminAuthenticated?'is-active':''}`} onClick={()=>adminAuthenticated?void logoutAdmin():setAdminOpen(true)} title={adminAuthenticated?text('관리자 모드 종료', 'Exit admin mode'):text('관리자 로그인', 'Admin login')} aria-label={adminAuthenticated?text('관리자 모드 종료', 'Exit admin mode'):text('관리자 로그인', 'Admin login')}>{adminAuthenticated?<LogOut/>:<LockKeyhole/>}</button>
