@@ -11,11 +11,10 @@ export function WhaleSupportButton() {
       href={BUY_ME_A_COFFEE_URL}
       target="_blank"
       rel="noreferrer"
-      aria-label="제작자는 배가 고파요. Buy Me a Coffee에서 후원하기"
+      aria-label="고래밥 보태기. Buy Me a Coffee에서 후원하기"
     >
       <span className="whale-support-copy" aria-hidden="true">
-        <strong>제작자는 배가 고파요</strong>
-        <small>커피 한 잔 보태기 ☕</small>
+        <strong>고래밥 보태기</strong>
       </span>
       <span className="whale-support-mascot" aria-hidden="true">
         <span className="whale-support-art-frame">
