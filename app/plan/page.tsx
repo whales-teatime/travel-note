@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type DragEvent, type WheelEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   ArrowDown, ArrowUp, CalendarDays, ChevronDown, ChevronUp, CircleAlert, Clock3,
@@ -427,6 +427,10 @@ export default function Home(){
   const [customDay,setCustomDay]=useState<DayKey>(firstDefaultDay),[customName,setCustomName]=useState(''),[customAddress,setCustomAddress]=useState(''),[customMemo,setCustomMemo]=useState(''),[customTime,setCustomTime]=useState('12:00'),[customCategory,setCustomCategory]=useState<PlaceType>('관광'),[customAddressSearching,setCustomAddressSearching]=useState(false),[customAddressError,setCustomAddressError]=useState('');
   const [newTime,setNewTime]=useState('12:00'), [newCategory,setNewCategory]=useState<PlaceType>('식사'), [newMemo,setNewMemo]=useState(''), [draggedId,setDraggedId]=useState<string|null>(null), [dragOverId,setDragOverId]=useState<string|null>(null), [justMovedId,setJustMovedId]=useState<string|null>(null), [daysExpanded,setDaysExpanded]=useState(false);
   const [canDragCards,setCanDragCards]=useState(false);
+  const plannerPanelRef=useRef<HTMLElement|null>(null);
+  const draggedIdRef=useRef<string|null>(null);
+  const dragScrollVelocityRef=useRef(0);
+  const dragScrollFrameRef=useRef<number|null>(null);
   const savedSnapshotRef=useRef('');
   const saveInFlightRef=useRef(false);
   const savePlanRef=useRef<(silent?:boolean)=>Promise<void>>(async()=>{});
@@ -440,6 +444,11 @@ export default function Home(){
   const dayDates=useMemo(()=>Object.fromEntries(itineraryDays.map(day=>[day.key,day.date])) as Record<DayKey,string>,[itineraryDays]);
   const addSuggestions=usePlaceSuggestions(query,addOpen,tripSettings.destination),editSuggestions=usePlaceSuggestions(editQuery,Boolean(editing),tripSettings.destination),mapSuggestions=usePlaceSuggestions(mapQuery,true,tripSettings.destination);
   useEffect(()=>{const media=window.matchMedia('(hover: hover) and (pointer: fine)');const update=()=>setCanDragCards(media.matches);update();media.addEventListener('change',update);return()=>media.removeEventListener('change',update)},[]);
+  const stopDragAutoScroll=useCallback(()=>{dragScrollVelocityRef.current=0;if(dragScrollFrameRef.current!==null){window.cancelAnimationFrame(dragScrollFrameRef.current);dragScrollFrameRef.current=null}},[]);
+  const runDragAutoScroll=useCallback(()=>{const panel=plannerPanelRef.current,velocity=dragScrollVelocityRef.current;if(!panel||!velocity||!draggedIdRef.current){stopDragAutoScroll();return}panel.scrollTop+=velocity;dragScrollFrameRef.current=window.requestAnimationFrame(runDragAutoScroll)},[stopDragAutoScroll]);
+  const updateDragAutoScroll=useCallback((event:DragEvent<HTMLElement>)=>{const panel=plannerPanelRef.current;if(!canDragCards||!draggedIdRef.current||!panel)return;event.preventDefault();const rect=panel.getBoundingClientRect(),edge=Math.min(112,Math.max(72,rect.height*.18)),distanceFromTop=event.clientY-rect.top,distanceFromBottom=rect.bottom-event.clientY;let velocity=0;if(distanceFromTop>=0&&distanceFromTop<edge)velocity=-(2+Math.round((edge-distanceFromTop)/edge*10));else if(distanceFromBottom>=0&&distanceFromBottom<edge)velocity=2+Math.round((edge-distanceFromBottom)/edge*10);dragScrollVelocityRef.current=velocity;if(velocity&&dragScrollFrameRef.current===null)dragScrollFrameRef.current=window.requestAnimationFrame(runDragAutoScroll);if(!velocity&&dragScrollFrameRef.current!==null)stopDragAutoScroll()},[canDragCards,runDragAutoScroll,stopDragAutoScroll]);
+  const handlePlannerWheel=useCallback((event:WheelEvent<HTMLElement>)=>{if(!canDragCards||!draggedIdRef.current)return;const panel=plannerPanelRef.current;if(!panel)return;event.preventDefault();panel.scrollTop+=event.deltaY},[canDragCards]);
+  useEffect(()=>stopDragAutoScroll,[stopDragAutoScroll]);
   const applyStoredPlan=useCallback((data:StoredPlan,editToken?:string,permission?:boolean,adminAuthenticated=false)=>{
     const settings={title:data.title,destination:data.destination,startDate:data.startDate,endDate:data.endDate,people:data.people,editPolicy:data.editPolicy==='all'?'all':data.editPolicy==='password'?'password':'owner' as EditPolicy};
     const normalizedStops=(data.stops||[]).map(stop=>({...stop,day:normalizeStoredDay(String(stop.day),data.startDate,data.endDate),category:normalizeCategory(String(stop.category))}));
@@ -557,7 +566,7 @@ export default function Home(){
   const openEdit=(stop:Stop)=>{setEditing(stop);setEditDraft({...stop});setEditQuery(stop.name);setEditPlaceLinked(true)};
   const saveEdit=()=>{if(!editing||!editDraft||!isValidTime(editDraft.time))return;const updated={...editDraft,name:editDraft.name.trim()||editing.name,memo:editDraft.memo.trim()};setStops(current=>current.map(stop=>stop.id===editing.id?updated:stop));if(selected?.id===editing.id)setSelected(updated);setEditing(null);setEditDraft(null)};
   const moveStop=(id:string,direction:-1|1)=>setStops(current=>{const items=current.filter(s=>s.day===activeDay),i=items.findIndex(s=>s.id===id),t=i+direction;if(i<0||t<0||t>=items.length)return current;const next=[...items];[next[i],next[t]]=[next[t],next[i]];let cursor=0;return current.map(s=>s.day===activeDay?next[cursor++]:s)});
-  const reorderByDrop=(targetId:string)=>{if(!draggedId||draggedId===targetId){setDraggedId(null);setDragOverId(null);return}const movedId=draggedId;setStops(current=>{const items=current.filter(s=>s.day===activeDay),from=items.findIndex(s=>s.id===movedId),to=items.findIndex(s=>s.id===targetId);if(from<0||to<0)return current;const next=[...items],[moved]=next.splice(from,1);next.splice(to,0,moved);let cursor=0;return current.map(s=>s.day===activeDay?next[cursor++]:s)});setJustMovedId(movedId);window.setTimeout(()=>setJustMovedId(current=>current===movedId?null:current),380);setDraggedId(null);setDragOverId(null)};
+  const reorderByDrop=(targetId:string)=>{const activeDraggedId=draggedIdRef.current||draggedId;if(!activeDraggedId||activeDraggedId===targetId){draggedIdRef.current=null;stopDragAutoScroll();setDraggedId(null);setDragOverId(null);return}const movedId=activeDraggedId;setStops(current=>{const items=current.filter(s=>s.day===activeDay),from=items.findIndex(s=>s.id===movedId),to=items.findIndex(s=>s.id===targetId);if(from<0||to<0)return current;const next=[...items],[moved]=next.splice(from,1);next.splice(to,0,moved);let cursor=0;return current.map(s=>s.day===activeDay?next[cursor++]:s)});setJustMovedId(movedId);window.setTimeout(()=>setJustMovedId(current=>current===movedId?null:current),380);draggedIdRef.current=null;stopDragAutoScroll();setDraggedId(null);setDragOverId(null)};
   const removeSelected=()=>{if(!selected)return;setStops(c=>c.filter(s=>s.id!==selected.id));setSelected(null)};
   const removeStop=(id:string)=>setStops(current=>current.filter(stop=>stop.id!==id));
   const commitMapSearch=()=>{setMapResultPlaces(mapSuggestions.results.slice(0,8));setMapPicked(null);setMapCandidate(null)};
@@ -720,7 +729,7 @@ export default function Home(){
     </Dialog>
 
     <section className={`workspace ${mapFocused?'map-focused':''} ${plannerCollapsed?'planner-collapsed':''}`}>
-      <aside className="planner-panel">
+      <aside ref={plannerPanelRef} className="planner-panel" onDragOver={updateDragAutoScroll} onWheel={handlePlannerWheel}>
         {planId&&!canEdit&&<div className="inline-notice plan-readonly-notice"><CircleAlert/><span>{tripSettings.editPolicy==='password'?text('편집 비밀번호를 입력하면 일정을 수정할 수 있어요.','Enter the editing password to make changes.'):tripSettings.editPolicy==='all'?text('열람 비밀번호로 계획을 열면 수정할 수 있어요.','Open the plan with its viewing password to edit it.'):text('작성자의 편집 토큰이 있어야 일정을 바꿀 수 있어요.','The author token is required to edit this plan.')}</span>{tripSettings.editPolicy==='password'&&<Button variant="outline" onClick={()=>setEditPasswordPromptOpen(true)}>{text('편집 비밀번호 입력','Enter editing password')}</Button>}</div>}
         <div className="day-switch-wrap"><div className={`day-switch ${dayKeys.length>6&&!daysExpanded?'is-collapsed':''}`} role="tablist" aria-label={text('여행 날짜','Trip dates')}>{visibleDayKeys.map(day=>{const index=dayKeys.indexOf(day);return <button key={day} role="tab" aria-selected={activeDay===day} onClick={()=>setActiveDay(day)}><span style={{color:dayColor(day,dayKeys)}}>DAY {index+1}</span><strong>{formatTripDate(dayDates[day],true,language)}</strong></button>})}</div>{dayKeys.length>6&&<button type="button" className="day-rollup-toggle" onClick={()=>setDaysExpanded(current=>!current)} aria-expanded={daysExpanded}>{daysExpanded?<><ChevronUp/>{text('일정 접기','Collapse days')}</>:<><ChevronDown/>{text(`전체 ${dayKeys.length}일 보기`,`View all ${dayKeys.length} days`)}</>}</button>}</div>
         <div className="panel-heading"><div><span><CalendarDays/>{text('방문 순서','Visit order')}</span><strong>{dayStops.length}{text('개 장소',' stops')}</strong></div></div>
@@ -729,7 +738,7 @@ export default function Home(){
             const previous=dayStops[index-1],gap=previous?distanceKm(previous,stop):null,reverse=previous&&timeMinutes(stop.time)<timeMinutes(previous.time);
             return <div key={stop.id}>
               {gap!==null&&<div className="distance-chip"><span/>{text('직선 ','Straight line ')}{gap<1?`${Math.round(gap*1000)}m`:`${gap.toFixed(1)}km`}</div>}
-              <article className={`stop-card ${draggedId===stop.id?'is-dragging':''} ${dragOverId===stop.id&&draggedId!==stop.id?'is-drag-over':''} ${justMovedId===stop.id?'just-moved':''}`} draggable={canDragCards} onContextMenu={event=>{if(!canDragCards)event.preventDefault()}} onDragStart={()=>{if(canDragCards)setDraggedId(stop.id)}} onDragOver={event=>{if(!canDragCards)return;event.preventDefault();if(draggedId!==stop.id)setDragOverId(stop.id)}} onDragLeave={()=>setDragOverId(current=>current===stop.id?null:current)} onDrop={()=>{if(canDragCards)reorderByDrop(stop.id)}} onDragEnd={()=>{setDraggedId(null);setDragOverId(null)}} onClick={()=>setSelected(stop)}>
+              <article className={`stop-card ${draggedId===stop.id?'is-dragging':''} ${dragOverId===stop.id&&draggedId!==stop.id?'is-drag-over':''} ${justMovedId===stop.id?'just-moved':''}`} draggable={canDragCards} onContextMenu={event=>{if(!canDragCards)event.preventDefault()}} onDragStart={()=>{if(canDragCards){draggedIdRef.current=stop.id;setDraggedId(stop.id)}}} onDragOver={event=>{if(!canDragCards)return;event.preventDefault();if(draggedId!==stop.id)setDragOverId(stop.id)}} onDragLeave={()=>setDragOverId(current=>current===stop.id?null:current)} onDrop={()=>{if(canDragCards)reorderByDrop(stop.id)}} onDragEnd={()=>{draggedIdRef.current=null;stopDragAutoScroll();setDraggedId(null);setDragOverId(null)}} onClick={()=>setSelected(stop)}>
                 <div className="drag-handle" aria-hidden="true"><GripVertical/></div>
                 <div className="order-pin" style={{background:dayColor(activeDay,dayKeys)}}>{index+1}</div>
                 <div className="stop-main">
