@@ -6,6 +6,7 @@ import { ArrowLeft, CalendarDays, Heart, MapPin, Send, ShieldCheck, Trash2 } fro
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { readJsonResponse } from '@/lib/client-json';
 
 type Feedback = { id: string; category: string; message: string; likes: number; createdAt: string };
 const LIKED_KEY = 'travel-note-feedback-liked-v1';
@@ -42,7 +43,7 @@ export default function FeedbackPage() {
     if (append) setLoadingMore(true); else setError('');
     try {
       const response = await fetch(`/api/feedback?limit=30&offset=${offset}`, { cache: 'no-store' });
-      const body = await response.json() as { items?: Feedback[]; nextOffset?: number | null; message?: string };
+      const body = await readJsonResponse<{ items?: Feedback[]; nextOffset?: number | null; message?: string }>(response);
       if (!response.ok) throw new Error(body.message || '피드백을 불러오지 못했어요.');
       setFeedback(current => append ? [...current, ...(body.items || [])] : body.items || []);
       setNextOffset(body.nextOffset ?? null);
@@ -54,7 +55,7 @@ export default function FeedbackPage() {
     setLiked(readLiked());
     void loadFeedback();
     void fetch('/api/admin/session', { cache: 'no-store' })
-      .then(response => response.json() as Promise<{ adminAuthenticated?: boolean }>)
+      .then(response => readJsonResponse<{ adminAuthenticated?: boolean }>(response))
       .then(body => setAdminMode(Boolean(body.adminAuthenticated)))
       .catch(() => setAdminMode(false));
   }, []);
@@ -64,7 +65,7 @@ export default function FeedbackPage() {
     setSending(true); setNotice(''); setError('');
     try {
       const response = await fetch('/api/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ category, message: message.trim() }) });
-      const body = await response.json() as { item?: Feedback; message?: string };
+      const body = await readJsonResponse<{ item?: Feedback; message?: string }>(response);
       if (!response.ok || !body.item) throw new Error(body.message || '피드백을 보내지 못했어요.');
       setFeedback(current => [body.item as Feedback, ...current]);
       setMessage(''); setNotice('피드백을 남겼어요. 고마워요!');
@@ -77,7 +78,7 @@ export default function FeedbackPage() {
     setBusyLike(item.id); setError('');
     try {
       const response = await fetch(`/api/feedback/${encodeURIComponent(item.id)}/like`, { method: 'POST' });
-      const body = await response.json() as { likes?: number; message?: string };
+      const body = await readJsonResponse<{ likes?: number; message?: string }>(response);
       if (!response.ok || typeof body.likes !== 'number') throw new Error(body.message || '좋아요를 반영하지 못했어요.');
       const next = new Set(liked); next.add(item.id); setLiked(next);
       try { window.localStorage.setItem(LIKED_KEY, JSON.stringify([...next])); } catch { /* Keep the like active for this view. */ }
@@ -91,7 +92,7 @@ export default function FeedbackPage() {
     setDeletingId(pendingDelete.id); setError('');
     try {
       const response = await fetch(`/api/feedback/${encodeURIComponent(pendingDelete.id)}`, { method: 'DELETE' });
-      const body = await response.json() as { deleted?: boolean; message?: string };
+      const body = await readJsonResponse<{ deleted?: boolean; message?: string }>(response);
       if (!response.ok || !body.deleted) throw new Error(body.message || '피드백을 삭제하지 못했어요.');
       setFeedback(current => current.filter(item => item.id !== pendingDelete.id));
       setPendingDelete(null); setNotice('피드백을 삭제했어요.');
