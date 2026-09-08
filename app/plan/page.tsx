@@ -17,7 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { rememberPlanVisit } from '@/lib/client-plan-history';
 import { readJsonResponse } from '@/lib/client-json';
-import { tr, useLanguage } from '@/lib/i18n';
+import { tr, useCurrency, useLanguage } from '@/lib/i18n';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -144,7 +144,8 @@ function costValues(stop:Pick<Stop,'costPerPerson'|'costTotal'>,people:number){
   const total=typeof stop.costTotal==='number'&&Number.isFinite(stop.costTotal)?stop.costTotal:personal*count;
   return {personal,total};
 }
-function formatWon(value:number,language:'ko'|'en'='ko'){return language==='en'?`₩${Math.round(value).toLocaleString('en-US')}`:`${Math.round(value).toLocaleString('ko-KR')}원`}
+function currencyUnit(currency:'KRW'|'USD',language:'ko'|'en'){if(currency==='USD')return language==='en'?'dollars':'달러';return language==='en'?'won':'원'}
+function formatMoney(value:number,language:'ko'|'en'='ko',currency:'KRW'|'USD'='KRW'){const amount=Math.round(value).toLocaleString(language==='en'?'en-US':'ko-KR');return currency==='USD'?(language==='en'?`$${amount}`:`${amount}달러`):(language==='en'?`₩${amount}`:`${amount}원`)}
 function normalizeTimeInput(raw:string){
   const value=raw.replace(/[^0-9:]/g,'');
   const colon=value.indexOf(':');
@@ -412,6 +413,7 @@ function PanoramaView({stop,clientId}:{stop:Stop;clientId:string}) {
 
 export default function Home(){
   const { language } = useLanguage();
+  const { currency } = useCurrency(language);
   const text = (korean:string, english:string) => tr(language, korean, english);
   const firstDefaultDay=dateDayKey(DEFAULT_TRIP.startDate);
   const [activeDay,setActiveDay]=useState<DayKey>(firstDefaultDay), [stops,setStops]=useState<Stop[]>(seedStops), [selected,setSelected]=useState<Stop|null>(null), [mapFocused,setMapFocused]=useState(false), [plannerCollapsed,setPlannerCollapsed]=useState(false);
@@ -666,7 +668,7 @@ export default function Home(){
       <Link className="brand" href="/"><span className="brand-mark"><Navigation/></span><span>{text('여행을 떠나요', 'Let’s Travel')}</span></Link>
       <div className="trip-title"><strong>{tripSettings.title}</strong><span>{formatTripDate(tripSettings.startDate,false,language)} — {formatTripDate(tripSettings.endDate,false,language)} · {tripSettings.people}{text('명', ' people')}</span></div>
       <div className="top-actions">
-        <div className="trip-cost-total" aria-label={text('전체 예상 경비','Total estimated budget')}><span>{text('전체 예상 경비','Total budget')}</span><strong>{formatWon(tripCostSummary.personal,language)} <small>{text('개인별','per person')}</small> · {formatWon(tripCostSummary.total,language)} <small>{text('총 비용','total')}</small></strong></div>
+        <div className="trip-cost-total" aria-label={text('전체 예상 경비','Total estimated budget')}><span>{text('전체 예상 경비','Total budget')}</span><strong>{formatMoney(tripCostSummary.personal,language,currency)} <small>{text('개인별','per person')}</small> · {formatMoney(tripCostSummary.total,language,currency)} <small>{text('총 비용','total')}</small></strong></div>
         {adminMode&&<Button variant="outline" className="admin-mode-button" onClick={()=>void logoutAdmin()} title={text('관리자 세션 종료','Exit admin session')} aria-label={text('관리자 세션 종료','Exit admin session')}><LockKeyhole/></Button>}
         {planId&&<>
           <Button variant="outline" className="plan-copy-button" aria-label={text('계획 복제','Duplicate plan')} onClick={()=>void duplicatePlan()} disabled={Boolean(planAction)||planLoading}><Copy/><span>{planAction==='duplicate'?text('복제 중…','Duplicating…'):text('계획 복제','Duplicate')}</span></Button>
@@ -745,7 +747,7 @@ export default function Home(){
                   <div className="stop-time"><Clock3 className={reverse?'time-warning':''}/><span className={reverse?'time-warning':''} title={reverse?text('앞 장소보다 시간이 이릅니다.','This time is earlier than the previous stop.'):undefined}>{stop.time}</span><span className="stop-category">{text(stop.category,stop.category==='식사'?'Meal':stop.category==='간식'?'Snack':stop.category==='관광'?'Sightseeing':stop.category==='숙소'?'Stay':'Other')}</span></div>
                   <strong>{stop.name}</strong>
                   {stop.memo&&<p>{stop.memo}</p>}
-                  <div className='stop-cost' onClick={e=>e.stopPropagation()}><span className='cost-label'>{text('예상 경비','Estimated cost')}</span><div className='cost-fields'><label className={stop.costBasis==='person'?'cost-field entered':stop.costBasis==='total'?'cost-field calculated':'cost-field'}><span>{text('개인별','Per person')}</span><div><Input type='text' inputMode='numeric' value={costInputValue(stop.costPerPerson)} onChange={e=>updateStopCost(stop.id,'person',e.target.value)} placeholder='0'/><b>{text('원','KRW')}</b></div></label><label className={stop.costBasis==='total'?'cost-field entered':stop.costBasis==='person'?'cost-field calculated':'cost-field'}><span>{text('총 비용','Total')}</span><div><Input type='text' inputMode='numeric' value={costInputValue(stop.costTotal)} onChange={e=>updateStopCost(stop.id,'total',e.target.value)} placeholder='0'/><b>{text('원','KRW')}</b></div></label></div></div>
+                  <div className='stop-cost' onClick={e=>e.stopPropagation()}><span className='cost-label'>{text('예상 경비','Estimated cost')}</span><div className='cost-fields'><label className={stop.costBasis==='person'?'cost-field entered':stop.costBasis==='total'?'cost-field calculated':'cost-field'}><span>{text('개인별','Per person')}</span><div><Input type='text' inputMode='numeric' value={costInputValue(stop.costPerPerson)} onChange={e=>updateStopCost(stop.id,'person',e.target.value)} placeholder='0'/><b>{currencyUnit(currency,language)}</b></div></label><label className={stop.costBasis==='total'?'cost-field entered':stop.costBasis==='person'?'cost-field calculated':'cost-field'}><span>{text('총 비용','Total')}</span><div><Input type='text' inputMode='numeric' value={costInputValue(stop.costTotal)} onChange={e=>updateStopCost(stop.id,'total',e.target.value)} placeholder='0'/><b>{currencyUnit(currency,language)}</b></div></label></div></div>
                 </div>
                 <div className="card-actions">
                   <div className="move-buttons"><button aria-label={`${stop.name} ${text('위로 이동','move up')}`} disabled={index===0} onClick={e=>{e.stopPropagation();moveStop(stop.id,-1)}}><ArrowUp/></button><button aria-label={`${stop.name} ${text('아래로 이동','move down')}`} disabled={index===dayStops.length-1} onClick={e=>{e.stopPropagation();moveStop(stop.id,1)}}><ArrowDown/></button></div>
@@ -755,7 +757,7 @@ export default function Home(){
             </div>
           })}
         </div>
-        <div className="day-cost-summary" aria-label={`${formatTripDate(dayDates[activeDay],false,language)} ${text('예상 경비 총합','estimated budget total')}`}><div><span>{formatTripDate(dayDates[activeDay],false,language)} {text('예상 경비 총합','estimated budget total')}</span><small>{text('입력한 장소 비용 기준','Based on entered place costs')}</small></div><strong><span><em>{text('개인별','Per person')}</em>{formatWon(dayCostSummary.personal,language)}</span><span><em>{text('총 비용','Total')}</em>{formatWon(dayCostSummary.total,language)}</span></strong></div>
+        <div className="day-cost-summary" aria-label={`${formatTripDate(dayDates[activeDay],false,language)} ${text('예상 경비 총합','estimated budget total')}`}><div><span>{formatTripDate(dayDates[activeDay],false,language)} {text('예상 경비 총합','estimated budget total')}</span><small>{text('입력한 장소 비용 기준','Based on entered place costs')}</small></div><strong><span><em>{text('개인별','Per person')}</em>{formatMoney(dayCostSummary.personal,language,currency)}</span><span><em>{text('총 비용','Total')}</em>{formatMoney(dayCostSummary.total,language,currency)}</span></strong></div>
         <div className="planner-add-actions"><Button variant="outline" className="wide-add" onClick={()=>setAddOpen(true)}><Plus/>{text('이 날짜에 장소 추가','Add a place to this day')}</Button><Button variant="ghost" className="custom-add-button" onClick={openCustomPin}><MapPin/>{text('지도에 임의 핀 추가','Add a custom map pin')}</Button></div>
       </aside>
       <section className="map-panel">

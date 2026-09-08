@@ -3,18 +3,31 @@
 import { useCallback, useEffect, useState } from 'react';
 
 export type Language = 'ko' | 'en';
+export type Currency = 'KRW' | 'USD';
 
 const LANGUAGE_KEY = 'travel-note-language';
 const LANGUAGE_EVENT = 'travel-note-language-change';
+const CURRENCY_KEY = 'travel-note-currency';
+const CURRENCY_EVENT = 'travel-note-currency-change';
 
 function isLanguage(value: string | null): value is Language {
   return value === 'ko' || value === 'en';
+}
+
+function isCurrency(value: string | null): value is Currency {
+  return value === 'KRW' || value === 'USD';
 }
 
 function storedLanguage(): Language {
   if (typeof window === 'undefined') return 'ko';
   const value = window.localStorage.getItem(LANGUAGE_KEY);
   return isLanguage(value) ? value : 'ko';
+}
+
+function storedCurrency(): Currency | null {
+  if (typeof window === 'undefined') return null;
+  const value = window.localStorage.getItem(CURRENCY_KEY);
+  return isCurrency(value) ? value : null;
 }
 
 export function useLanguage() {
@@ -44,6 +57,29 @@ export function useLanguage() {
   }, []);
 
   return { language, setLanguage };
+}
+
+export function useCurrency(language: Language) {
+  const [currency, setCurrencyState] = useState<Currency>(() => language === 'en' ? 'USD' : 'KRW');
+
+  useEffect(() => {
+    const apply = (next: Currency) => setCurrencyState(next);
+    apply(storedCurrency() ?? (language === 'en' ? 'USD' : 'KRW'));
+    const handleChange = (event: Event) => {
+      const next = (event as CustomEvent<Currency>).detail;
+      if (isCurrency(next)) apply(next);
+    };
+    window.addEventListener(CURRENCY_EVENT, handleChange);
+    return () => window.removeEventListener(CURRENCY_EVENT, handleChange);
+  }, [language]);
+
+  const setCurrency = useCallback((next: Currency) => {
+    setCurrencyState(next);
+    window.localStorage.setItem(CURRENCY_KEY, next);
+    window.dispatchEvent(new CustomEvent<Currency>(CURRENCY_EVENT, { detail: next }));
+  }, []);
+
+  return { currency, setCurrency };
 }
 
 export function tr(language: Language, korean: string, english: string) {
