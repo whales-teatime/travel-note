@@ -19,8 +19,13 @@ export function WhaleSupportButton() {
       </span>
       <span className="whale-support-bubble" aria-hidden="true">와앙!</span>
       <span className="whale-support-mascot" aria-hidden="true">
-        <Image className="whale-support-image whale-support-image-rest" src="/whale/whale-rest.webp" width={1536} height={1024} alt="" priority />
-        <Image className="whale-support-image whale-support-image-open" src="/whale/whale-open.webp" width={1536} height={1024} alt="" />
+        <span className="whale-support-progress">
+          <span>배고파</span><span>배고파.</span><span>배고파..</span><span>배고파...</span>
+        </span>
+        <span className="whale-support-art-frame">
+          <Image className="whale-support-image whale-support-image-rest" src="/whale/whale-hungry.webp" width={1536} height={1024} alt="" priority />
+          <Image className="whale-support-image whale-support-image-open" src="/whale/whale-burger.webp" width={1536} height={1024} alt="" />
+        </span>
       </span>
     </a>
   );
