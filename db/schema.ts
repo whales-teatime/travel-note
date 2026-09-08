@@ -7,3 +7,13 @@ export const planSchema = {
     'created_at', 'updated_at', 'version', 'password_algo', 'edit_password_algo',
   ],
 } as const;
+
+export const planSearchSchema = {
+  table: 'plan_search',
+  columns: ['plan_id', 'title', 'destination'],
+} as const;
+
+export const planSearchGramsSchema = {
+  table: 'plan_search_grams',
+  columns: ['plan_id', 'gram'],
+} as const;

@@ -76,5 +76,8 @@ if (command === 'deploy') {
   // The build above regenerates bindings from the selected account, so a stale
   // Sites artifact or a verification build can never be published accidentally.
   run('../node_modules/wrangler/bin/wrangler.js', ['d1', 'migrations', 'apply', env.CLOUDFLARE_D1_DATABASE_NAME, '--remote', '--config', 'dist/server/wrangler.json']);
+  // Migrations intentionally stay schema-only. Populate the title/destination
+  // search index separately so existing plans are searchable immediately.
+  run('./backfill-plan-search.mjs', []);
   run('../node_modules/wrangler/bin/wrangler.js', ['deploy', '--config', 'dist/server/wrangler.json']);
 }
