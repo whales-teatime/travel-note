@@ -7,7 +7,8 @@
 - Next.js 호환 React 앱 (`vinext`)
 - 네이버 지도 JavaScript 지도
 - 네이버 클라우드 장소 검색 API 서버 프록시
-- Google Maps JavaScript API와 Places API (New)를 사용하는 해외 여행 모드
+- 결제 없이 쓸 수 있는 Leaflet·OpenStreetMap 해외 여행 모드
+- 선택적으로 Google Maps JavaScript API와 Places API (New)를 연결할 수 있는 확장 경로
 - Cloudflare D1에 저장되는 여행 계획과 공개 목록
 - 계절 테마, 로컬 초안, 5분 주기 자동 저장
 
@@ -27,7 +28,7 @@ NAVER_API_HUB_CLIENT_SECRET=
 NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=
 ```
 
-`NEXT_PUBLIC_NAVER_MAP_CLIENT_ID`는 국내 지도 SDK용이며, NAVER API Hub 키 두 개는 장소 검색 프록시에서만 사용합니다. Google 키는 해외 지도와 장소 검색용 브라우저 키이므로 HTTP 리퍼러를 `travel.whales-teatime.workers.dev/*`와 로컬 개발 주소로 제한하고, Maps JavaScript API·Places API (New)·Geocoding API만 허용해야 합니다.
+`NEXT_PUBLIC_NAVER_MAP_CLIENT_ID`는 국내 지도 SDK용이며, NAVER API Hub 키 두 개는 장소 검색 프록시에서만 사용합니다. `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`는 선택 사항입니다. 키가 없어도 해외 모드는 무료 OpenStreetMap으로 동작하고, Google 모드를 다시 사용할 때만 필요합니다. 자세한 내용은 [v2 무료 지도 구조](docs/V2_FREE_MAP.md)를 참고합니다.
 
 ## 운영 구조
 
