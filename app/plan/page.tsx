@@ -682,7 +682,6 @@ function OsmMap({stops,destination,onSelect,placeResults,onPlaceSelect,dateLabel
   useEffect(()=>{
     let alive=true;
     let mapInstance:any=null;
-    let fallbackTimer:number|null=null;
     void (async()=>{
       try{
         const maplibreModule=await import('maplibre-gl');
@@ -705,18 +704,6 @@ function OsmMap({stops,destination,onSelect,placeResults,onPlaceSelect,dateLabel
         });
         mapInstance.on('style.load',()=>{
           if(!alive)return;
-          // Keep a raster map ready, but reveal it only when the vector source
-          // actually fails. Showing it all the time would cover Liberty's
-          // bilingual Latin/local labels with the raster's local-only labels.
-          if(!mapInstance.getSource('osm-fallback-raster')){
-            mapInstance.addSource('osm-fallback-raster',{type:'raster',tiles:['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],tileSize:256,maxzoom:19});
-            const firstLayer=style?.layers?.[1]?.id;
-            mapInstance.addLayer({id:'osm-fallback-raster',type:'raster',source:'osm-fallback-raster',layout:{visibility:'none'},paint:{'raster-opacity':1,'raster-fade-duration':0}},firstLayer);
-          }
-          const setFallback=(visible:boolean)=>{if(mapInstance.getLayer('osm-fallback-raster'))mapInstance.setLayoutProperty('osm-fallback-raster','visibility',visible?'visible':'none')};
-          mapInstance.on('sourcedata',(event:any)=>{if(event.sourceId==='openmaptiles'&&mapInstance.isSourceLoaded('openmaptiles'))setFallback(false)});
-          mapInstance.on('error',(event:any)=>{if(event.sourceId==='openmaptiles')setFallback(true)});
-          fallbackTimer=window.setTimeout(()=>{if(!mapInstance.isSourceLoaded('openmaptiles'))setFallback(true)},4500);
           mapRef.current=mapInstance;
           setStatus('ready');
           window.setTimeout(()=>mapInstance?.resize(),0);
@@ -728,7 +715,6 @@ function OsmMap({stops,destination,onSelect,placeResults,onPlaceSelect,dateLabel
       stopMarkersRef.current.forEach(marker=>marker.remove());stopMarkersRef.current=[];
       resultMarkersRef.current.forEach(marker=>marker.remove());resultMarkersRef.current=[];
       customMarkerRef.current?.remove();customMarkerRef.current=null;
-      if(fallbackTimer!==null)window.clearTimeout(fallbackTimer);
       mapInstance?.remove();
       mapRef.current=null;maplibreRef.current=null;
     };
