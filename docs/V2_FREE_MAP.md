@@ -15,9 +15,11 @@ v2의 해외 여행 모드는 결제 계정이나 API 키 없이 사용할 수 �
 
 ## 무료 운영 원칙
 
-Nominatim은 공용 서비스이므로 검색 요청은 입력 중 1초 지연, 서버 캐시, Cloudflare 요청 제한을 거친다. 공개 이용자가 급격히 늘거나 검색량이 많아지면 공용 Nominatim과 OpenStreetMap 타일이 요청을 거부할 수 있다. 이 경우 유료 API로 자동 전환하지 않고 지도 검색을 실패 상태로 남긴다.
+Nominatim은 공용 서비스이므로 자동완성 대신 사용자가 엔터를 누른 뒤에만 검색하고, 요청 사이에 최소 1초 지연·서버 캐시·Cloudflare 요청 제한을 적용한다. 공개 이용자가 급격히 늘거나 검색량이 많아지면 공용 Nominatim과 OpenStreetMap 타일이 요청을 거부할 수 있다. 이 경우 유료 API로 자동 전환하지 않고 지도 검색을 실패 상태로 남긴다.
 
 OpenStreetMap 타일은 화면에 출처를 표시한다. 대량 다운로드, 오프라인 저장, 타일 프록시 운영은 하지 않는다. 장기적으로 대중 사용량이 커지면 별도 무료 호스팅 정책을 가진 타일 공급자 또는 자체 타일 서버를 검토해야 한다.
+
+운영 기준은 [OpenStreetMap 타일 이용 정책](https://operations.osmfoundation.org/policies/tiles/)과 [Nominatim 이용 정책](https://operations.osmfoundation.org/policies/nominatim/)을 따른다. 두 공용 서비스 모두 무제한·무중단을 보장하는 API가 아니므로 사용량이 커지면 공급자를 교체할 수 있게 구성했다.
 
 ## v1로 되돌리기
 
