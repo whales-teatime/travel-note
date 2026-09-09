@@ -677,6 +677,16 @@ async function fetchLocalizedFreeMapStyle(_language:'ko'|'en') {
       }
     }
   }
+  // Liberty's default style intentionally shows the local name alongside a
+  // latin name. In English mode prefer the English field so overseas maps do
+  // not fall back to scripts that travellers may not be able to read.
+  if(_language==='en'&&Array.isArray(style.layers)){
+    const englishName=['coalesce',['get','name_en'],['get','name:latin'],['get','name']];
+    style.layers=style.layers.map((layer:any)=>{
+      if(layer?.type!=='symbol'||!layer.layout?.['text-field'])return layer;
+      return {...layer,layout:{...layer.layout,'text-field':englishName}};
+    });
+  }
   return style;
 }
 
