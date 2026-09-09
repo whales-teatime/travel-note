@@ -7,12 +7,13 @@ v2의 해외 여행 모드는 `MapLibre GL JS + OpenFreeMap` 조합을 기본으
 ## 구성
 
 - 지도 화면: MapLibre GL JS
-- 지도 스타일·벡터 타일: OpenFreeMap Liberty 스타일. OSM 지명 속성(`name:ko`, `name:en`, 라틴 문자, 원문) 순서로 라벨을 표시한다.
+- 지도 스타일·벡터 타일: OpenFreeMap Liberty 스타일. 공급자가 제공하는 영문·라틴명과 현지명 조합을 그대로 표시한다.
 - 장소·주소 검색: 서버 프록시를 거친 Geoapify 우선 검색, Nominatim 자동 대체
 - 검색 캐시: 동일 검색은 Cloudflare D1에서 먼저 조회. 검색은 30일, 좌표의 주소 변환은 90일 보관
-- 상세보기: 선택한 장소의 OpenStreetMap 링크
+- 상세보기: 선택한 장소를 Google Maps 검색 링크로 열며 Google API는 호출하지 않음
 - 거리뷰: Google Maps URL로 외부 페이지를 여는 방식이며 Google API 호출은 하지 않음
 - 저장: 계획의 `map_provider`와 장소별 `mapProvider`를 함께 저장
+- 동선: 일정 순서대로 직선을 표시하며 별도의 routing API는 사용하지 않음
 
 ## 무료 운영 원칙
 

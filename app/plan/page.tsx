@@ -210,15 +210,14 @@ function itinerarySnapshot(settings:TripSettings,stops:Stop[],viewPassword='',vi
 }
 function naverPlaceUrl(stop: Pick<Stop,'name'|'address'> & {naverLink?:string}) { return stop.naverLink?.startsWith('https://map.naver.com/') ? stop.naverLink : `https://map.naver.com/p/search/${encodeURIComponent(`${stop.name} ${stop.address}`)}` }
 function googlePlaceUrl(place: {name:string;address?:string;placeId?:string;lat?:number;lng?:number}) {
-  const query=place.name||place.address||(Number.isFinite(place.lat)&&Number.isFinite(place.lng)?`${place.lat},${place.lng}`:'');
+  const query=place.placeId?place.name:[place.name,place.address].filter(Boolean).join(' ')||(Number.isFinite(place.lat)&&Number.isFinite(place.lng)?`${place.lat},${place.lng}`:'');
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}${place.placeId?`&query_place_id=${encodeURIComponent(place.placeId)}`:''}`;
 }
 function googleStreetViewUrl(place: Pick<Stop,'lat'|'lng'>) { return `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${encodeURIComponent(`${place.lat},${place.lng}`)}` }
 function placeExternalUrl(place: {title:string;address:string;roadAddress:string;mapx?:string;mapy?:string;provider?:MapProvider;placeId?:string}) {
-  return place.provider==='google'?googlePlaceUrl({name:cleanTitle(place.title),address:place.roadAddress||place.address,placeId:place.placeId}):place.provider==='osm'?osmPlaceUrl({lat:Number(place.mapy)/1e7,lng:Number(place.mapx)/1e7}):naverPlaceUrl({name:cleanTitle(place.title),address:place.roadAddress||place.address});
+  return place.provider==='google'?googlePlaceUrl({name:cleanTitle(place.title),address:place.roadAddress||place.address,placeId:place.placeId}):place.provider==='osm'?googlePlaceUrl({name:cleanTitle(place.title),address:place.roadAddress||place.address,lat:Number(place.mapy)/1e7,lng:Number(place.mapx)/1e7}):naverPlaceUrl({name:cleanTitle(place.title),address:place.roadAddress||place.address});
 }
-function osmPlaceUrl(place:{lat:number;lng:number}) { return `https://www.openstreetmap.org/?mlat=${encodeURIComponent(place.lat)}&mlon=${encodeURIComponent(place.lng)}#map=18/${encodeURIComponent(place.lat)}/${encodeURIComponent(place.lng)}` }
-function stopExternalUrl(stop:Stop,provider:MapProvider) { return provider==='google'||stop.mapProvider==='google'?googlePlaceUrl({name:stop.name,address:stop.address,placeId:stop.placeId,lat:stop.lat,lng:stop.lng}):provider==='osm'||stop.mapProvider==='osm'?osmPlaceUrl(stop):naverPlaceUrl(stop) }
+function stopExternalUrl(stop:Stop,provider:MapProvider) { return provider==='google'||stop.mapProvider==='google'?googlePlaceUrl({name:stop.name,address:stop.address,placeId:stop.placeId,lat:stop.lat,lng:stop.lng}):provider==='osm'||stop.mapProvider==='osm'?googlePlaceUrl({name:stop.name,address:stop.address,lat:stop.lat,lng:stop.lng}):naverPlaceUrl(stop) }
 
 function loadGoogleMaps(apiKey:string,language:'ko'|'en') {
   if(window.google?.maps?.importLibrary)return Promise.resolve();
@@ -658,22 +657,13 @@ function GoogleMap({stops,apiKey,destination,onSelect,placeResults,onPlaceSelect
   </div>;
 }
 
-function localizedFreeMapStyle(style:any,language:'ko'|'en') {
-  const labelFields=language==='en'
-    ? ['coalesce',['get','name:en'],['get','name:latin'],['get','name:nonlatin'],['get','name']]
-    : ['coalesce',['get','name:ko'],['get','name:en'],['get','name:latin'],['get','name:nonlatin'],['get','name']];
-  const layers=Array.isArray(style?.layers)?style.layers.map((layer:any)=>{
-    const field=layer?.layout?.['text-field'];
-    if(layer?.type==='symbol'&&field&&JSON.stringify(field).includes('name'))return {...layer,layout:{...layer.layout,'text-field':labelFields}};
-    return layer;
-  }):style?.layers;
-  return {...style,layers};
-}
-
-async function fetchLocalizedFreeMapStyle(language:'ko'|'en') {
+async function fetchLocalizedFreeMapStyle(_language:'ko'|'en') {
   const response=await fetch('https://tiles.openfreemap.org/styles/liberty',{cache:'force-cache'});
   if(!response.ok)throw new Error(`Map style request failed: ${response.status}`);
-  return localizedFreeMapStyle(await response.json(),language);
+  // Liberty already combines its Latin/English and non-Latin names. Keeping
+  // the provider's tested expression avoids hiding either label when a tile
+  // does not contain an app-specific language field.
+  return response.json() as Promise<any>;
 }
 
 function OsmMap({stops,destination,onSelect,placeResults,onPlaceSelect,dateLabels,activeDay,onDayChange,editableStopId,onStopPositionChange,onCancelStopPositionEdit,customPin,customPinMode,onCustomLocationChange,onCustomAddressChange,onCustomPinContinue,onMapTap,mapFocused,onToggleMapFocus,plannerCollapsed}:{stops:Stop[];destination:string;onSelect:(stop:Stop)=>void;placeResults:SearchPlace[];onPlaceSelect:(place:SearchPlace)=>void;dateLabels:Record<DayKey,string>;activeDay:DayKey;onDayChange:(day:DayKey)=>void;editableStopId:string|null;onStopPositionChange:(id:string,lat:number,lng:number)=>void;onCancelStopPositionEdit:()=>void;customPin:{lat:number;lng:number}|null;customPinMode:boolean;onCustomLocationChange:(point:{lat:number;lng:number})=>void;onCustomAddressChange:(address:string)=>void;onCustomPinContinue:()=>void;onMapTap:()=>void;mapFocused:boolean;onToggleMapFocus:()=>void;plannerCollapsed:boolean}) {
@@ -692,6 +682,7 @@ function OsmMap({stops,destination,onSelect,placeResults,onPlaceSelect,dateLabel
   useEffect(()=>{
     let alive=true;
     let mapInstance:any=null;
+    let fallbackTimer:number|null=null;
     void (async()=>{
       try{
         const maplibreModule=await import('maplibre-gl');
@@ -714,14 +705,18 @@ function OsmMap({stops,destination,onSelect,placeResults,onPlaceSelect,dateLabel
         });
         mapInstance.on('style.load',()=>{
           if(!alive)return;
-          // Keep a dependable raster base underneath the vector style. If a shared
-          // vector tile is slow or unavailable, the map still has a useful surface
-          // at city zoom instead of turning into a blank canvas.
+          // Keep a raster map ready, but reveal it only when the vector source
+          // actually fails. Showing it all the time would cover Liberty's
+          // bilingual Latin/local labels with the raster's local-only labels.
           if(!mapInstance.getSource('osm-fallback-raster')){
             mapInstance.addSource('osm-fallback-raster',{type:'raster',tiles:['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],tileSize:256,maxzoom:19});
             const firstLayer=style?.layers?.[1]?.id;
-            mapInstance.addLayer({id:'osm-fallback-raster',type:'raster',source:'osm-fallback-raster',paint:{'raster-opacity':1}},firstLayer);
+            mapInstance.addLayer({id:'osm-fallback-raster',type:'raster',source:'osm-fallback-raster',layout:{visibility:'none'},paint:{'raster-opacity':1,'raster-fade-duration':0}},firstLayer);
           }
+          const setFallback=(visible:boolean)=>{if(mapInstance.getLayer('osm-fallback-raster'))mapInstance.setLayoutProperty('osm-fallback-raster','visibility',visible?'visible':'none')};
+          mapInstance.on('sourcedata',(event:any)=>{if(event.sourceId==='openmaptiles'&&mapInstance.isSourceLoaded('openmaptiles'))setFallback(false)});
+          mapInstance.on('error',(event:any)=>{if(event.sourceId==='openmaptiles')setFallback(true)});
+          fallbackTimer=window.setTimeout(()=>{if(!mapInstance.isSourceLoaded('openmaptiles'))setFallback(true)},4500);
           mapRef.current=mapInstance;
           setStatus('ready');
           window.setTimeout(()=>mapInstance?.resize(),0);
@@ -733,6 +728,7 @@ function OsmMap({stops,destination,onSelect,placeResults,onPlaceSelect,dateLabel
       stopMarkersRef.current.forEach(marker=>marker.remove());stopMarkersRef.current=[];
       resultMarkersRef.current.forEach(marker=>marker.remove());resultMarkersRef.current=[];
       customMarkerRef.current?.remove();customMarkerRef.current=null;
+      if(fallbackTimer!==null)window.clearTimeout(fallbackTimer);
       mapInstance?.remove();
       mapRef.current=null;maplibreRef.current=null;
     };
@@ -1200,11 +1196,11 @@ export default function Home(){
         <div className="map-toolbar"><div className="map-toolbar-left"><Sparkles/><span><strong>DAY {Math.max(1,dayKeys.indexOf(activeDay)+1)}</strong></span></div><div className="map-toolbar-right"><button type="button" className="planner-toggle-button" onClick={()=>setPlannerCollapsed(current=>!current)} aria-expanded={!plannerCollapsed} aria-label={plannerCollapsed?text('일정 패널 펼치기','Expand planner'):text('일정 패널 접기','Collapse planner')} title={plannerCollapsed?text('일정 패널 펼치기','Expand planner'):text('일정 접기','Collapse planner')}>{plannerCollapsed?<PanelLeftOpen/>:<PanelLeftClose/>}<span>{plannerCollapsed?text('일정 펼치기','Expand planner'):text('일정 접기','Collapse planner')}</span></button><span className={`naver-badge ${tripSettings.mapProvider==='google'?'google-badge':''} ${tripSettings.mapProvider==='osm'?'osm-badge':''}`}><b>{tripSettings.mapProvider==='google'?'G':tripSettings.mapProvider==='osm'?'O':'N'}</b>{mapProviderName(tripSettings.mapProvider,language)}</span></div></div>
         <div className="map-place-search"><PlacePicker provider={tripSettings.mapProvider} query={mapQuery} onQueryChange={(value,userInput)=>{setMapQuery(value);if(userInput){setMapPicked(null);setMapCandidate(null);setMapResultPlaces([]);if(tripSettings.mapProvider==='osm')setOsmMapQuery('')}}} onEnter={value=>{if(tripSettings.mapProvider==='osm')setOsmMapQuery(value);else void commitMapSearch()}} results={mapSuggestions.results} value={mapPicked} onPick={async place=>{try{const resolved=await resolveSearchPlace(place,tripSettings.mapProvider,googleKey,language);setMapPicked(resolved);setMapCandidate(resolved);setMapResultPlaces(resolved?[resolved]:[]);if(resolved)setMapQuery(placeTitle(resolved,language))}catch(error){setPlanSaveMessage(error instanceof Error?error.message:text('장소를 확인하지 못했습니다.','Could not load this place.'))}}} searching={mapSuggestions.searching} placeholder={`${tripSettings.destination} ${text('장소 검색','search places')}`} selected={Boolean(mapPicked)}/></div>
         {tripSettings.mapProvider==='google'?<GoogleMap {...mapViewProps} apiKey={googleKey}/>:tripSettings.mapProvider==='osm'?<OsmMap {...mapViewProps}/>:<NaverMap {...mapViewProps} clientId={clientId}/>}
-        {mapCandidate&&<div className="map-place-card"><button className="map-card-close" onClick={()=>setMapCandidate(null)} aria-label={text('장소 정보 닫기','Close place info')}>×</button><span>{placeCategory(mapCandidate,language)}</span><strong>{placeTitle(mapCandidate,language)}</strong><p>{placeAddress(mapCandidate,language)}</p><div><a href={placeExternalUrl(mapCandidate)} target="_blank" rel="noreferrer">{tripSettings.mapProvider==='google'?text('Google 지도에서 상세보기','View on Google Maps'):tripSettings.mapProvider==='osm'?text('OpenStreetMap에서 보기','View on OpenStreetMap'):text('네이버지도에서 상세보기','View on Naver Maps')}</a><Button onClick={prepareMapCandidate}><Plus/>{text('이 장소로 결정','Choose this place')}</Button></div></div>}
+        {mapCandidate&&<div className="map-place-card"><button className="map-card-close" onClick={()=>setMapCandidate(null)} aria-label={text('장소 정보 닫기','Close place info')}>×</button><span>{placeCategory(mapCandidate,language)}</span><strong>{placeTitle(mapCandidate,language)}</strong><p>{placeAddress(mapCandidate,language)}</p><div><a href={placeExternalUrl(mapCandidate)} target="_blank" rel="noreferrer">{tripSettings.mapProvider==='naver'?text('네이버지도에서 상세보기','View on Naver Maps'):text('Google 지도에서 상세보기','View on Google Maps')}</a><Button onClick={prepareMapCandidate}><Plus/>{text('이 장소로 결정','Choose this place')}</Button></div></div>}
       </section>
     </section>
 
-    <Sheet open={Boolean(selected)} onOpenChange={open=>!open&&setSelected(null)}><SheetContent className="place-sheet sm:max-w-[430px]">{selected&&<><SheetHeader><div className="sheet-eyebrow"><span style={{background:dayColor(selected.day,dayKeys)}}>{stops.filter(s=>s.day===selected.day).findIndex(s=>s.id===selected.id)+1}</span>{formatTripDate(dayDates[selected.day],false,language)} · {selected.time} · {text(selected.category,selected.category==='식사'?'Meal':selected.category==='간식'?'Snack':selected.category==='관광'?'Sightseeing':selected.category==='숙소'?'Stay':'Other')}</div><SheetTitle>{selected.name}</SheetTitle><SheetDescription>{selected.address}</SheetDescription></SheetHeader><div className="sheet-body"><div className="section-title"><span>{text('거리뷰','Street view')}</span><small>{mapProviderName(tripSettings.mapProvider,language)}</small></div>{tripSettings.mapProvider==='naver'?<PanoramaView stop={selected} clientId={clientId}/>:<a className="panorama-external-link" href={googleStreetViewUrl(selected)} target="_blank" rel="noreferrer"><Navigation/><span><strong>{text('Google 지도에서 스트리트뷰 열기','Open Street View in Google Maps')}</strong><small>{text('촬영된 거리뷰가 없는 곳은 일반 지도로 열릴 수 있어요.','Places without Street View coverage may open as a regular map.')}</small></span><ExternalLink/></a>} {selected.memo&&<div className="place-note"><span>{text('메모','Note')}</span><p>{selected.memo}</p></div>}<a className={`naver-link ${tripSettings.mapProvider==='google'?'google-link':''} ${tripSettings.mapProvider==='osm'?'osm-link':''}`} href={stopExternalUrl(selected,tripSettings.mapProvider)} target="_blank" rel="noreferrer"><span><b>{tripSettings.mapProvider==='google'?'G':tripSettings.mapProvider==='osm'?'O':'N'}</b>{tripSettings.mapProvider==='google'?text('Google 지도에서 상세보기','View on Google Maps'):tripSettings.mapProvider==='osm'?text('OpenStreetMap에서 보기','View on OpenStreetMap'):text('네이버지도에서 상세보기','View on Naver Maps')}</span><ExternalLink/></a><Button variant="outline" className="location-edit-button" onClick={startLocationEdit}><MapPin/>{text('위치 임의 수정','Edit location')}</Button><Button variant="destructive" className="delete-button" onClick={removeSelected}><Trash2/>{text('이 장소 삭제','Delete place')}</Button></div></>}</SheetContent></Sheet>
+    <Sheet open={Boolean(selected)} onOpenChange={open=>!open&&setSelected(null)}><SheetContent className="place-sheet sm:max-w-[430px]">{selected&&<><SheetHeader><div className="sheet-eyebrow"><span style={{background:dayColor(selected.day,dayKeys)}}>{stops.filter(s=>s.day===selected.day).findIndex(s=>s.id===selected.id)+1}</span>{formatTripDate(dayDates[selected.day],false,language)} · {selected.time} · {text(selected.category,selected.category==='식사'?'Meal':selected.category==='간식'?'Snack':selected.category==='관광'?'Sightseeing':selected.category==='숙소'?'Stay':'Other')}</div><SheetTitle>{selected.name}</SheetTitle><SheetDescription>{selected.address}</SheetDescription></SheetHeader><div className="sheet-body"><div className="section-title"><span>{text('거리뷰','Street view')}</span><small>{mapProviderName(tripSettings.mapProvider,language)}</small></div>{tripSettings.mapProvider==='naver'?<PanoramaView stop={selected} clientId={clientId}/>:<a className="panorama-external-link" href={googleStreetViewUrl(selected)} target="_blank" rel="noreferrer"><Navigation/><span><strong>{text('Google 지도에서 스트리트뷰 열기','Open Street View in Google Maps')}</strong><small>{text('촬영된 거리뷰가 없는 곳은 일반 지도로 열릴 수 있어요.','Places without Street View coverage may open as a regular map.')}</small></span><ExternalLink/></a>} {selected.memo&&<div className="place-note"><span>{text('메모','Note')}</span><p>{selected.memo}</p></div>}<a className={`naver-link ${tripSettings.mapProvider==='naver'?'':'google-link'}`} href={stopExternalUrl(selected,tripSettings.mapProvider)} target="_blank" rel="noreferrer"><span><b>{tripSettings.mapProvider==='naver'?'N':'G'}</b>{tripSettings.mapProvider==='naver'?text('네이버지도에서 상세보기','View on Naver Maps'):text('Google 지도에서 상세보기','View on Google Maps')}</span><ExternalLink/></a><Button variant="outline" className="location-edit-button" onClick={startLocationEdit}><MapPin/>{text('위치 임의 수정','Edit location')}</Button><Button variant="destructive" className="delete-button" onClick={removeSelected}><Trash2/>{text('이 장소 삭제','Delete place')}</Button></div></>}</SheetContent></Sheet>
 
     <Dialog open={Boolean(editing)} onOpenChange={open=>{if(!open){setEditing(null);setEditDraft(null)}}}><DialogContent className="edit-dialog sm:max-w-[500px]">{editDraft&&<><DialogHeader><DialogTitle>{text('장소 수정','Edit place')}</DialogTitle><DialogDescription>{text('장소를 바꾸려면 검색 결과에서 선택하세요.','Choose a search result if you want to change the place.')}</DialogDescription></DialogHeader><div className="edit-grid"><label>{text('장소','Place')} <PlacePicker provider={tripSettings.mapProvider} query={editQuery} onQueryChange={(value,userInput)=>{setEditQuery(value);if(userInput){setEditPlaceLinked(false);if(tripSettings.mapProvider==='osm')setOsmEditQuery('')}}} onEnter={value=>{if(tripSettings.mapProvider==='osm')setOsmEditQuery(value)}} results={editSuggestions.results} value={null} onPick={pickEditPlace} searching={editSuggestions.searching} placeholder={text('장소 검색','Search places')} selected={editPlaceLinked}/></label>{editSuggestions.error&&editQuery.trim().length>=2&&!editPlaceLinked&&<div className="inline-notice"><CircleAlert/>{editSuggestions.error}</div>}<div className={`linked-place ${editPlaceLinked?'':'unlinked'}`}><MapPin/><span><strong>{editDraft.name}</strong><small>{editDraft.address}</small></span><em>{editPlaceLinked?text('선택됨','Selected'):text('장소를 골라주세요','Choose a place')}</em></div><div className="form-grid two"><label>{text('시간(24시간)','Time (24-hour)')}<Time24Input value={editDraft.time} onChange={time=>setEditDraft({...editDraft,time})}/></label><label>{text('카테고리','Category')}<select value={editDraft.category} onChange={e=>setEditDraft({...editDraft,category:e.target.value as PlaceType})}>{PLACE_CATEGORIES.map(t=><option key={t}>{text(t, t==='식사'?'Meal':t==='간식'?'Snack':t==='관광'?'Sightseeing':t==='숙소'?'Stay':'Other')}</option>)}</select></label></div><label>{text('메모','Note')}<Textarea value={editDraft.memo} onChange={e=>setEditDraft({...editDraft,memo:e.target.value})} placeholder={text('메모를 남겨보세요','Leave a note')}/></label></div><DialogFooter><Button variant="outline" onClick={()=>{setEditing(null);setEditDraft(null)}}>{text('취소','Cancel')}</Button><Button onClick={saveEdit} disabled={!editPlaceLinked||!isValidTime(editDraft.time)}>{text('저장','Save')}</Button></DialogFooter></>}</DialogContent></Dialog>
 
