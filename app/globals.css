@@ -288,3 +288,4 @@
 .map-stage .leaflet-container,.map-stage .maplibregl-map{z-index:0}
 [data-slot="dialog-overlay"],[data-slot="alert-dialog-overlay"]{z-index:1000!important}
 [data-slot="dialog-content"],[data-slot="alert-dialog-content"]{z-index:1001!important}
+.geoapify-attribution{display:block;padding:7px 12px 8px;border-top:1px solid #edf1ee;color:#7a857e;font:600 10px/1.2 system-ui,sans-serif;text-align:right;text-decoration:none}.geoapify-attribution:hover{color:#31835f;text-decoration:underline}

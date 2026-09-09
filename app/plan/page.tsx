@@ -112,9 +112,7 @@ function usePlaceSuggestions(query:string,enabled:boolean,context='',provider:Ma
     const cacheKey=`${provider}|${language}|${context}|${value}`.toLocaleLowerCase('ko-KR'),cached=suggestionCache.get(cacheKey);
     if(cached){setResults(cached);setSearching(false);setError(cached.length?'':text('검색 결과가 없습니다.','No results found.'));return}
     const controller=new AbortController();
-    // Nominatim is a shared public service with a one-request-per-second policy.
-    // Keep the free mode deliberately paced while the paid/provider-backed modes stay snappy.
-    const delay=provider==='osm'?1000:160;
+    const delay=180;
     const timer=window.setTimeout(async()=>{
       setSearching(true);setError('');
       try{
@@ -162,6 +160,7 @@ function PlacePicker({query,onQueryChange,results,value,onPick,searching,placeho
     <ComboboxContent className="place-combobox-content">
       <ComboboxEmpty>{searching?(provider==='google'?text('Google 지도에서 검색 중…','Searching Google Maps…'):provider==='osm'?text('지도에서 검색 중…','Searching the map…'):text('네이버 지도에서 검색 중…','Searching Naver Maps…')):provider==='osm'&&inputValue.trim().length>=2?text('엔터를 눌러 검색하세요.','Press Enter to search.'):text('검색 결과가 없습니다.','No results found.')}</ComboboxEmpty>
       <ComboboxList>{results.map((place,index)=><ComboboxItem className="place-combobox-item" key={`${place.mapx}-${place.mapy}-${index}`} value={place}><MapPin/><span><strong>{placeTitle(place,language)}</strong><small>{placeCategory(place,language)}</small><em>{placeAddress(place,language)}</em></span></ComboboxItem>)}</ComboboxList>
+      {provider==='osm'&&<a className="geoapify-attribution" href="https://www.geoapify.com/" target="_blank" rel="noreferrer">Powered by Geoapify</a>}
     </ComboboxContent>
   </Combobox>
 }

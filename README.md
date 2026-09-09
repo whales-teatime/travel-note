@@ -25,10 +25,11 @@ npm run dev
 NEXT_PUBLIC_NAVER_MAP_CLIENT_ID=
 NAVER_API_HUB_CLIENT_ID=
 NAVER_API_HUB_CLIENT_SECRET=
+GEOAPIFY_API_KEY=
 NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=
 ```
 
-`NEXT_PUBLIC_NAVER_MAP_CLIENT_ID`는 국내 지도 SDK용이며, NAVER API Hub 키 두 개는 장소 검색 프록시에서만 사용합니다. `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`는 선택 사항입니다. 키가 없어도 해외 모드는 무료 OpenFreeMap으로 동작하고, Google 모드를 다시 사용할 때만 필요합니다. 자세한 내용은 [v2 무료 지도 구조](docs/V2_FREE_MAP.md)를 참고합니다.
+`NEXT_PUBLIC_NAVER_MAP_CLIENT_ID`는 국내 지도 SDK용이며, NAVER API Hub 키 두 개는 장소 검색 프록시에서만 사용합니다. 해외 지도는 OpenFreeMap을 사용하고, 서버 전용 `GEOAPIFY_API_KEY`가 있으면 Geoapify 장소 검색을 우선 사용합니다. 키가 없거나 한도에 닿으면 Nominatim으로 자동 전환합니다. `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`는 선택 사항이며 Google 모드를 다시 사용할 때만 필요합니다. 자세한 내용은 [v2 무료 지도 구조](docs/V2_FREE_MAP.md)를 참고합니다.
 
 ## 운영 구조
 

@@ -57,6 +57,11 @@ async function purgeExpiredPlans(env) {
   if (!env?.DB) return;
   const cutoff = new Date(Date.now() - RETENTION_MS).toISOString();
   await env.DB.prepare('DELETE FROM plans WHERE deleted_at IS NOT NULL AND deleted_at <= ?').bind(cutoff).run();
+  try {
+    await env.DB.prepare('DELETE FROM place_lookup_cache WHERE expires_at <= ?').bind(new Date().toISOString()).run();
+  } catch {
+    // The cache table may not exist yet during a rolling deployment.
+  }
 }
 
 export default {
