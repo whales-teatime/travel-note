@@ -11,6 +11,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   const { id } = await params;
   if (!/^feedback_[a-z0-9_]+$/i.test(id) || id.length > 100) return Response.json({ message: '피드백을 찾을 수 없습니다.' }, { status: 404 });
 
+  await db.prepare('DELETE FROM feedback_comments WHERE feedback_id = ?').bind(id).run();
   const result = await db.prepare('DELETE FROM feedback WHERE id = ?').bind(id).run();
   if (!result.meta?.changes) return Response.json({ message: '피드백을 찾을 수 없습니다.' }, { status: 404 });
   return Response.json({ deleted: true }, { headers: { 'Cache-Control': 'no-store' } });
