@@ -16,6 +16,14 @@ type NominatimItem = {
 type FreeSearchItem = { title: string; category: string; address: string; roadAddress: string; mapx: string; mapy: string; provider: 'osm'; placeId?: string };
 const resultCache = new Map<string, { expires: number; items: FreeSearchItem[] }>();
 const MAX_CACHE_ENTRIES = 300;
+let lastUpstreamRequestAt = 0;
+
+function upstreamRequestAllowed() {
+  const now = Date.now();
+  if (now - lastUpstreamRequestAt < 1000) return false;
+  lastUpstreamRequestAt = now;
+  return true;
+}
 
 function cleanText(value: unknown) {
   return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
@@ -57,6 +65,7 @@ export async function GET(request: Request) {
     if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
       return Response.json({ message: '위치를 확인할 수 없습니다.' }, { status: 400 });
     }
+    if (!upstreamRequestAllowed()) return Response.json({ message: '무료 지도 검색이 잠시 바빠요. 1초 뒤 다시 시도해주세요.' }, { status: 429 });
     const endpoint = new URL('https://nominatim.openstreetmap.org/reverse');
     endpoint.searchParams.set('lat', String(lat));
     endpoint.searchParams.set('lon', String(lon));
@@ -85,6 +94,7 @@ export async function GET(request: Request) {
   for (const [entryKey, entry] of resultCache) if (entry.expires <= now) resultCache.delete(entryKey);
   const cached = resultCache.get(key);
   if (cached) return Response.json({ items: cached.items }, { headers: { 'Cache-Control': 'private, max-age=300' } });
+  if (!upstreamRequestAllowed()) return Response.json({ message: '무료 지도 검색이 잠시 바빠요. 1초 뒤 다시 시도해주세요.' }, { status: 429 });
 
   const searchQuery = near && !query.toLocaleLowerCase().includes(near.toLocaleLowerCase()) ? `${query}, ${near}` : query;
   const endpoint = new URL('https://nominatim.openstreetmap.org/search');
