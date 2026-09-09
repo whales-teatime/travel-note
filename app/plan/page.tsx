@@ -104,8 +104,9 @@ function usePlaceSuggestions(query:string,enabled:boolean,context='',provider:Ma
   const { language } = useLanguage();
   const text = useCallback((korean:string, english:string) => tr(language, korean, english), [language]);
   const [results,setResults]=useState<SearchPlace[]>([]),[searching,setSearching]=useState(false),[error,setError]=useState('');
+  const searchQuery=provider==='osm'?requestedQuery:query;
   useEffect(()=>{
-    const value=(provider==='osm'?requestedQuery:query).trim();
+    const value=searchQuery.trim();
     if(!enabled||value.length<2){setResults([]);setSearching(false);setError('');return}
     const cacheKey=`${provider}|${language}|${context}|${value}`.toLocaleLowerCase('ko-KR'),cached=suggestionCache.get(cacheKey);
     if(cached){setResults(cached);setSearching(false);setError(cached.length?'':text('검색 결과가 없습니다.','No results found.'));return}
@@ -142,7 +143,7 @@ function usePlaceSuggestions(query:string,enabled:boolean,context='',provider:Ma
       finally{if(!controller.signal.aborted)setSearching(false)}
     },delay);
     return()=>{window.clearTimeout(timer);controller.abort()};
-  },[query,requestedQuery,enabled,context,provider,googleKey,language,text]);
+  },[searchQuery,enabled,context,provider,googleKey,language,text]);
   return {results,searching,error};
 }
 function PlacePicker({query,onQueryChange,results,value,onPick,searching,placeholder,selected,onEnter,provider='naver'}:{query:string;onQueryChange:(value:string,userInput:boolean)=>void;results:SearchPlace[];value:SearchPlace|null;onPick:(place:SearchPlace|null)=>void|Promise<void>;searching:boolean;placeholder:string;selected:boolean;onEnter?:(value:string)=>void;provider?:MapProvider}){
