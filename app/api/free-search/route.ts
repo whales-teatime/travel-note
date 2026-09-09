@@ -65,7 +65,7 @@ export async function GET(request: Request) {
     if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
       return Response.json({ message: '위치를 확인할 수 없습니다.' }, { status: 400 });
     }
-    if (!upstreamRequestAllowed()) return Response.json({ message: '무료 지도 검색이 잠시 바빠요. 1초 뒤 다시 시도해주세요.' }, { status: 429 });
+    if (!upstreamRequestAllowed()) return Response.json({ message: '지도 검색이 잠시 바빠요. 1초 뒤 다시 시도해주세요.' }, { status: 429 });
     const endpoint = new URL('https://nominatim.openstreetmap.org/reverse');
     endpoint.searchParams.set('lat', String(lat));
     endpoint.searchParams.set('lon', String(lon));
@@ -94,7 +94,7 @@ export async function GET(request: Request) {
   for (const [entryKey, entry] of resultCache) if (entry.expires <= now) resultCache.delete(entryKey);
   const cached = resultCache.get(key);
   if (cached) return Response.json({ items: cached.items }, { headers: { 'Cache-Control': 'private, max-age=300' } });
-  if (!upstreamRequestAllowed()) return Response.json({ message: '무료 지도 검색이 잠시 바빠요. 1초 뒤 다시 시도해주세요.' }, { status: 429 });
+  if (!upstreamRequestAllowed()) return Response.json({ message: '지도 검색이 잠시 바빠요. 1초 뒤 다시 시도해주세요.' }, { status: 429 });
 
   const searchQuery = near && !query.toLocaleLowerCase().includes(near.toLocaleLowerCase()) ? `${query}, ${near}` : query;
   const endpoint = new URL('https://nominatim.openstreetmap.org/search');
@@ -112,7 +112,7 @@ export async function GET(request: Request) {
     },
     cf: { cacheTtl: 300, cacheEverything: true },
   } as RequestInit & { cf: Record<string, number | boolean> });
-  if (!response.ok) return Response.json({ message: '무료 지도 검색 중 오류가 발생했습니다.' }, { status: 502 });
+  if (!response.ok) return Response.json({ message: '지도 검색 중 오류가 발생했습니다.' }, { status: 502 });
 
   const data = await response.json() as NominatimItem[];
   const items = data.filter(item => Number.isFinite(Number(item.lat)) && Number.isFinite(Number(item.lon))).map(item => ({

@@ -160,7 +160,7 @@ function PlacePicker({query,onQueryChange,results,value,onPick,searching,placeho
   return <Combobox<SearchPlace> items={results} filteredItems={results} filter={null} value={value} inputValue={inputValue} open={open} onOpenChange={setOpen} onInputValueChange={(next,details)=>{if(details.reason==='item-press')return;if(details.reason==='input-change'){inputValueRef.current=next;setInputValue(next);if(!composingRef.current)onQueryChange(next,true)}else if(details.reason==='input-clear'&&!suppressClearRef.current){const source=details.event as Event|undefined;const isUserDelete=Boolean(source&&'inputType' in source&&String((source as InputEvent).inputType||'').startsWith('delete'));if(isUserDelete||!inputValueRef.current.trim()){inputValueRef.current=next;setInputValue(next);onQueryChange(next,true)}}}} onValueChange={place=>{void onPick(place);if(place){const next=placeTitle(place,language);inputValueRef.current=next;setInputValue(next);setOpen(false)}}} itemToStringLabel={place=>placeTitle(place,language)}>
     <ComboboxInput className="place-combobox-input" placeholder={placeholder} showTrigger={false} inputMode="search" enterKeyHint="search" onFocus={()=>{if(!selected&&inputValue.trim().length>=2)setOpen(true)}} onCompositionStart={()=>{composingRef.current=true}} onCompositionEnd={event=>{composingRef.current=false;const committed=event.currentTarget.value;inputValueRef.current=committed;setInputValue(committed);onQueryChange(committed,true);setOpen(committed.trim().length>=2&&!selected)}} onKeyDown={event=>{const nativeEvent=event.nativeEvent as KeyboardEvent;if(event.key==='Enter'&&!nativeEvent.isComposing&&!composingRef.current){event.preventDefault();event.stopPropagation();const current=event.currentTarget.value;suppressClearRef.current=true;inputValueRef.current=current;setInputValue(current);onQueryChange(current,false);onEnter?.(current);setOpen(provider==='osm'&&current.trim().length>=2&&!selected);window.setTimeout(()=>{suppressClearRef.current=false},350)}}}/>
     <ComboboxContent className="place-combobox-content">
-      <ComboboxEmpty>{searching?(provider==='google'?text('Google 지도에서 검색 중…','Searching Google Maps…'):provider==='osm'?text('무료 지도에서 검색 중…','Searching open map…'):text('네이버 지도에서 검색 중…','Searching Naver Maps…')):provider==='osm'&&inputValue.trim().length>=2?text('엔터를 눌러 검색하세요.','Press Enter to search.'):text('검색 결과가 없습니다.','No results found.')}</ComboboxEmpty>
+      <ComboboxEmpty>{searching?(provider==='google'?text('Google 지도에서 검색 중…','Searching Google Maps…'):provider==='osm'?text('지도에서 검색 중…','Searching the map…'):text('네이버 지도에서 검색 중…','Searching Naver Maps…')):provider==='osm'&&inputValue.trim().length>=2?text('엔터를 눌러 검색하세요.','Press Enter to search.'):text('검색 결과가 없습니다.','No results found.')}</ComboboxEmpty>
       <ComboboxList>{results.map((place,index)=><ComboboxItem className="place-combobox-item" key={`${place.mapx}-${place.mapy}-${index}`} value={place}><MapPin/><span><strong>{placeTitle(place,language)}</strong><small>{placeCategory(place,language)}</small><em>{placeAddress(place,language)}</em></span></ComboboxItem>)}</ComboboxList>
     </ComboboxContent>
   </Combobox>
@@ -673,7 +673,7 @@ function localizedFreeMapStyle(style:any,language:'ko'|'en') {
 
 async function fetchLocalizedFreeMapStyle(language:'ko'|'en') {
   const response=await fetch('https://tiles.openfreemap.org/styles/liberty',{cache:'force-cache'});
-  if(!response.ok)throw new Error(`Free map style request failed: ${response.status}`);
+  if(!response.ok)throw new Error(`Map style request failed: ${response.status}`);
   return localizedFreeMapStyle(await response.json(),language);
 }
 
@@ -700,7 +700,7 @@ function OsmMap({stops,destination,onSelect,placeResults,onPlaceSelect,dateLabel
         const style=await fetchLocalizedFreeMapStyle(latestRef.current.language);
         if(!alive||!containerRef.current)return;
         maplibreRef.current=MapLibre;
-        mapInstance=new MapLibre.Map({container:containerRef.current,style,center:[0,20],zoom:2,attributionControl:false,dragRotate:false,touchPitch:false});
+        mapInstance=new MapLibre.Map({container:containerRef.current,style,center:[0,20],zoom:2,maxZoom:14,attributionControl:false,dragRotate:false,touchPitch:false});
         mapInstance.addControl(new MapLibre.NavigationControl({showCompass:false}),'bottom-right');
         mapInstance.addControl(new MapLibre.AttributionControl({compact:true,customAttribution:'<a href="https://openfreemap.org/" target="_blank" rel="noreferrer">OpenFreeMap</a> · &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors'}),'bottom-right');
         mapInstance.on('click',(event:any)=>{
@@ -715,6 +715,14 @@ function OsmMap({stops,destination,onSelect,placeResults,onPlaceSelect,dateLabel
         });
         mapInstance.on('style.load',()=>{
           if(!alive)return;
+          // Keep a dependable raster base underneath the vector style. If a shared
+          // vector tile is slow or unavailable, the map still has a useful surface
+          // at city zoom instead of turning into a blank canvas.
+          if(!mapInstance.getSource('osm-fallback-raster')){
+            mapInstance.addSource('osm-fallback-raster',{type:'raster',tiles:['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],tileSize:256,maxzoom:19});
+            const firstLayer=style?.layers?.[1]?.id;
+            mapInstance.addLayer({id:'osm-fallback-raster',type:'raster',source:'osm-fallback-raster',paint:{'raster-opacity':1}},firstLayer);
+          }
           mapRef.current=mapInstance;
           setStatus('ready');
           window.setTimeout(()=>mapInstance?.resize(),0);
@@ -810,9 +818,9 @@ function OsmMap({stops,destination,onSelect,placeResults,onPlaceSelect,dateLabel
   },[destination,language,status]);
 
   return <div className="map-stage osm-map-stage">
-    <div ref={containerRef} className="map-canvas" aria-label={text('무료 지도','Free map')}/>
-    {status==='loading'&&<div className="map-gate map-gate-transparent"><div className="map-gate-card"><div className="loading-orbit"/><strong>{text('무료 지도를 준비하는 중','Preparing the free map')}</strong><span>{text('잠시만 기다려주세요.','Just a moment.')}</span></div></div>}
-    {status==='error'&&<div className="map-gate"><div className="map-gate-card"><CircleAlert/><strong>{text('무료 지도를 불러오지 못했어요','The free map could not be loaded')}</strong><span>{text('잠시 후 새로고침해 주세요.','Please refresh and try again.')}</span></div></div>}
+    <div ref={containerRef} className="map-canvas" aria-label={text('지도','Map')}/>
+    {status==='loading'&&<div className="map-gate map-gate-transparent"><div className="map-gate-card"><div className="loading-orbit"/><strong>{text('지도 준비 중','Preparing the map')}</strong><span>{text('잠시만 기다려주세요.','Just a moment.')}</span></div></div>}
+    {status==='error'&&<div className="map-gate"><div className="map-gate-card"><CircleAlert/><strong>{text('지도를 불러오지 못했어요','The map could not be loaded')}</strong><span>{text('잠시 후 새로고침해 주세요.','Please refresh and try again.')}</span></div></div>}
     {mapFocused&&<button type="button" className="map-planner-toggle" onClick={event=>{event.stopPropagation();onToggleMapFocus()}} aria-label={text('일정 패널 펼치기','Expand planner')}><ChevronDown/>{text('일정 보기','View plans')}</button>}
     <button type="button" className="map-home-button" onClick={fitItinerary} aria-label={stops.length?text('전체 동선 한눈에 보기','Fit the whole route'):text('여행지 전체 보기','Fit the destination')} title={stops.length?text('전체 동선 한눈에 보기','Fit the whole route'):text('여행지 전체 보기','Fit the destination')}><House/></button>
     <div className="map-legend"><div className="map-legend-days">{Object.keys(dateLabels).map(day=><button type="button" key={day} className={`map-date-button ${activeDay===day?'is-active':''}`} aria-pressed={activeDay===day} onClick={()=>onDayChange(day)}><i style={{background:dayColor(day,Object.keys(dateLabels))}}/>{formatTripDate(dateLabels[day],false,language)}</button>)}</div><small className="osm-attribution-note">OpenFreeMap · OpenStreetMap</small></div>
