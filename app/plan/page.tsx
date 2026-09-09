@@ -705,7 +705,7 @@ function OsmMap({stops,destination,onSelect,placeResults,onPlaceSelect,dateLabel
         maplibreRef.current=MapLibre;
         mapInstance=new MapLibre.Map({container:containerRef.current,style,center:[0,20],zoom:2,maxZoom:14,attributionControl:false,dragRotate:false,touchPitch:false});
         mapInstance.addControl(new MapLibre.NavigationControl({showCompass:false}),'bottom-right');
-        mapInstance.addControl(new MapLibre.AttributionControl({compact:true,customAttribution:'<a href="https://carto.com/attributions" target="_blank" rel="noreferrer">&copy; CARTO</a> · <a href="https://openfreemap.org/" target="_blank" rel="noreferrer">OpenFreeMap</a> · &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors'}),'bottom-right');
+        mapInstance.addControl(new MapLibre.AttributionControl({compact:true,customAttribution:'<a href="https://www.openstreetmap.de/germanstyle.html" target="_blank" rel="noreferrer">OpenStreetMap.de</a> · <a href="https://openfreemap.org/" target="_blank" rel="noreferrer">OpenFreeMap</a> · &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors'}),'bottom-right');
         mapInstance.on('click',(event:any)=>{
           const current=latestRef.current;
           if(current.customPinMode){
@@ -718,14 +718,14 @@ function OsmMap({stops,destination,onSelect,placeResults,onPlaceSelect,dateLabel
         });
         mapInstance.on('style.load',()=>{
           if(!alive)return;
-          // CARTO Voyager uses OSM data with English-friendly labels. Keep it
+          // OpenStreetMap.de uses OSM data with English-friendly labels. Keep it
           // beneath Liberty's symbol layers so bilingual vector labels win
           // when available, while still showing a useful labelled map when a
           // vector tile is slow or temporarily unavailable.
-          if(!mapInstance.getSource('carto-voyager-raster')){
-            mapInstance.addSource('carto-voyager-raster',{type:'raster',tiles:['https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png'],tileSize:512,maxzoom:19,attribution:'&copy; CARTO · &copy; OpenStreetMap contributors'});
+          if(!mapInstance.getSource('osm-english-raster')){
+            mapInstance.addSource('osm-english-raster',{type:'raster',tiles:['https://tile.openstreetmap.de/{z}/{x}/{y}.png'],tileSize:256,maxzoom:19,attribution:'OpenStreetMap.de · &copy; OpenStreetMap contributors'});
             const firstSymbol=style?.layers?.find((layer:any)=>layer.type==='symbol')?.id;
-            mapInstance.addLayer({id:'carto-voyager-raster',type:'raster',source:'carto-voyager-raster',paint:{'raster-opacity':1,'raster-fade-duration':0}},firstSymbol);
+            mapInstance.addLayer({id:'osm-english-raster',type:'raster',source:'osm-english-raster',paint:{'raster-opacity':1,'raster-fade-duration':0}},firstSymbol);
           }
           mapRef.current=mapInstance;
           setStatus('ready');
