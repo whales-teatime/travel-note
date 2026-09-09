@@ -243,7 +243,7 @@ async function searchDestinationCenter(query:string){
   throw new Error('destination center not found');
 }
 
-function loadNaverMaps(clientId: string) {
+function loadNaverMaps(clientId: string, language: 'ko' | 'en') {
   if (window.naver?.maps) return Promise.resolve();
   if (window.__naverMapsLoading) return window.__naverMapsLoading;
   window.__naverMapsLoading = new Promise<void>((resolve,reject) => {
@@ -255,7 +255,7 @@ function loadNaverMaps(clientId: string) {
     const callbackName=`initNaverMap_${Date.now()}`;
     (window as any)[callbackName]=()=>{ delete (window as any)[callbackName]; resolve() };
     const script=document.createElement('script');
-    script.src=`https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${encodeURIComponent(clientId)}&submodules=panorama,geocoder&callback=${callbackName}`;
+    script.src=`https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${encodeURIComponent(clientId)}&language=${language}&submodules=panorama,geocoder&callback=${callbackName}`;
     script.async=true;
     script.onerror=()=>{ window.__naverMapsLoading=undefined; reject(new Error('네이버 지도 SDK를 불러오지 못했습니다.')) };
     document.head.appendChild(script);
@@ -276,9 +276,14 @@ function NaverMap({stops,clientId,destination,onSelect,placeResults,onPlaceSelec
   useEffect(()=>{
     if(!clientId||!containerRef.current)return;
     let cancelled=false; setStatus('loading');
+    // The SDK reads its language when the script is loaded. Read the saved
+    // preference immediately so the first client render does not briefly load
+    // Korean tiles before the language hook finishes hydrating.
+    const savedLanguage=window.localStorage.getItem('travel-note-language');
+    const mapLanguage=savedLanguage==='en'?'en':'ko';
     const handleAuthFailure=()=>{if(!cancelled)setStatus('error')};
     window.addEventListener('naver-map-auth-failure',handleAuthFailure);
-    loadNaverMaps(clientId).then(()=>{
+    loadNaverMaps(clientId,mapLanguage).then(()=>{
       if(cancelled||!containerRef.current)return;
       const naver=window.naver;
       mapRef.current=new naver.maps.Map(containerRef.current,{center:new naver.maps.LatLng(DEFAULT_MAP_CENTER.lat,DEFAULT_MAP_CENTER.lng),zoom:12,minZoom:8,zoomControl:true,zoomControlOptions:{position:naver.maps.Position.RIGHT_CENTER},mapTypeControl:false,scaleControl:false,logoControlOptions:{position:naver.maps.Position.BOTTOM_LEFT}});
