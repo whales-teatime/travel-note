@@ -7,7 +7,7 @@ v2의 해외 여행 모드는 `MapLibre GL JS + OpenFreeMap` 조합을 기본으
 ## 구성
 
 - 지도 화면: MapLibre GL JS
-- 지도 스타일·벡터 타일: OpenFreeMap Liberty 스타일. 공급자가 제공하는 영문·라틴명과 현지명 조합을 그대로 표시한다.
+- 지도 스타일·벡터 타일: OpenFreeMap Liberty 스타일. 공급자가 제공하는 영문·라틴명과 현지명 조합을 표시하고, CARTO Voyager OSM 타일을 보조 배경으로 사용한다.
 - 장소·주소 검색: 서버 프록시를 거친 Geoapify 우선 검색, Nominatim 자동 대체
 - 검색 캐시: 동일 검색은 Cloudflare D1에서 먼저 조회. 검색은 30일, 좌표의 주소 변환은 90일 보관
 - 상세보기: 선택한 장소를 Google Maps 검색 링크로 열며 Google API는 호출하지 않음
@@ -21,7 +21,7 @@ Geoapify는 `GEOAPIFY_API_KEY`를 Worker secret으로만 읽으며 브라우저�
 
 Nominatim은 공용 서비스이므로 자동 대체 경로에만 사용한다. 요청 사이에 최소 1초 간격, Worker 인스턴스별 요청 제한과 Cloudflare 검색 요청 제한을 적용한다. 공개 이용자가 급격히 늘면 Geoapify 일일 한도와 공용 Nominatim 정책에 닿을 수 있지만, 결제가 자동으로 발생하는 공급자는 연결하지 않는다.
 
-OpenFreeMap 벡터 스타일은 클라이언트에서 라벨 표현식을 바꿀 수 있으므로 한국어·영어 모드에 맞는 이름을 우선 표시한다. 번역된 지명이 없는 장소는 원어 표기로 남을 수 있다. 화면에는 OpenFreeMap과 OpenStreetMap 출처를 표시한다. 대량 다운로드, 오프라인 저장, 타일 프록시 운영은 하지 않는다. 장기적으로 대중 사용량이 커지면 별도 무료 호스팅 정책을 가진 타일 공급자 또는 자체 타일 서버를 검토해야 한다.
+OpenFreeMap 벡터 스타일은 공급자가 제공하는 영문·라틴명과 현지명 조합을 우선 표시한다. 벡터 타일이 늦거나 일부 지명에 번역 데이터가 없을 때는 영문 지명이 포함된 CARTO Voyager OSM 배경이 보조로 보인다. 번역된 지명이 없는 장소는 원어 표기로 남을 수 있다. 화면에는 CARTO, OpenFreeMap, OpenStreetMap 출처를 표시한다. 대량 다운로드, 오프라인 저장, 타일 프록시 운영은 하지 않는다. 장기적으로 대중 사용량이 커지면 별도 무료 호스팅 정책을 가진 타일 공급자 또는 자체 타일 서버를 검토해야 한다.
 
 운영 기준은 [OpenStreetMap 타일 이용 정책](https://operations.osmfoundation.org/policies/tiles/)과 [Nominatim 이용 정책](https://operations.osmfoundation.org/policies/nominatim/)을 따른다. 두 공용 서비스 모두 무제한·무중단을 보장하는 API가 아니므로 사용량이 커지면 공급자를 교체할 수 있게 구성했다.
 
