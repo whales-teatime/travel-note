@@ -660,10 +660,24 @@ function GoogleMap({stops,apiKey,destination,onSelect,placeResults,onPlaceSelect
 async function fetchLocalizedFreeMapStyle(_language:'ko'|'en') {
   const response=await fetch('https://tiles.openfreemap.org/styles/liberty',{cache:'force-cache'});
   if(!response.ok)throw new Error(`Map style request failed: ${response.status}`);
-  // Liberty already combines its Latin/English and non-Latin names. Keeping
-  // the provider's tested expression avoids hiding either label when a tile
-  // does not contain an app-specific language field.
-  return response.json() as Promise<any>;
+  // Resolve the TileJSON URL here. This avoids relying on a second
+  // client-side URL resolution step and keeps the vector tiles (including
+  // Liberty's Latin/English + local label fields) available in MapLibre.
+  const style=await response.json() as any;
+  const source=style?.sources?.openmaptiles;
+  if(source?.url){
+    const tileJsonResponse=await fetch(source.url,{cache:'force-cache'});
+    if(tileJsonResponse.ok){
+      const tileJson=await tileJsonResponse.json() as any;
+      if(Array.isArray(tileJson.tiles)&&tileJson.tiles.length){
+        source.tiles=tileJson.tiles;
+        delete source.url;
+        if(Number.isFinite(tileJson.minzoom))source.minzoom=tileJson.minzoom;
+        if(Number.isFinite(tileJson.maxzoom))source.maxzoom=tileJson.maxzoom;
+      }
+    }
+  }
+  return style;
 }
 
 function OsmMap({stops,destination,onSelect,placeResults,onPlaceSelect,dateLabels,activeDay,onDayChange,editableStopId,onStopPositionChange,onCancelStopPositionEdit,customPin,customPinMode,onCustomLocationChange,onCustomAddressChange,onCustomPinContinue,onMapTap,mapFocused,onToggleMapFocus,plannerCollapsed}:{stops:Stop[];destination:string;onSelect:(stop:Stop)=>void;placeResults:SearchPlace[];onPlaceSelect:(place:SearchPlace)=>void;dateLabels:Record<DayKey,string>;activeDay:DayKey;onDayChange:(day:DayKey)=>void;editableStopId:string|null;onStopPositionChange:(id:string,lat:number,lng:number)=>void;onCancelStopPositionEdit:()=>void;customPin:{lat:number;lng:number}|null;customPinMode:boolean;onCustomLocationChange:(point:{lat:number;lng:number})=>void;onCustomAddressChange:(address:string)=>void;onCustomPinContinue:()=>void;onMapTap:()=>void;mapFocused:boolean;onToggleMapFocus:()=>void;plannerCollapsed:boolean}) {
