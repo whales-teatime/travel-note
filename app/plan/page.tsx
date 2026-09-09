@@ -678,9 +678,9 @@ async function fetchLocalizedFreeMapStyle(_language:'ko'|'en') {
     }
   }
   // Liberty's default style intentionally shows the local name alongside a
-  // latin name. In English mode prefer the English field so overseas maps do
-  // not fall back to scripts that travellers may not be able to read.
-  if(_language==='en'&&Array.isArray(style.layers)){
+  // latin name. Overseas maps are easier to scan when the English field is
+  // the primary label, regardless of the app's interface language.
+  if(Array.isArray(style.layers)){
     const englishName=['coalesce',['get','name_en'],['get','name:latin'],['get','name']];
     style.layers=style.layers.map((layer:any)=>{
       if(layer?.type!=='symbol'||!layer.layout?.['text-field'])return layer;
