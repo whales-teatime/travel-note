@@ -4,13 +4,13 @@
 
 결제 계정이나 API 키 없이 해외 여행 계획을 만들 수 있는 무료 지도 모드를 추가했습니다.
 
-- Leaflet과 Wikimedia Maps(OSM-intl) 기반 지도 추가
+- MapLibre와 OpenFreeMap 기반 지도 추가
 - Nominatim 장소 검색·주소 검색·지도에서 임의 핀을 찍은 뒤 주소로 변환
 - 공용 지오코딩 정책에 맞춰 장소 검색은 엔터를 눌렀을 때만 실행
 - 기존 네이버 지도와 Google Maps 코드 및 저장 형식 유지
 - 계획별 지도 공급자(`naver`, `google`, `osm`) 저장
 - 검색 결과 핀, 일정 핀, 동선, 전체 보기, 드래그 위치 수정 지원
-- Wikimedia Maps·OpenStreetMap 출처 표시와 공용 서비스 이용 제한 안내 문서 추가
+- OpenFreeMap·OpenStreetMap 출처 표시와 공용 서비스 이용 제한 안내 문서 추가
 
 무료 지도는 외부 공용 타일·지오코딩 서비스의 정책과 요청 한도에 의존합니다. 사용량이 크게 늘면 별도 서버나 다른 공급자로 교체해야 합니다. 자세한 구조와 v1 복귀 방법은 [무료 지도 운영 안내](docs/V2_FREE_MAP.md)를 참고합니다.
 

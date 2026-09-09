@@ -30,6 +30,7 @@ import {
   Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle,
 } from '@/components/ui/sheet';
 import 'leaflet/dist/leaflet.css';
+import 'maplibre-gl/dist/maplibre-gl.css';
 
 type DayKey = string;
 type PlaceType = '식사' | '간식' | '관광' | '숙소' | '기타';
@@ -176,7 +177,7 @@ function costValues(stop:Pick<Stop,'costPerPerson'|'costTotal'>,people:number){
 function currencyUnit(currency:'KRW'|'USD'){return currency==='USD'?'$':'₩'}
 function formatMoney(value:number,language:'ko'|'en'='ko',currency:'KRW'|'USD'='KRW'){const amount=Math.round(value).toLocaleString(language==='en'?'en-US':'ko-KR');return `${currencyUnit(currency)}${amount}`}
 function mapProviderName(provider:MapProvider,_language:'ko'|'en'='ko'){return provider==='google'?'Google Maps':provider==='osm'?'OpenStreetMap':'NAVER Maps'}
-function mapProviderDescription(provider:MapProvider,language:'ko'|'en'='ko'){return provider==='google'?tr(language,'해외 여행 지도','International trip map'):provider==='osm'?tr(language,'무료 오픈 지도 · 키와 결제 없음','Free open map · no key or billing'):tr(language,'국내 여행 지도','Korea trip map')}
+function mapProviderDescription(provider:MapProvider,language:'ko'|'en'='ko'){return provider==='google'?tr(language,'해외 여행 지도','International trip map'):provider==='osm'?'':tr(language,'국내 여행 지도','Korea trip map')}
 function normalizeTimeInput(raw:string){
   const value=raw.replace(/[^0-9:]/g,'');
   const colon=value.indexOf(':');
@@ -658,52 +659,81 @@ function GoogleMap({stops,apiKey,destination,onSelect,placeResults,onPlaceSelect
   </div>;
 }
 
+function localizedFreeMapStyle(style:any,language:'ko'|'en') {
+  const labelFields=language==='en'
+    ? ['coalesce',['get','name:en'],['get','name:latin'],['get','name:nonlatin'],['get','name']]
+    : ['coalesce',['get','name:ko'],['get','name:en'],['get','name:latin'],['get','name:nonlatin'],['get','name']];
+  const layers=Array.isArray(style?.layers)?style.layers.map((layer:any)=>{
+    const field=layer?.layout?.['text-field'];
+    if(layer?.type==='symbol'&&field&&JSON.stringify(field).includes('name'))return {...layer,layout:{...layer.layout,'text-field':labelFields}};
+    return layer;
+  }):style?.layers;
+  return {...style,layers};
+}
+
+async function fetchLocalizedFreeMapStyle(language:'ko'|'en') {
+  const response=await fetch('https://tiles.openfreemap.org/styles/liberty',{cache:'force-cache'});
+  if(!response.ok)throw new Error(`Free map style request failed: ${response.status}`);
+  return localizedFreeMapStyle(await response.json(),language);
+}
+
 function OsmMap({stops,destination,onSelect,placeResults,onPlaceSelect,dateLabels,activeDay,onDayChange,editableStopId,onStopPositionChange,onCancelStopPositionEdit,customPin,customPinMode,onCustomLocationChange,onCustomAddressChange,onCustomPinContinue,onMapTap,mapFocused,onToggleMapFocus,plannerCollapsed}:{stops:Stop[];destination:string;onSelect:(stop:Stop)=>void;placeResults:SearchPlace[];onPlaceSelect:(place:SearchPlace)=>void;dateLabels:Record<DayKey,string>;activeDay:DayKey;onDayChange:(day:DayKey)=>void;editableStopId:string|null;onStopPositionChange:(id:string,lat:number,lng:number)=>void;onCancelStopPositionEdit:()=>void;customPin:{lat:number;lng:number}|null;customPinMode:boolean;onCustomLocationChange:(point:{lat:number;lng:number})=>void;onCustomAddressChange:(address:string)=>void;onCustomPinContinue:()=>void;onMapTap:()=>void;mapFocused:boolean;onToggleMapFocus:()=>void;plannerCollapsed:boolean}) {
   const { language } = useLanguage();
   const text = (korean:string, english:string) => tr(language,korean,english);
   const containerRef=useRef<HTMLDivElement>(null);
   const mapRef=useRef<any>(null);
-  const tileLayerRef=useRef<any>(null);
-  const layersRef=useRef<any[]>([]);
-  const resultLayersRef=useRef<any[]>([]);
-  const customLayerRef=useRef<any>(null);
+  const maplibreRef=useRef<any>(null);
+  const stopMarkersRef=useRef<any[]>([]);
+  const resultMarkersRef=useRef<any[]>([]);
+  const customMarkerRef=useRef<any>(null);
   const latestRef=useRef({stops,onSelect,placeResults,onPlaceSelect,editableStopId,onStopPositionChange,customPin,customPinMode,onCustomLocationChange,onCustomAddressChange,onMapTap,language});
   const [status,setStatus]=useState<'loading'|'ready'|'error'>('loading');
   latestRef.current={stops,onSelect,placeResults,onPlaceSelect,editableStopId,onStopPositionChange,customPin,customPinMode,onCustomLocationChange,onCustomAddressChange,onMapTap,language};
 
   useEffect(()=>{
     let alive=true;
-    void import('leaflet').then(L=>{
-      if(!alive||!containerRef.current)return;
-      const map=L.map(containerRef.current,{zoomControl:false,attributionControl:true,preferCanvas:true}).setView([20,0],2);
-      L.control.zoom({position:'bottomright'}).addTo(map);
-      const mapLanguage=latestRef.current.language==='en'?'en':'ko';
-      tileLayerRef.current=L.tileLayer(`https://maps.wikimedia.org/osm-intl/{z}/{x}/{y}{r}.png?lang=${mapLanguage}`,{maxZoom:19,attribution:'<a href="https://maps.wikimedia.org/" target="_blank" rel="noreferrer">Wikimedia Maps</a> · &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors'}).addTo(map);
-      map.on('click',(event:any)=>{
-        const current=latestRef.current;
-        if(current.customPinMode){
-          const next={lat:event.latlng.lat,lng:event.latlng.lng};
-          current.onCustomLocationChange(next);
-          void osmReverseGeocodePoint(next.lat,next.lng,current.language).then(current.onCustomAddressChange).catch(()=>{});
-          return;
-        }
-        if(window.matchMedia('(max-width: 820px)').matches)current.onMapTap();
-      });
-      mapRef.current=map;
-      setStatus('ready');
-      window.setTimeout(()=>map.invalidateSize(),0);
-    }).catch(()=>{if(alive)setStatus('error')});
-    return()=>{alive=false;layersRef.current=[];resultLayersRef.current=[];customLayerRef.current=null;tileLayerRef.current=null;mapRef.current?.remove();mapRef.current=null};
-  },[]);
-
-  useEffect(()=>{
-    const tileLayer=tileLayerRef.current;if(!tileLayer)return;
-    tileLayer.setUrl(`https://maps.wikimedia.org/osm-intl/{z}/{x}/{y}{r}.png?lang=${language==='en'?'en':'ko'}`);
+    let mapInstance:any=null;
+    void (async()=>{
+      try{
+        const maplibreModule=await import('maplibre-gl');
+        const MapLibre=(maplibreModule as any).default??maplibreModule;
+        const style=await fetchLocalizedFreeMapStyle(latestRef.current.language);
+        if(!alive||!containerRef.current)return;
+        maplibreRef.current=MapLibre;
+        mapInstance=new MapLibre.Map({container:containerRef.current,style,center:[0,20],zoom:2,attributionControl:false,dragRotate:false,touchPitch:false});
+        mapInstance.addControl(new MapLibre.NavigationControl({showCompass:false}),'bottom-right');
+        mapInstance.addControl(new MapLibre.AttributionControl({compact:true,customAttribution:'<a href="https://openfreemap.org/" target="_blank" rel="noreferrer">OpenFreeMap</a> · &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors'}),'bottom-right');
+        mapInstance.on('click',(event:any)=>{
+          const current=latestRef.current;
+          if(current.customPinMode){
+            const next={lat:event.lngLat.lat,lng:event.lngLat.lng};
+            current.onCustomLocationChange(next);
+            void osmReverseGeocodePoint(next.lat,next.lng,current.language).then(current.onCustomAddressChange).catch(()=>{});
+            return;
+          }
+          if(window.matchMedia('(max-width: 820px)').matches)current.onMapTap();
+        });
+        mapInstance.on('load',()=>{
+          if(!alive)return;
+          mapRef.current=mapInstance;
+          setStatus('ready');
+          window.setTimeout(()=>mapInstance?.resize(),0);
+        });
+      }catch{if(alive)setStatus('error')}
+    })();
+    return()=>{
+      alive=false;
+      stopMarkersRef.current.forEach(marker=>marker.remove());stopMarkersRef.current=[];
+      resultMarkersRef.current.forEach(marker=>marker.remove());resultMarkersRef.current=[];
+      customMarkerRef.current?.remove();customMarkerRef.current=null;
+      mapInstance?.remove();
+      mapRef.current=null;maplibreRef.current=null;
+    };
   },[language]);
 
   useEffect(()=>{
     const map=mapRef.current;if(!map||status!=='ready')return;
-    const resize=()=>map.invalidateSize();
+    const resize=()=>map.resize();
     const observer=new ResizeObserver(resize);if(containerRef.current)observer.observe(containerRef.current);resize();
     const timer=window.setTimeout(resize,360);
     return()=>{observer.disconnect();window.clearTimeout(timer)};
@@ -713,68 +743,70 @@ function OsmMap({stops,destination,onSelect,placeResults,onPlaceSelect,dateLabel
     const map=mapRef.current;if(!map||status!=='ready')return;
     let cancelled=false;
     const query=destination.trim();
-    if(!query){map.setView([20,0],2);return()=>{cancelled=true}};
-    void osmGeocodeAddress(query,language).then(point=>{if(!cancelled&&!latestRef.current.stops.length)map.setView([point.lat,point.lng],11)}).catch(()=>{});
+    if(!query){map.jumpTo({center:[0,20],zoom:2});return()=>{cancelled=true}};
+    void osmGeocodeAddress(query,language).then(point=>{if(!cancelled&&!latestRef.current.stops.length)map.flyTo({center:[point.lng,point.lat],zoom:11,duration:500})}).catch(()=>{});
     return()=>{cancelled=true};
   },[destination,language,status]);
 
   useEffect(()=>{
     const map=mapRef.current;if(!map||status!=='ready')return;
-    layersRef.current.forEach(layer=>{try{layer.remove()}catch{}});layersRef.current=[];
-    void import('leaflet').then(L=>{
-      if(!mapRef.current||mapRef.current!==map)return;
-      const current=latestRef.current;
-      current.stops.forEach((stop,index)=>{
-        const icon=L.divIcon({className:'osm-stop-icon-wrap',html:`<span class="osm-stop-icon" style="--pin:${dayColor(stop.day,Object.keys(dateLabels))}">${index+1}</span>`,iconSize:[34,34],iconAnchor:[17,17]});
-        const marker=L.marker([stop.lat,stop.lng],{icon,draggable:current.editableStopId===stop.id,title:stop.name}).addTo(map);
-        marker.on('click',()=>current.onSelect(stop));
-        if(current.editableStopId===stop.id)marker.on('dragend',()=>{const point=marker.getLatLng();current.onStopPositionChange(stop.id,point.lat,point.lng)});
-        layersRef.current.push(marker);
-      });
-      if(current.stops.length>1){
-        const line=L.polyline(current.stops.map(stop=>[stop.lat,stop.lng] as [number,number]),{color:dayColor(current.stops[0].day,Object.keys(dateLabels)),weight:5,opacity:.72,dashArray:'2 10'}).addTo(map);
-        layersRef.current.push(line);
-      }
+    const current=latestRef.current;
+    stopMarkersRef.current.forEach(marker=>marker.remove());stopMarkersRef.current=[];
+    const coordinates=current.stops.map(stop=>[stop.lng,stop.lat]);
+    const sourceId='osm-itinerary-route';
+    const data={type:'Feature',properties:{},geometry:{type:'LineString',coordinates:coordinates.length>1?coordinates:[]}};
+    const source=map.getSource(sourceId);
+    if(source)source.setData(data);else{
+      map.addSource(sourceId,{type:'geojson',data});
+      map.addLayer({id:sourceId,type:'line',source:sourceId,paint:{'line-color':current.stops[0]?dayColor(current.stops[0].day,Object.keys(dateLabels)):'#03a94d','line-width':5,'line-opacity':.72,'line-dasharray':[2,4]}});
+    }
+    if(map.getLayer(sourceId))map.setPaintProperty(sourceId,'line-color',current.stops[0]?dayColor(current.stops[0].day,Object.keys(dateLabels)):'#03a94d');
+    const Marker=maplibreRef.current?.Marker;if(!Marker)return;
+    current.stops.forEach((stop,index)=>{
+      const element=document.createElement('div');element.className='osm-stop-icon-wrap';element.innerHTML=`<span class="osm-stop-icon" style="--pin:${dayColor(stop.day,Object.keys(dateLabels))}">${index+1}</span>`;element.setAttribute('title',stop.name);element.setAttribute('aria-label',stop.name);
+      element.addEventListener('click',event=>{event.stopPropagation();current.onSelect(stop)});
+      const marker=new Marker({element,draggable:current.editableStopId===stop.id}).setLngLat([stop.lng,stop.lat]).addTo(map);
+      if(current.editableStopId===stop.id)marker.on('dragend',()=>{const point=marker.getLngLat();current.onStopPositionChange(stop.id,point.lat,point.lng)});
+      stopMarkersRef.current.push(marker);
     });
   },[stops,status,editableStopId,onSelect,onStopPositionChange,dateLabels]);
 
   useEffect(()=>{
     const map=mapRef.current;if(!map||status!=='ready')return;
-    resultLayersRef.current.forEach(layer=>{try{layer.remove()}catch{}});resultLayersRef.current=[];
-    void import('leaflet').then(L=>{
-      if(!mapRef.current||mapRef.current!==map)return;
-      const bounds=L.latLngBounds([]);
-      latestRef.current.placeResults.filter(place=>Number.isFinite(Number(place.mapx))&&Number.isFinite(Number(place.mapy))).forEach((place,index)=>{
-        const lat=Number(place.mapy)/1e7,lng=Number(place.mapx)/1e7;
-        const icon=L.divIcon({className:'osm-result-icon-wrap',html:`<span class="osm-result-icon">${index+1}</span>`,iconSize:[30,30],iconAnchor:[15,15]});
-        const marker=L.marker([lat,lng],{icon,title:placeTitle(place,language)}).addTo(map);marker.on('click',()=>latestRef.current.onPlaceSelect(place));resultLayersRef.current.push(marker);bounds.extend([lat,lng]);
-      });
-      const count=resultLayersRef.current.length;
-      if(count===1)map.setView((resultLayersRef.current[0] as any).getLatLng(),15);else if(count>1)map.fitBounds(bounds.pad(.16));
+    const current=latestRef.current;
+    resultMarkersRef.current.forEach(marker=>marker.remove());resultMarkersRef.current=[];
+    const Marker=maplibreRef.current?.Marker;if(!Marker)return;
+    const valid=current.placeResults.filter(place=>Number.isFinite(Number(place.mapx))&&Number.isFinite(Number(place.mapy)));
+    const bounds=new maplibreRef.current.LngLatBounds();
+    valid.forEach((place,index)=>{
+      const lat=Number(place.mapy)/1e7,lng=Number(place.mapx)/1e7;
+      const element=document.createElement('div');element.className='osm-result-icon-wrap';element.innerHTML=`<span class="osm-result-icon">${index+1}</span>`;element.setAttribute('title',placeTitle(place,language));element.setAttribute('aria-label',placeTitle(place,language));
+      element.addEventListener('click',event=>{event.stopPropagation();latestRef.current.onPlaceSelect(place)});
+      const marker=new Marker({element}).setLngLat([lng,lat]).addTo(map);resultMarkersRef.current.push(marker);bounds.extend([lng,lat]);
     });
+    if(valid.length===1)map.flyTo({center:[Number(valid[0].mapx)/1e7,Number(valid[0].mapy)/1e7],zoom:15,duration:450});
+    else if(valid.length>1)map.fitBounds(bounds,{padding:70,maxZoom:15,duration:450});
   },[placeResults,status,onPlaceSelect,language]);
 
   useEffect(()=>{
     const map=mapRef.current;if(!map||status!=='ready')return;
-    customLayerRef.current?.remove();customLayerRef.current=null;
+    customMarkerRef.current?.remove();customMarkerRef.current=null;
     const point=latestRef.current.customPin;if(!point)return;
-    void import('leaflet').then(L=>{
-      if(!mapRef.current||mapRef.current!==map)return;
-      const current=latestRef.current;
-      const icon=L.divIcon({className:'osm-custom-icon-wrap',html:'<span class="osm-custom-icon">＋</span>',iconSize:[34,34],iconAnchor:[17,17]});
-      const marker=L.marker([point.lat,point.lng],{icon,draggable:current.customPinMode,title:tr(current.language,'임의 위치','Custom location')}).addTo(map);
-      marker.on('dragend',()=>{const next=marker.getLatLng();current.onCustomLocationChange({lat:next.lat,lng:next.lng});void osmReverseGeocodePoint(next.lat,next.lng,current.language).then(current.onCustomAddressChange).catch(()=>{})});
-      customLayerRef.current=marker;
-      if(current.customPinMode)map.panTo(point);
-    });
+    const Marker=maplibreRef.current?.Marker;if(!Marker)return;
+    const current=latestRef.current;
+    const element=document.createElement('div');element.className='osm-custom-icon-wrap';element.innerHTML='<span class="osm-custom-icon">＋</span>';
+    const marker=new Marker({element,draggable:current.customPinMode}).setLngLat([point.lng,point.lat]).addTo(map);
+    marker.on('dragend',()=>{const next=marker.getLngLat();current.onCustomLocationChange({lat:next.lat,lng:next.lng});void osmReverseGeocodePoint(next.lat,next.lng,current.language).then(current.onCustomAddressChange).catch(()=>{})});
+    customMarkerRef.current=marker;
+    if(current.customPinMode)map.panTo([point.lng,point.lat]);
   },[customPin,status,customPinMode,language]);
 
   const fitItinerary=useCallback(()=>{
     const map=mapRef.current;if(!map||status!=='ready')return;
     const current=latestRef.current.stops;
-    if(!current.length){void osmGeocodeAddress(destination,language).then(point=>map.setView([point.lat,point.lng],11)).catch(()=>map.setView([20,0],2));return}
-    if(current.length===1){map.setView([current[0].lat,current[0].lng],15);return}
-    void import('leaflet').then(L=>{const bounds=L.latLngBounds(current.map(stop=>[stop.lat,stop.lng] as [number,number]));map.fitBounds(bounds.pad(.16))});
+    if(!current.length){void osmGeocodeAddress(destination,language).then(point=>map.flyTo({center:[point.lng,point.lat],zoom:11,duration:500})).catch(()=>map.jumpTo({center:[0,20],zoom:2}));return}
+    if(current.length===1){map.flyTo({center:[current[0].lng,current[0].lat],zoom:15,duration:500});return}
+    const bounds=new maplibreRef.current.LngLatBounds();current.forEach(stop=>bounds.extend([stop.lng,stop.lat]));map.fitBounds(bounds,{padding:90,maxZoom:15,duration:550});
   },[destination,language,status]);
 
   return <div className="map-stage osm-map-stage">
@@ -783,7 +815,7 @@ function OsmMap({stops,destination,onSelect,placeResults,onPlaceSelect,dateLabel
     {status==='error'&&<div className="map-gate"><div className="map-gate-card"><CircleAlert/><strong>{text('무료 지도를 불러오지 못했어요','The free map could not be loaded')}</strong><span>{text('잠시 후 새로고침해 주세요.','Please refresh and try again.')}</span></div></div>}
     {mapFocused&&<button type="button" className="map-planner-toggle" onClick={event=>{event.stopPropagation();onToggleMapFocus()}} aria-label={text('일정 패널 펼치기','Expand planner')}><ChevronDown/>{text('일정 보기','View plans')}</button>}
     <button type="button" className="map-home-button" onClick={fitItinerary} aria-label={stops.length?text('전체 동선 한눈에 보기','Fit the whole route'):text('여행지 전체 보기','Fit the destination')} title={stops.length?text('전체 동선 한눈에 보기','Fit the whole route'):text('여행지 전체 보기','Fit the destination')}><House/></button>
-    <div className="map-legend"><div className="map-legend-days">{Object.keys(dateLabels).map(day=><button type="button" key={day} className={`map-date-button ${activeDay===day?'is-active':''}`} aria-pressed={activeDay===day} onClick={()=>onDayChange(day)}><i style={{background:dayColor(day,Object.keys(dateLabels))}}/>{formatTripDate(dateLabels[day],false,language)}</button>)}</div><small className="osm-attribution-note">Wikimedia Maps · OpenStreetMap</small></div>
+    <div className="map-legend"><div className="map-legend-days">{Object.keys(dateLabels).map(day=><button type="button" key={day} className={`map-date-button ${activeDay===day?'is-active':''}`} aria-pressed={activeDay===day} onClick={()=>onDayChange(day)}><i style={{background:dayColor(day,Object.keys(dateLabels))}}/>{formatTripDate(dateLabels[day],false,language)}</button>)}</div><small className="osm-attribution-note">OpenFreeMap · OpenStreetMap</small></div>
     {customPinMode&&<div className="map-location-editor"><strong>{text('지도에서 위치를 정하세요','Choose a location on the map')}</strong><span>{text('지도를 클릭하거나 초록 핀을 끌어 옮긴 뒤 계속하세요.','Click the map or drag the green pin, then continue.')}</span><Button onClick={onCustomPinContinue} disabled={!customPin}>{text('이 위치로 계속','Continue with this location')}</Button></div>}
     {editableStopId&&<div className="map-location-editor"><strong>{text('위치 수정 중','Editing location')}</strong><span>{text('선택한 장소의 핀을 드래그해 위치를 바꾸세요.','Drag the selected place pin to move it.')}</span><Button variant="outline" onClick={onCancelStopPositionEdit}>{text('취소','Cancel')}</Button></div>}
   </div>;
