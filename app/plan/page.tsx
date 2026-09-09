@@ -33,7 +33,7 @@ import {
 type DayKey = string;
 type PlaceType = '식사' | '간식' | '관광' | '숙소' | '기타';
 type Stop = { id: string; day: DayKey; time: string; name: string; category: PlaceType; memo: string; address: string; lat: number; lng: number; customLocation?: boolean; naverLink?: string; costPerPerson?: number; costTotal?: number; costBasis?: 'person'|'total' };
-type SearchPlace = { title: string; category: string; address: string; roadAddress: string; mapx: string; mapy: string; link?: string; description?: string };
+type SearchPlace = { title: string; category: string; address: string; roadAddress: string; mapx: string; mapy: string; link?: string; description?: string; titleEnglish?: string; categoryEnglish?: string; addressEnglish?: string; roadAddressEnglish?: string };
 type EditPolicy = 'owner' | 'all' | 'password';
 type TripSettings = { title: string; destination: string; startDate: string; endDate: string; people: number; editPolicy: EditPolicy };
 type StoredPlan = { id: string; title: string; destination: string; startDate: string; endDate: string; people: number; editPolicy?: EditPolicy; passwordProtected?: boolean; editPasswordProtected?: boolean; updatedAt?: string; version?: number; stops: Stop[] };
@@ -63,6 +63,9 @@ const seedStops: Stop[] = [
 ];
 
 function cleanTitle(value: string) { return value.replace(/<[^>]*>/g, '') }
+function placeTitle(place: SearchPlace, language: 'ko' | 'en') { return cleanTitle(language === 'en' ? place.titleEnglish || place.title : place.title) }
+function placeCategory(place: SearchPlace, language: 'ko' | 'en') { return language === 'en' ? place.categoryEnglish || place.category : place.category }
+function placeAddress(place: SearchPlace, language: 'ko' | 'en') { return language === 'en' ? place.roadAddressEnglish || place.addressEnglish || place.roadAddress || place.address : place.roadAddress || place.address }
 function normalizeCategory(value: string): PlaceType {
   if(value==='카페'||value==='야시장')return '간식';
   if(value==='교통')return '기타';
@@ -101,20 +104,20 @@ function usePlaceSuggestions(query:string,enabled:boolean,context=''){
   useEffect(()=>{
     const value=query.trim();
     if(!enabled||value.length<2){setResults([]);setSearching(false);setError('');return}
-    const cacheKey=`${context}|${value}`.toLocaleLowerCase('ko-KR'),cached=suggestionCache.get(cacheKey);
+    const cacheKey=`${language}|${context}|${value}`.toLocaleLowerCase('ko-KR'),cached=suggestionCache.get(cacheKey);
     if(cached){setResults(cached);setSearching(false);setError(cached.length?'':text('검색 결과가 없습니다.','No results found.'));return}
     const controller=new AbortController();
     const timer=window.setTimeout(async()=>{
       setSearching(true);setError('');
       try{
-        const response=await fetch(`/api/search?q=${encodeURIComponent(value)}&near=${encodeURIComponent(context)}`,{signal:controller.signal}),body=await readJsonResponse<{items?:SearchPlace[];message?:string}>(response);
+        const response=await fetch(`/api/search?q=${encodeURIComponent(value)}&near=${encodeURIComponent(context)}&lang=${language}`,{signal:controller.signal}),body=await readJsonResponse<{items?:SearchPlace[];message?:string}>(response);
         if(!response.ok)throw new Error(body.message||text('검색에 실패했습니다.','Search failed.'));
         const items=body.items||[];suggestionCache.set(cacheKey,items);setResults(items);if(!items.length)setError(text('검색 결과가 없습니다.','No results found.'));
       }catch(reason){if(!controller.signal.aborted)setError(reason instanceof Error?reason.message:text('검색에 실패했습니다.','Search failed.'))}
       finally{if(!controller.signal.aborted)setSearching(false)}
     },160);
     return()=>{window.clearTimeout(timer);controller.abort()};
-  },[query,enabled,context,text]);
+  },[query,enabled,context,language,text]);
   return {results,searching,error};
 }
 function PlacePicker({query,onQueryChange,results,value,onPick,searching,placeholder,selected,onEnter}:{query:string;onQueryChange:(value:string,userInput:boolean)=>void;results:SearchPlace[];value:SearchPlace|null;onPick:(place:SearchPlace|null)=>void;searching:boolean;placeholder:string;selected:boolean;onEnter?:(value:string)=>void}){
@@ -127,11 +130,11 @@ function PlacePicker({query,onQueryChange,results,value,onPick,searching,placeho
   const composingRef=useRef(false);
   useEffect(()=>{if(!composingRef.current){inputValueRef.current=query;setInputValue(query)}},[query]);
   useEffect(()=>{setOpen(inputValue.trim().length>=2&&!selected)},[inputValue,selected]);
-  return <Combobox<SearchPlace> items={results} filteredItems={results} filter={null} value={value} inputValue={inputValue} open={open} onOpenChange={setOpen} onInputValueChange={(next,details)=>{if(details.reason==='item-press')return;if(details.reason==='input-change'){inputValueRef.current=next;setInputValue(next);if(!composingRef.current)onQueryChange(next,true)}else if(details.reason==='input-clear'&&!suppressClearRef.current){const source=details.event as Event|undefined;const isUserDelete=Boolean(source&&'inputType' in source&&String((source as InputEvent).inputType||'').startsWith('delete'));if(isUserDelete||!inputValueRef.current.trim()){inputValueRef.current=next;setInputValue(next);onQueryChange(next,true)}}}} onValueChange={place=>{onPick(place);if(place){const next=cleanTitle(place.title);inputValueRef.current=next;setInputValue(next);setOpen(false)}}} itemToStringLabel={place=>cleanTitle(place.title)}>
+  return <Combobox<SearchPlace> items={results} filteredItems={results} filter={null} value={value} inputValue={inputValue} open={open} onOpenChange={setOpen} onInputValueChange={(next,details)=>{if(details.reason==='item-press')return;if(details.reason==='input-change'){inputValueRef.current=next;setInputValue(next);if(!composingRef.current)onQueryChange(next,true)}else if(details.reason==='input-clear'&&!suppressClearRef.current){const source=details.event as Event|undefined;const isUserDelete=Boolean(source&&'inputType' in source&&String((source as InputEvent).inputType||'').startsWith('delete'));if(isUserDelete||!inputValueRef.current.trim()){inputValueRef.current=next;setInputValue(next);onQueryChange(next,true)}}}} onValueChange={place=>{onPick(place);if(place){const next=placeTitle(place,language);inputValueRef.current=next;setInputValue(next);setOpen(false)}}} itemToStringLabel={place=>placeTitle(place,language)}>
     <ComboboxInput className="place-combobox-input" placeholder={placeholder} showTrigger={false} inputMode="search" enterKeyHint="search" onFocus={()=>{if(!selected&&inputValue.trim().length>=2)setOpen(true)}} onCompositionStart={()=>{composingRef.current=true}} onCompositionEnd={event=>{composingRef.current=false;const committed=event.currentTarget.value;inputValueRef.current=committed;setInputValue(committed);onQueryChange(committed,true);setOpen(committed.trim().length>=2&&!selected)}} onKeyDown={event=>{const nativeEvent=event.nativeEvent as KeyboardEvent;if(event.key==='Enter'&&!nativeEvent.isComposing&&!composingRef.current){event.preventDefault();event.stopPropagation();const current=event.currentTarget.value;suppressClearRef.current=true;inputValueRef.current=current;setInputValue(current);onQueryChange(current,false);onEnter?.(current);setOpen(false);window.setTimeout(()=>{suppressClearRef.current=false},350)}}}/>
     <ComboboxContent className="place-combobox-content">
       <ComboboxEmpty>{searching?text('네이버 지도에서 검색 중…','Searching Naver Maps…'):text('검색 결과가 없습니다.','No results found.')}</ComboboxEmpty>
-      <ComboboxList>{results.map((place,index)=><ComboboxItem className="place-combobox-item" key={`${place.mapx}-${place.mapy}-${index}`} value={place}><MapPin/><span><strong>{cleanTitle(place.title)}</strong><small>{place.category}</small><em>{place.roadAddress||place.address}</em></span></ComboboxItem>)}</ComboboxList>
+      <ComboboxList>{results.map((place,index)=><ComboboxItem className="place-combobox-item" key={`${place.mapx}-${place.mapy}-${index}`} value={place}><MapPin/><span><strong>{placeTitle(place,language)}</strong><small>{placeCategory(place,language)}</small><em>{placeAddress(place,language)}</em></span></ComboboxItem>)}</ComboboxList>
     </ComboboxContent>
   </Combobox>
 }
@@ -177,7 +180,7 @@ function insertStopByTime(current:Stop[],stop:Stop){
 function itinerarySnapshot(settings:TripSettings,stops:Stop[],viewPassword='',viewPasswordTouched=false,editPassword='',editPasswordTouched=false){
   return JSON.stringify({settings,stops,viewPassword:viewPasswordTouched?viewPassword:'',editPassword:editPasswordTouched?editPassword:''});
 }
-function naverPlaceUrl(stop: Pick<Stop,'name'|'address'>) { return `https://map.naver.com/p/search/${encodeURIComponent(`${stop.name} ${stop.address}`)}` }
+function naverPlaceUrl(stop: Pick<Stop,'name'|'address'> & {naverLink?:string}) { return stop.naverLink?.startsWith('https://map.naver.com/') ? stop.naverLink : `https://map.naver.com/p/search/${encodeURIComponent(`${stop.name} ${stop.address}`)}` }
 function geocodeAddress(query:string):Promise<{lat:number;lng:number;address:string}> {
   return new Promise((resolve,reject)=>{
     const service=window.naver?.maps?.Service;
@@ -207,6 +210,37 @@ function reverseGeocodePoint(lat:number,lng:number):Promise<string> {
       resolve(value);
     });
   });
+}
+
+const CITY_CENTER_ALIASES: Array<[string, {lat:number;lng:number}]> = [
+  ['전주',{lat:35.8242,lng:127.1534}], ['jeonju',{lat:35.8242,lng:127.1534}], ['청주',{lat:36.6424,lng:127.489}], ['cheongju',{lat:36.6424,lng:127.489}],
+  ['서울',{lat:37.5665,lng:126.978}], ['seoul',{lat:37.5665,lng:126.978}], ['부산',{lat:35.1796,lng:129.0756}], ['busan',{lat:35.1796,lng:129.0756}],
+  ['대구',{lat:35.8714,lng:128.6014}], ['daegu',{lat:35.8714,lng:128.6014}], ['인천',{lat:37.4563,lng:126.7052}], ['incheon',{lat:37.4563,lng:126.7052}],
+  ['대전',{lat:36.3504,lng:127.3845}], ['daejeon',{lat:36.3504,lng:127.3845}], ['광주',{lat:35.1595,lng:126.8526}], ['gwangju',{lat:35.1595,lng:126.8526}],
+  ['울산',{lat:35.5384,lng:129.3114}], ['ulsan',{lat:35.5384,lng:129.3114}], ['제주',{lat:33.4996,lng:126.5312}], ['jeju',{lat:33.4996,lng:126.5312}],
+  ['수원',{lat:37.2636,lng:127.0286}], ['suwon',{lat:37.2636,lng:127.0286}], ['강릉',{lat:37.7519,lng:128.8761}], ['gangneung',{lat:37.7519,lng:128.8761}],
+  ['경주',{lat:35.8562,lng:129.2247}], ['gyeongju',{lat:35.8562,lng:129.2247}], ['여수',{lat:34.7604,lng:127.6622}], ['yeosu',{lat:34.7604,lng:127.6622}],
+  ['목포',{lat:34.8118,lng:126.3922}], ['mokpo',{lat:34.8118,lng:126.3922}], ['춘천',{lat:37.8813,lng:127.7298}], ['chuncheon',{lat:37.8813,lng:127.7298}],
+  ['창원',{lat:35.2281,lng:128.6811}], ['changwon',{lat:35.2281,lng:128.6811}],
+];
+
+function knownCityCenter(value:string){
+  const normalized=value.toLocaleLowerCase('en-US').replace(/[^a-z0-9가-힣]/g,'');
+  return CITY_CENTER_ALIASES.find(([alias])=>normalized.includes(alias.toLocaleLowerCase('en-US').replace(/[^a-z0-9가-힣]/g,'')))?.[1] || null;
+}
+
+async function searchDestinationCenter(query:string){
+  const candidates=[`${query} city hall`,`${query} 시청`,query];
+  for(const candidate of candidates){
+    try{
+      const response=await fetch(`/api/search?q=${encodeURIComponent(candidate)}&near=${encodeURIComponent(query)}&lang=ko`,{cache:'no-store'});
+      if(!response.ok)continue;
+      const body=await readJsonResponse<{items?:SearchPlace[]}>(response);
+      const item=body.items?.find(place=>Number.isFinite(Number(place.mapx))&&Number.isFinite(Number(place.mapy)));
+      if(item)return {lat:Number(item.mapy)/1e7,lng:Number(item.mapx)/1e7};
+    }catch{}
+  }
+  throw new Error('destination center not found');
 }
 
 function loadNaverMaps(clientId: string) {
@@ -309,8 +343,8 @@ function NaverMap({stops,clientId,destination,onSelect,placeResults,onPlaceSelec
     };
     const query=destination.trim();
     if(!query){applyCenter(DEFAULT_MAP_CENTER);return()=>{cancelled=true}};
-    geocodeAddress(query)
-      .catch(()=>geocodeAddress(`${query} 시청`))
+    const knownCenter=knownCityCenter(query);
+    (knownCenter?Promise.resolve(knownCenter):geocodeAddress(query).catch(()=>searchDestinationCenter(query)))
       .then(point=>applyCenter(point))
       .catch(()=>{if(!cancelled){setCityCenter(DEFAULT_MAP_CENTER);map.setCenter(new naver.maps.LatLng(DEFAULT_MAP_CENTER.lat,DEFAULT_MAP_CENTER.lng));map.setZoom(12)}});
     return()=>{cancelled=true};
@@ -380,12 +414,12 @@ function NaverMap({stops,clientId,destination,onSelect,placeResults,onPlaceSelec
     const bounds=new naver.maps.LatLngBounds();
     placeResults.forEach((place,index)=>{
       const position=new naver.maps.LatLng(Number(place.mapy)/1e7,Number(place.mapx)/1e7);
-      const name=cleanTitle(place.title);
+      const name=placeTitle(place,language);
       const marker=new naver.maps.Marker({map,position,title:name,clickable:true,zIndex:250+index,icon:{content:`<button type="button" class="place-result-marker" aria-label="${escapeHtml(name)} 정보 보기"><span>${index+1}</span></button>`,anchor:new naver.maps.Point(17,40)}});
       naver.maps.Event.addListener(marker,'click',()=>onPlaceSelect(place));placeOverlaysRef.current.push(marker);bounds.extend(position);
     });
     if(placeResults.length===1)map.panTo(bounds.getCenter());else map.fitBounds(bounds,{top:120,right:70,bottom:110,left:70});
-  },[placeResults,status,onPlaceSelect]);
+  },[placeResults,status,onPlaceSelect,language]);
   return <div className="map-stage">
     <div ref={containerRef} className="map-canvas" aria-label={text('네이버 지도','Naver Map')} />
     {status!=='ready'&&<div className="map-gate"><div className="map-gate-card">
@@ -564,7 +598,7 @@ export default function Home(){
   const updateStopPosition=useCallback((id:string,lat:number,lng:number)=>{setStops(current=>current.map(stop=>stop.id===id?{...stop,lat,lng,customLocation:true}:stop));setLocationEditingId(null)},[]);
   const updateStopCost=useCallback((id:string,basis:'person'|'total',rawValue:string)=>{const value=parseCostInput(rawValue),people=Math.max(1,tripSettings.people||1);setStops(current=>current.map(stop=>{if(stop.id!==id)return stop;if(value===null)return {...stop,costPerPerson:undefined,costTotal:undefined,costBasis:undefined};return basis==='person'?{...stop,costBasis:basis,costPerPerson:value,costTotal:value*people}:{...stop,costBasis:basis,costTotal:value,costPerPerson:Math.round(value/people)}}))},[tripSettings.people]);
   const saveTripSettings=()=>{const next={...settingsDraft,title:settingsDraft.title.trim()||'나의 여행',destination:settingsDraft.destination.trim(),people:Math.max(1,Math.round(Number(settingsDraft.people)||1)),editPolicy:settingsDraft.editPolicy==='all'?'all':settingsDraft.editPolicy==='password'?'password':'owner' as EditPolicy};if(next.editPolicy==='password'&&((!editPasswordConfigured&&!editPassword.trim())||(editPasswordTouched&&!editPassword.trim()))){setEditPasswordWarningOpen(true);return}const nextStart=dateDayKey(next.startDate)||firstDefaultDay;setTripSettings(next);setSettingsDraft(next);setStops(current=>current.map(stop=>({...stop,day:normalizeStoredDay(stop.day,next.startDate,next.endDate)})));setActiveDay(nextStart);setCustomDay(nextStart);localStorage.setItem('route-note-trip-settings',JSON.stringify(next));setSettingsOpen(false)};
-  const addStop=()=>{if(!picked)return;const stop:Stop={id:`${Date.now()}`,day:activeDay,time:newTime,name:cleanTitle(picked.title),category:newCategory,memo:newMemo.trim(),address:picked.roadAddress||picked.address,lat:Number(picked.mapy)/1e7,lng:Number(picked.mapx)/1e7,naverLink:picked.link};setStops(current=>insertStopByTime(current,stop));setAddOpen(false);setQuery('');setPicked(null);setNewMemo('')};
+  const addStop=()=>{if(!picked)return;const stop:Stop={id:`${Date.now()}`,day:activeDay,time:newTime,name:placeTitle(picked,language),category:newCategory,memo:newMemo.trim(),address:placeAddress(picked,language),lat:Number(picked.mapy)/1e7,lng:Number(picked.mapx)/1e7,naverLink:naverPlaceUrl({name:cleanTitle(picked.title),address:picked.roadAddress||picked.address})};setStops(current=>insertStopByTime(current,stop));setAddOpen(false);setQuery('');setPicked(null);setNewMemo('')};
   const openEdit=(stop:Stop)=>{setEditing(stop);setEditDraft({...stop});setEditQuery(stop.name);setEditPlaceLinked(true)};
   const saveEdit=()=>{if(!editing||!editDraft||!isValidTime(editDraft.time))return;const updated={...editDraft,name:editDraft.name.trim()||editing.name,memo:editDraft.memo.trim()};setStops(current=>current.map(stop=>stop.id===editing.id?updated:stop));if(selected?.id===editing.id)setSelected(updated);setEditing(null);setEditDraft(null)};
   const moveStop=(id:string,direction:-1|1)=>setStops(current=>{const items=current.filter(s=>s.day===activeDay),i=items.findIndex(s=>s.id===id),t=i+direction;if(i<0||t<0||t>=items.length)return current;const next=[...items];[next[i],next[t]]=[next[t],next[i]];let cursor=0;return current.map(s=>s.day===activeDay?next[cursor++]:s)});
@@ -572,7 +606,7 @@ export default function Home(){
   const removeSelected=()=>{if(!selected)return;setStops(c=>c.filter(s=>s.id!==selected.id));setSelected(null)};
   const removeStop=(id:string)=>setStops(current=>current.filter(stop=>stop.id!==id));
   const commitMapSearch=()=>{setMapResultPlaces(mapSuggestions.results.slice(0,8));setMapPicked(null);setMapCandidate(null)};
-  const prepareMapCandidate=()=>{if(!mapCandidate)return;setPicked(mapCandidate);setQuery(cleanTitle(mapCandidate.title));setMapCandidate(null);setAddOpen(true)};
+  const prepareMapCandidate=()=>{if(!mapCandidate)return;setPicked(mapCandidate);setQuery(placeTitle(mapCandidate,language));setMapCandidate(null);setAddOpen(true)};
   const openCustomPin=()=>{setCustomDay(activeDay);setCustomPin(null);setCustomName('');setCustomAddress('');setCustomMemo('');setCustomTime('12:00');setCustomCategory('관광');setCustomAddressError('');setCustomPinMode(false);setCustomPinOpen(true)};
   const startCustomPinPlacement=()=>{setCustomPinMode(true);setCustomPinOpen(false)};
   const continueCustomPin=()=>{if(customPin){setCustomPinMode(false);setCustomPinOpen(true)}};
@@ -705,9 +739,9 @@ export default function Home(){
           <label>{text('시간(24시간)', 'Time (24-hour)')}<Time24Input value={newTime} onChange={setNewTime}/></label>
           <label>{text('카테고리', 'Category')}<select value={newCategory} onChange={e=>setNewCategory(e.target.value as PlaceType)}>{PLACE_CATEGORIES.map(t=><option key={t}>{text(t, t==='식사'?'Meal':t==='간식'?'Snack':t==='관광'?'Sightseeing':t==='숙소'?'Stay':'Other')}</option>)}</select></label>
         </div>
-        <label className="place-search-field">{text('장소', 'Place')} <PlacePicker query={query} onQueryChange={(value,userInput)=>{setQuery(value);if(userInput)setPicked(null)}} results={addSuggestions.results} value={picked} onPick={place=>{setPicked(place);if(place)setQuery(cleanTitle(place.title))}} searching={addSuggestions.searching} placeholder={text('장소 검색', 'Search places')} selected={Boolean(picked)}/></label>
+        <label className="place-search-field">{text('장소', 'Place')} <PlacePicker query={query} onQueryChange={(value,userInput)=>{setQuery(value);if(userInput)setPicked(null)}} results={addSuggestions.results} value={picked} onPick={place=>{setPicked(place);if(place)setQuery(placeTitle(place,language))}} searching={addSuggestions.searching} placeholder={text('장소 검색', 'Search places')} selected={Boolean(picked)}/></label>
         {addSuggestions.error&&query.trim().length>=2&&<div className="inline-notice"><CircleAlert/>{addSuggestions.error}</div>}
-        {picked&&<div className="linked-place"><MapPin/><span><strong>{cleanTitle(picked.title)}</strong><small>{picked.roadAddress||picked.address}</small></span><em>{text('선택됨', 'Selected')}</em></div>}
+        {picked&&<div className="linked-place"><MapPin/><span><strong>{placeTitle(picked,language)}</strong><small>{placeAddress(picked,language)}</small></span><em>{text('선택됨', 'Selected')}</em></div>}
         <label className="memo-field">{text('메모', 'Note')} <Textarea value={newMemo} onChange={e=>setNewMemo(e.target.value)} placeholder={text('메뉴, 예약 시간 등', 'Menu, reservation time, etc.')}/></label>
         <DialogFooter><Button variant="outline" onClick={()=>setAddOpen(false)}>{text('취소', 'Cancel')}</Button><Button onClick={addStop} disabled={!picked||!isValidTime(newTime)}>{text('일정에 추가', 'Add to plan')}</Button></DialogFooter>
       </DialogContent>
@@ -762,15 +796,15 @@ export default function Home(){
       </aside>
       <section className="map-panel">
         <div className="map-toolbar"><div className="map-toolbar-left"><Sparkles/><span><strong>DAY {Math.max(1,dayKeys.indexOf(activeDay)+1)}</strong></span></div><div className="map-toolbar-right"><button type="button" className="planner-toggle-button" onClick={()=>setPlannerCollapsed(current=>!current)} aria-expanded={!plannerCollapsed} aria-label={plannerCollapsed?text('일정 패널 펼치기','Expand planner'):text('일정 패널 접기','Collapse planner')} title={plannerCollapsed?text('일정 패널 펼치기','Expand planner'):text('일정 패널 접기','Collapse planner')}>{plannerCollapsed?<PanelLeftOpen/>:<PanelLeftClose/>}<span>{plannerCollapsed?text('일정 펼치기','Expand planner'):text('일정 접기','Collapse planner')}</span></button><span className="naver-badge"><b>N</b>NAVER Maps</span></div></div>
-        <div className="map-place-search"><PlacePicker query={mapQuery} onQueryChange={(value,userInput)=>{setMapQuery(value);if(userInput){setMapPicked(null);setMapCandidate(null);setMapResultPlaces([])}}} results={mapSuggestions.results} value={mapPicked} onPick={place=>{setMapPicked(place);setMapCandidate(place);setMapResultPlaces(mapSuggestions.results.slice(0,8));if(place)setMapQuery(cleanTitle(place.title))}} onEnter={commitMapSearch} searching={mapSuggestions.searching} placeholder={`${tripSettings.destination} ${text('장소 검색','search places')}`} selected={Boolean(mapPicked)}/></div>
+        <div className="map-place-search"><PlacePicker query={mapQuery} onQueryChange={(value,userInput)=>{setMapQuery(value);if(userInput){setMapPicked(null);setMapCandidate(null);setMapResultPlaces([])}}} results={mapSuggestions.results} value={mapPicked} onPick={place=>{setMapPicked(place);setMapCandidate(place);setMapResultPlaces(mapSuggestions.results.slice(0,8));if(place)setMapQuery(placeTitle(place,language))}} onEnter={commitMapSearch} searching={mapSuggestions.searching} placeholder={`${tripSettings.destination} ${text('장소 검색','search places')}`} selected={Boolean(mapPicked)}/></div>
         <NaverMap stops={dayStops} clientId={clientId} destination={tripSettings.destination} onSelect={selectStop} placeResults={mapResultPlaces} onPlaceSelect={selectMapCandidate} dateLabels={dayDates} activeDay={activeDay} onDayChange={setActiveDay} editableStopId={locationEditingId} onStopPositionChange={updateStopPosition} onCancelStopPositionEdit={()=>setLocationEditingId(null)} customPin={customPin} customPinMode={customPinMode} onCustomLocationChange={updateCustomPin} onCustomAddressChange={setCustomAddress} onCustomPinContinue={continueCustomPin} onMapTap={toggleMapFocus} mapFocused={mapFocused} onToggleMapFocus={toggleMapFocus} plannerCollapsed={plannerCollapsed}/>
-        {mapCandidate&&<div className="map-place-card"><button className="map-card-close" onClick={()=>setMapCandidate(null)} aria-label={text('장소 정보 닫기','Close place info')}>×</button><span>{mapCandidate.category}</span><strong>{cleanTitle(mapCandidate.title)}</strong><p>{mapCandidate.roadAddress||mapCandidate.address}</p><div><a href={naverPlaceUrl({name:cleanTitle(mapCandidate.title),address:mapCandidate.roadAddress||mapCandidate.address})} target="_blank" rel="noreferrer">{text('네이버지도에서 상세보기','View on Naver Maps')}</a><Button onClick={prepareMapCandidate}><Plus/>{text('이 장소로 결정','Choose this place')}</Button></div></div>}
+        {mapCandidate&&<div className="map-place-card"><button className="map-card-close" onClick={()=>setMapCandidate(null)} aria-label={text('장소 정보 닫기','Close place info')}>×</button><span>{placeCategory(mapCandidate,language)}</span><strong>{placeTitle(mapCandidate,language)}</strong><p>{placeAddress(mapCandidate,language)}</p><div><a href={naverPlaceUrl({name:cleanTitle(mapCandidate.title),address:mapCandidate.roadAddress||mapCandidate.address})} target="_blank" rel="noreferrer">{text('네이버지도에서 상세보기','View on Naver Maps')}</a><Button onClick={prepareMapCandidate}><Plus/>{text('이 장소로 결정','Choose this place')}</Button></div></div>}
       </section>
     </section>
 
     <Sheet open={Boolean(selected)} onOpenChange={open=>!open&&setSelected(null)}><SheetContent className="place-sheet sm:max-w-[430px]">{selected&&<><SheetHeader><div className="sheet-eyebrow"><span style={{background:dayColor(selected.day,dayKeys)}}>{stops.filter(s=>s.day===selected.day).findIndex(s=>s.id===selected.id)+1}</span>{formatTripDate(dayDates[selected.day],false,language)} · {selected.time} · {text(selected.category,selected.category==='식사'?'Meal':selected.category==='간식'?'Snack':selected.category==='관광'?'Sightseeing':selected.category==='숙소'?'Stay':'Other')}</div><SheetTitle>{selected.name}</SheetTitle><SheetDescription>{selected.address}</SheetDescription></SheetHeader><div className="sheet-body"><div className="section-title"><span>{text('거리뷰','Street view')}</span><small>{text('네이버 파노라마','Naver panorama')}</small></div><PanoramaView stop={selected} clientId={clientId}/>{selected.memo&&<div className="place-note"><span>{text('메모','Note')}</span><p>{selected.memo}</p></div>}<a className="naver-link" href={naverPlaceUrl(selected)} target="_blank" rel="noreferrer"><span><b>N</b>{text('네이버지도에서 상세보기','View on Naver Maps')}</span><ExternalLink/></a><Button variant="outline" className="location-edit-button" onClick={startLocationEdit}><MapPin/>{text('위치 임의 수정','Edit location')}</Button><Button variant="destructive" className="delete-button" onClick={removeSelected}><Trash2/>{text('이 장소 삭제','Delete place')}</Button></div></>}</SheetContent></Sheet>
 
-    <Dialog open={Boolean(editing)} onOpenChange={open=>{if(!open){setEditing(null);setEditDraft(null)}}}><DialogContent className="edit-dialog sm:max-w-[500px]">{editDraft&&<><DialogHeader><DialogTitle>{text('장소 수정','Edit place')}</DialogTitle><DialogDescription>{text('장소를 바꾸려면 검색 결과에서 선택하세요.','Choose a search result if you want to change the place.')}</DialogDescription></DialogHeader><div className="edit-grid"><label>{text('장소','Place')} <PlacePicker query={editQuery} onQueryChange={(value,userInput)=>{setEditQuery(value);if(userInput)setEditPlaceLinked(false)}} results={editSuggestions.results} value={null} onPick={place=>{if(!place)return;const name=cleanTitle(place.title);setEditQuery(name);setEditPlaceLinked(true);setEditDraft({...editDraft,name,address:place.roadAddress||place.address,lat:Number(place.mapy)/1e7,lng:Number(place.mapx)/1e7})}} searching={editSuggestions.searching} placeholder={text('장소 검색','Search places')} selected={editPlaceLinked}/></label>{editSuggestions.error&&editQuery.trim().length>=2&&!editPlaceLinked&&<div className="inline-notice"><CircleAlert/>{editSuggestions.error}</div>}<div className={`linked-place ${editPlaceLinked?'':'unlinked'}`}><MapPin/><span><strong>{editDraft.name}</strong><small>{editDraft.address}</small></span><em>{editPlaceLinked?text('선택됨','Selected'):text('장소를 골라주세요','Choose a place')}</em></div><div className="form-grid two"><label>{text('시간(24시간)','Time (24-hour)')}<Time24Input value={editDraft.time} onChange={time=>setEditDraft({...editDraft,time})}/></label><label>{text('카테고리','Category')}<select value={editDraft.category} onChange={e=>setEditDraft({...editDraft,category:e.target.value as PlaceType})}>{PLACE_CATEGORIES.map(t=><option key={t}>{text(t, t==='식사'?'Meal':t==='간식'?'Snack':t==='관광'?'Sightseeing':t==='숙소'?'Stay':'Other')}</option>)}</select></label></div><label>{text('메모','Note')}<Textarea value={editDraft.memo} onChange={e=>setEditDraft({...editDraft,memo:e.target.value})} placeholder={text('메모를 남겨보세요','Leave a note')}/></label></div><DialogFooter><Button variant="outline" onClick={()=>{setEditing(null);setEditDraft(null)}}>{text('취소','Cancel')}</Button><Button onClick={saveEdit} disabled={!editPlaceLinked||!isValidTime(editDraft.time)}>{text('저장','Save')}</Button></DialogFooter></>}</DialogContent></Dialog>
+    <Dialog open={Boolean(editing)} onOpenChange={open=>{if(!open){setEditing(null);setEditDraft(null)}}}><DialogContent className="edit-dialog sm:max-w-[500px]">{editDraft&&<><DialogHeader><DialogTitle>{text('장소 수정','Edit place')}</DialogTitle><DialogDescription>{text('장소를 바꾸려면 검색 결과에서 선택하세요.','Choose a search result if you want to change the place.')}</DialogDescription></DialogHeader><div className="edit-grid"><label>{text('장소','Place')} <PlacePicker query={editQuery} onQueryChange={(value,userInput)=>{setEditQuery(value);if(userInput)setEditPlaceLinked(false)}} results={editSuggestions.results} value={null} onPick={place=>{if(!place)return;const name=placeTitle(place,language);setEditQuery(name);setEditPlaceLinked(true);setEditDraft({...editDraft,name,address:placeAddress(place,language),lat:Number(place.mapy)/1e7,lng:Number(place.mapx)/1e7,naverLink:naverPlaceUrl({name:cleanTitle(place.title),address:place.roadAddress||place.address})})}} searching={editSuggestions.searching} placeholder={text('장소 검색','Search places')} selected={editPlaceLinked}/></label>{editSuggestions.error&&editQuery.trim().length>=2&&!editPlaceLinked&&<div className="inline-notice"><CircleAlert/>{editSuggestions.error}</div>}<div className={`linked-place ${editPlaceLinked?'':'unlinked'}`}><MapPin/><span><strong>{editDraft.name}</strong><small>{editDraft.address}</small></span><em>{editPlaceLinked?text('선택됨','Selected'):text('장소를 골라주세요','Choose a place')}</em></div><div className="form-grid two"><label>{text('시간(24시간)','Time (24-hour)')}<Time24Input value={editDraft.time} onChange={time=>setEditDraft({...editDraft,time})}/></label><label>{text('카테고리','Category')}<select value={editDraft.category} onChange={e=>setEditDraft({...editDraft,category:e.target.value as PlaceType})}>{PLACE_CATEGORIES.map(t=><option key={t}>{text(t, t==='식사'?'Meal':t==='간식'?'Snack':t==='관광'?'Sightseeing':t==='숙소'?'Stay':'Other')}</option>)}</select></label></div><label>{text('메모','Note')}<Textarea value={editDraft.memo} onChange={e=>setEditDraft({...editDraft,memo:e.target.value})} placeholder={text('메모를 남겨보세요','Leave a note')}/></label></div><DialogFooter><Button variant="outline" onClick={()=>{setEditing(null);setEditDraft(null)}}>{text('취소','Cancel')}</Button><Button onClick={saveEdit} disabled={!editPlaceLinked||!isValidTime(editDraft.time)}>{text('저장','Save')}</Button></DialogFooter></>}</DialogContent></Dialog>
 
     <Dialog open={editPasswordPromptOpen} onOpenChange={open=>{if(!open){setEditPasswordPromptOpen(false);setEditPasswordPromptError('')}}}><DialogContent className="password-dialog sm:max-w-[420px]"><DialogHeader><DialogTitle>{text('편집 비밀번호가 필요해요','Editing password required')}</DialogTitle><DialogDescription>{text('이 계획을 수정하려면 편집 비밀번호를 입력하세요.','Enter the editing password to change this plan.')}</DialogDescription></DialogHeader><label>{text('편집 비밀번호','Editing password')}<Input type="password" value={editPasswordPrompt} onChange={e=>setEditPasswordPrompt(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')void unlockEditPlan()}} placeholder={text('편집 비밀번호','Editing password')}/></label>{editPasswordPromptError&&<div className="inline-notice"><CircleAlert/>{editPasswordPromptError}</div>}<DialogFooter><Button variant="outline" onClick={()=>setEditPasswordPromptOpen(false)}>{text('취소','Cancel')}</Button><Button onClick={unlockEditPlan} disabled={!editPasswordPrompt}>{text('편집 권한 확인','Check edit access')}</Button></DialogFooter></DialogContent></Dialog>
 
