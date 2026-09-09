@@ -713,7 +713,7 @@ function OsmMap({stops,destination,onSelect,placeResults,onPlaceSelect,dateLabel
           }
           if(window.matchMedia('(max-width: 820px)').matches)current.onMapTap();
         });
-        mapInstance.on('load',()=>{
+        mapInstance.on('style.load',()=>{
           if(!alive)return;
           mapRef.current=mapInstance;
           setStatus('ready');
