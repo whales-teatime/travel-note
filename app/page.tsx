@@ -51,7 +51,6 @@ export default function HomePage() {
   const text = (korean: string, english: string) => tr(language, korean, english);
   const [plans, setPlans] = useState<PlanSummary[]>([]);
   const [planMenuOpen, setPlanMenuOpen] = useState(false);
-  const [overseasMessage, setOverseasMessage] = useState(false);
   const [hasDraft, setHasDraft] = useState(false);
   const [draftTitle, setDraftTitle] = useState('');
   const [adminAuthenticated, setAdminAuthenticated] = useState(false);
@@ -136,9 +135,8 @@ export default function HomePage() {
       <div className="departure-question"><span>{text('어디로 떠나시나요?', 'Where are you headed?')}</span><small>{text('여행의 첫 장면을 골라보세요', 'Choose the first scene of your trip.')}</small></div>
       <div className="departure-choices">
         <Link className="departure-card domestic-card" href="/plan/new?mode=domestic"><span className="departure-icon"><Compass /></span><span className="departure-copy"><strong>{text('국내로!', 'Around Korea!')}</strong><small>{text('가까운 곳부터 오늘을 채워요', 'Map out your next Korean adventure.')}</small></span><ArrowRight className="departure-arrow" /><span className="sparkle-burst" aria-hidden="true">✦　✿　✧　❀　✦　❋</span></Link>
-        <button type="button" className="departure-card overseas-card" onClick={() => setOverseasMessage(true)}><span className="departure-icon"><Plane /></span><span className="departure-copy"><strong>{text('해외로!', 'Explore the world!')}</strong><small>{text('여권 챙기면 다시 만나요', 'Pack your passport — see you soon.')}</small></span><ArrowRight className="departure-arrow" /><span className="plane-trail" aria-hidden="true">·　·　·　✈</span></button>
+        <Link className="departure-card overseas-card" href="/plan/new?mode=overseas"><span className="departure-icon"><Plane /></span><span className="departure-copy"><strong>{text('해외로!', 'Explore the world!')}</strong><small>{text('여권 챙기고 세계지도로 출발', 'Plan your next adventure anywhere.')}</small></span><ArrowRight className="departure-arrow" /><span className="plane-trail" aria-hidden="true">·　·　·　✈</span></Link>
       </div>
-      {overseasMessage && <button className="overseas-toast" type="button" onClick={() => setOverseasMessage(false)}><Plane /> {text('해외 여행 플래너는 준비 중이에요 ㅠㅠ', 'The international planner is still on its way.')} <span>{text('닫기', 'Close')}</span></button>}
       {hasDraft && <div className="draft-pill"><span><small>{text('이 기기에 남은 초안', 'Draft on this device')}</small><strong>{draftTitle || text('이 기기의 여행 초안', 'Untitled trip draft')}</strong></span><div className="draft-pill-actions"><Link className="draft-pill-action" href="/plan/new?draft=1">{text('계속 쓰기', 'Continue')}<ArrowRight /></Link><button type="button" onClick={clearDraft}>{text('초안 삭제', 'Delete draft')}</button></div></div>}
     </section>
     <WhaleSupportButton />

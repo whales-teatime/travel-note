@@ -13,6 +13,8 @@ export type PlanStop = {
   lng: number;
   customLocation?: boolean;
   naverLink?: string;
+  mapProvider?: 'naver' | 'google';
+  placeId?: string;
   costPerPerson?: number;
   costTotal?: number;
   costBasis?: 'person' | 'total';
@@ -25,6 +27,7 @@ export type PlanInput = {
   endDate: string;
   people: number;
   editPolicy: 'owner' | 'all' | 'password';
+  mapProvider: 'naver' | 'google';
   stops: PlanStop[];
 };
 
@@ -228,6 +231,8 @@ export function sanitizeStops(value: unknown, startDate = '', endDate = ''): Pla
     };
     if (source.customLocation) stop.customLocation = true;
     if (typeof source.naverLink === 'string') stop.naverLink = source.naverLink.slice(0, 500);
+    if (source.mapProvider === 'google' || source.mapProvider === 'naver') stop.mapProvider = source.mapProvider;
+    if (typeof source.placeId === 'string' && source.placeId.trim()) stop.placeId = source.placeId.trim().slice(0, 300);
     if (Number.isFinite(costPerPerson)) stop.costPerPerson = costPerPerson;
     if (Number.isFinite(costTotal)) stop.costTotal = costTotal;
     if (source.costBasis === 'person' || source.costBasis === 'total') stop.costBasis = source.costBasis;
@@ -246,10 +251,11 @@ export function sanitizePlan(value: unknown): PlanInput | null {
   const endDate = textValue(source.endDate).slice(0, 20);
   const people = Math.min(99, Math.max(1, Math.round(Number(source.people) || 1)));
   const editPolicy = source.editPolicy === 'all' ? 'all' : source.editPolicy === 'password' ? 'password' : 'owner';
+  const mapProvider = source.mapProvider === 'google' ? 'google' : 'naver';
   if (!title || !destination || !validDate(startDate) || !validDate(endDate) || startDate > endDate || dateNumber(endDate) - dateNumber(startDate) > 366 * 24 * 60 * 60 * 1000) return null;
   const stops = sanitizeStops(source.stops, startDate, endDate);
   if (!stops) return null;
-  return { title, destination, startDate, endDate, people, editPolicy, stops };
+  return { title, destination, startDate, endDate, people, editPolicy, mapProvider, stops };
 }
 
 export function publicPlan(row: Record<string, unknown>) {
@@ -260,6 +266,7 @@ export function publicPlan(row: Record<string, unknown>) {
     startDate: textValue(row.start_date),
     endDate: textValue(row.end_date),
     people: Number(row.people) || 1,
+    mapProvider: row.map_provider === 'google' ? 'google' : 'naver',
     editPolicy: row.edit_policy === 'all' ? 'all' : row.edit_policy === 'password' ? 'password' : 'owner',
     passwordProtected: Boolean(Number(row.password_protected ?? (row.password_hash ? 1 : 0))),
     editPasswordProtected: Boolean(Number(row.edit_password_protected ?? (row.edit_password_hash ? 1 : 0))),

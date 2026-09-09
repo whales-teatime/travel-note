@@ -1,6 +1,6 @@
 import { checkRateLimit, getDb, passwordHash, publicPlan, purgeExpiredPlans, randomHex, rateLimitResponse, readJsonObject, sanitizePlan, sha256 } from '@/lib/plan-store';
 
-const PLAN_SUMMARY_COLUMNS = 'p.id,p.title,p.destination,p.start_date,p.end_date,p.people,p.edit_policy,(p.password_hash IS NOT NULL) AS password_protected,(p.edit_password_hash IS NOT NULL) AS edit_password_protected,p.created_at,p.updated_at,p.deleted_at,p.version';
+const PLAN_SUMMARY_COLUMNS = 'p.id,p.title,p.destination,p.start_date,p.end_date,p.people,p.edit_policy,p.map_provider,(p.password_hash IS NOT NULL) AS password_protected,(p.edit_password_hash IS NOT NULL) AS edit_password_protected,p.created_at,p.updated_at,p.deleted_at,p.version';
 
 function ftsQuery(value: string) {
   return value
@@ -53,7 +53,7 @@ export async function GET(request: Request) {
         if (!branches.length) return { results: [] };
         return db.prepare(`SELECT * FROM (${branches.join(' UNION ')}) ORDER BY updated_at DESC,id DESC LIMIT ? OFFSET ?`).bind(...bindings, limit + 1, offset).all();
       })()
-    : await db.prepare(`SELECT id,title,destination,start_date,end_date,people,edit_policy,(password_hash IS NOT NULL) AS password_protected,(edit_password_hash IS NOT NULL) AS edit_password_protected,created_at,updated_at,deleted_at,version FROM plans WHERE ${deletedClause} ORDER BY updated_at DESC,id DESC LIMIT ? OFFSET ?`).bind(limit + 1, offset).all();
+    : await db.prepare(`SELECT id,title,destination,start_date,end_date,people,edit_policy,map_provider,(password_hash IS NOT NULL) AS password_protected,(edit_password_hash IS NOT NULL) AS edit_password_protected,created_at,updated_at,deleted_at,version FROM plans WHERE ${deletedClause} ORDER BY updated_at DESC,id DESC LIMIT ? OFFSET ?`).bind(limit + 1, offset).all();
   const rows = result.results || [], hasMore = rows.length > limit;
   return Response.json({ items: rows.slice(0, limit).map(row => publicPlan(row as Record<string, unknown>)), nextOffset: hasMore ? offset + limit : null });
 }
@@ -79,6 +79,6 @@ export async function POST(request: Request) {
   const editSalt = plan.editPolicy === 'password' && editPassword ? randomHex(16) : null;
   const editHash = plan.editPolicy === 'password' && editPassword && editSalt ? await passwordHash(editPassword, editSalt, 'pbkdf2') : null;
   const now = new Date().toISOString();
-  await db.prepare('INSERT INTO plans (id,title,destination,start_date,end_date,people,edit_policy,stops_json,password_hash,password_salt,edit_password_hash,edit_password_salt,edit_token_hash,created_at,updated_at,deleted_at,version,password_algo,edit_password_algo) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(id, plan.title, plan.destination, plan.startDate, plan.endDate, plan.people, plan.editPolicy, JSON.stringify(plan.stops), hash, salt, editHash, editSalt, editTokenHash, now, now, null, 1, password ? 'pbkdf2' : 'sha256', editPassword ? 'pbkdf2' : 'sha256').run();
+  await db.prepare('INSERT INTO plans (id,title,destination,start_date,end_date,people,edit_policy,map_provider,stops_json,password_hash,password_salt,edit_password_hash,edit_password_salt,edit_token_hash,created_at,updated_at,deleted_at,version,password_algo,edit_password_algo) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(id, plan.title, plan.destination, plan.startDate, plan.endDate, plan.people, plan.editPolicy, plan.mapProvider, JSON.stringify(plan.stops), hash, salt, editHash, editSalt, editTokenHash, now, now, null, 1, password ? 'pbkdf2' : 'sha256', editPassword ? 'pbkdf2' : 'sha256').run();
   return Response.json({ id, editToken, plan: { ...plan, version: 1, passwordProtected: Boolean(password), editPasswordProtected: Boolean(editPassword), createdAt: now, updatedAt: now } }, { status: 201 });
 }
