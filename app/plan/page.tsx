@@ -715,7 +715,7 @@ function OsmMap({stops,destination,onSelect,placeResults,onPlaceSelect,dateLabel
         maplibreRef.current=MapLibre;
         mapInstance=new MapLibre.Map({container:containerRef.current,style,center:[0,20],zoom:2,maxZoom:14,attributionControl:false,dragRotate:false,touchPitch:false});
         mapInstance.addControl(new MapLibre.NavigationControl({showCompass:false}),'bottom-right');
-        mapInstance.addControl(new MapLibre.AttributionControl({compact:true,customAttribution:'<a href="https://maps.wikimedia.org/" target="_blank" rel="noreferrer">Wikimedia Maps</a> · <a href="https://openfreemap.org/" target="_blank" rel="noreferrer">OpenFreeMap</a> · &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors'}),'bottom-right');
+        mapInstance.addControl(new MapLibre.AttributionControl({compact:true,customAttribution:'<a href="https://www.openstreetmap.de/germanstyle.html" target="_blank" rel="noreferrer">OpenStreetMap.de</a> · <a href="https://openfreemap.org/" target="_blank" rel="noreferrer">OpenFreeMap</a> · &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors'}),'bottom-right');
         mapInstance.on('click',(event:any)=>{
           const current=latestRef.current;
           if(current.customPinMode){
@@ -728,11 +728,11 @@ function OsmMap({stops,destination,onSelect,placeResults,onPlaceSelect,dateLabel
         });
         mapInstance.on('style.load',()=>{
           if(!alive)return;
-          // Wikimedia's international OSM tiles use English labels. Keep them
+          // OpenStreetMap.de tiles include Latin-friendly labels. Keep them
           // beneath Liberty's symbol layers, while still showing a useful
           // labelled map when a vector tile is slow or temporarily unavailable.
           if(!mapInstance.getSource('osm-english-raster')){
-            mapInstance.addSource('osm-english-raster',{type:'raster',tiles:['https://maps.wikimedia.org/osm-intl/{z}/{x}/{y}.png?lang=en'],tileSize:256,maxzoom:19,attribution:'Wikimedia Maps · &copy; OpenStreetMap contributors'});
+            mapInstance.addSource('osm-english-raster',{type:'raster',tiles:['https://tile.openstreetmap.de/{z}/{x}/{y}.png'],tileSize:256,maxzoom:19,attribution:'OpenStreetMap.de · &copy; OpenStreetMap contributors'});
             const firstSymbol=style?.layers?.find((layer:any)=>layer.type==='symbol')?.id;
             mapInstance.addLayer({id:'osm-english-raster',type:'raster',source:'osm-english-raster',paint:{'raster-opacity':1,'raster-fade-duration':0}},firstSymbol);
           }
