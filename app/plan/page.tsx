@@ -663,6 +663,7 @@ function OsmMap({stops,destination,onSelect,placeResults,onPlaceSelect,dateLabel
   const text = (korean:string, english:string) => tr(language,korean,english);
   const containerRef=useRef<HTMLDivElement>(null);
   const mapRef=useRef<any>(null);
+  const tileLayerRef=useRef<any>(null);
   const layersRef=useRef<any[]>([]);
   const resultLayersRef=useRef<any[]>([]);
   const customLayerRef=useRef<any>(null);
@@ -676,7 +677,8 @@ function OsmMap({stops,destination,onSelect,placeResults,onPlaceSelect,dateLabel
       if(!alive||!containerRef.current)return;
       const map=L.map(containerRef.current,{zoomControl:false,attributionControl:true,preferCanvas:true}).setView([20,0],2);
       L.control.zoom({position:'bottomright'}).addTo(map);
-      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors'}).addTo(map);
+      const mapLanguage=latestRef.current.language==='en'?'en':'ko';
+      tileLayerRef.current=L.tileLayer(`https://maps.wikimedia.org/osm-intl/{z}/{x}/{y}{r}.png?lang=${mapLanguage}`,{maxZoom:19,attribution:'<a href="https://maps.wikimedia.org/" target="_blank" rel="noreferrer">Wikimedia Maps</a> · &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors'}).addTo(map);
       map.on('click',(event:any)=>{
         const current=latestRef.current;
         if(current.customPinMode){
@@ -691,8 +693,13 @@ function OsmMap({stops,destination,onSelect,placeResults,onPlaceSelect,dateLabel
       setStatus('ready');
       window.setTimeout(()=>map.invalidateSize(),0);
     }).catch(()=>{if(alive)setStatus('error')});
-    return()=>{alive=false;layersRef.current=[];resultLayersRef.current=[];customLayerRef.current=null;mapRef.current?.remove();mapRef.current=null};
+    return()=>{alive=false;layersRef.current=[];resultLayersRef.current=[];customLayerRef.current=null;tileLayerRef.current=null;mapRef.current?.remove();mapRef.current=null};
   },[]);
+
+  useEffect(()=>{
+    const tileLayer=tileLayerRef.current;if(!tileLayer)return;
+    tileLayer.setUrl(`https://maps.wikimedia.org/osm-intl/{z}/{x}/{y}{r}.png?lang=${language==='en'?'en':'ko'}`);
+  },[language]);
 
   useEffect(()=>{
     const map=mapRef.current;if(!map||status!=='ready')return;
@@ -771,12 +778,12 @@ function OsmMap({stops,destination,onSelect,placeResults,onPlaceSelect,dateLabel
   },[destination,language,status]);
 
   return <div className="map-stage osm-map-stage">
-    <div ref={containerRef} className="map-canvas" aria-label={text('OpenStreetMap 지도','OpenStreetMap map')}/>
+    <div ref={containerRef} className="map-canvas" aria-label={text('무료 지도','Free map')}/>
     {status==='loading'&&<div className="map-gate map-gate-transparent"><div className="map-gate-card"><div className="loading-orbit"/><strong>{text('무료 지도를 준비하는 중','Preparing the free map')}</strong><span>{text('잠시만 기다려주세요.','Just a moment.')}</span></div></div>}
     {status==='error'&&<div className="map-gate"><div className="map-gate-card"><CircleAlert/><strong>{text('무료 지도를 불러오지 못했어요','The free map could not be loaded')}</strong><span>{text('잠시 후 새로고침해 주세요.','Please refresh and try again.')}</span></div></div>}
     {mapFocused&&<button type="button" className="map-planner-toggle" onClick={event=>{event.stopPropagation();onToggleMapFocus()}} aria-label={text('일정 패널 펼치기','Expand planner')}><ChevronDown/>{text('일정 보기','View plans')}</button>}
     <button type="button" className="map-home-button" onClick={fitItinerary} aria-label={stops.length?text('전체 동선 한눈에 보기','Fit the whole route'):text('여행지 전체 보기','Fit the destination')} title={stops.length?text('전체 동선 한눈에 보기','Fit the whole route'):text('여행지 전체 보기','Fit the destination')}><House/></button>
-    <div className="map-legend"><div className="map-legend-days">{Object.keys(dateLabels).map(day=><button type="button" key={day} className={`map-date-button ${activeDay===day?'is-active':''}`} aria-pressed={activeDay===day} onClick={()=>onDayChange(day)}><i style={{background:dayColor(day,Object.keys(dateLabels))}}/>{formatTripDate(dateLabels[day],false,language)}</button>)}</div><small className="osm-attribution-note">OpenStreetMap</small></div>
+    <div className="map-legend"><div className="map-legend-days">{Object.keys(dateLabels).map(day=><button type="button" key={day} className={`map-date-button ${activeDay===day?'is-active':''}`} aria-pressed={activeDay===day} onClick={()=>onDayChange(day)}><i style={{background:dayColor(day,Object.keys(dateLabels))}}/>{formatTripDate(dateLabels[day],false,language)}</button>)}</div><small className="osm-attribution-note">Wikimedia Maps · OpenStreetMap</small></div>
     {customPinMode&&<div className="map-location-editor"><strong>{text('지도에서 위치를 정하세요','Choose a location on the map')}</strong><span>{text('지도를 클릭하거나 초록 핀을 끌어 옮긴 뒤 계속하세요.','Click the map or drag the green pin, then continue.')}</span><Button onClick={onCustomPinContinue} disabled={!customPin}>{text('이 위치로 계속','Continue with this location')}</Button></div>}
     {editableStopId&&<div className="map-location-editor"><strong>{text('위치 수정 중','Editing location')}</strong><span>{text('선택한 장소의 핀을 드래그해 위치를 바꾸세요.','Drag the selected place pin to move it.')}</span><Button variant="outline" onClick={onCancelStopPositionEdit}>{text('취소','Cancel')}</Button></div>}
   </div>;

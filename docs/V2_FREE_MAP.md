@@ -2,12 +2,12 @@
 
 ## 목표
 
-v2의 해외 여행 모드는 결제 계정이나 API 키 없이 사용할 수 있는 `Leaflet + OpenStreetMap` 조합을 기본으로 한다. v1의 네이버 지도와 Google Maps 연결 코드는 남겨 두어 나중에 지도 공급자를 다시 바꿀 수 있다.
+v2의 해외 여행 모드는 결제 계정이나 API 키 없이 사용할 수 있는 `Leaflet + Wikimedia Maps OSM-intl` 조합을 기본으로 한다. v1의 네이버 지도와 Google Maps 연결 코드는 남겨 두어 나중에 지도 공급자를 다시 바꿀 수 있다.
 
 ## 구성
 
 - 지도 화면: Leaflet 1.9.4
-- 지도 타일: OpenStreetMap 표준 타일
+- 지도 타일: Wikimedia Maps `osm-intl` 래스터 타일. 사이트 언어가 한국어면 `lang=ko`, 영어면 `lang=en`을 사용한다.
 - 장소·주소 검색: 서버 프록시를 거친 Nominatim 검색
 - 상세보기: 선택한 장소의 OpenStreetMap 링크
 - 거리뷰: Google Maps URL로 외부 페이지를 여는 방식이며 Google API 호출은 하지 않음
@@ -17,7 +17,7 @@ v2의 해외 여행 모드는 결제 계정이나 API 키 없이 사용할 수 �
 
 Nominatim은 공용 서비스이므로 자동완성 대신 사용자가 엔터를 누른 뒤에만 검색하고, 요청 사이에 최소 1초 지연·서버 캐시·서버 인스턴스별 요청 간격·Cloudflare 요청 제한을 적용한다. 공개 이용자가 급격히 늘거나 검색량이 많아지면 공용 Nominatim과 OpenStreetMap 타일이 요청을 거부할 수 있다. 이 경우 유료 API로 자동 전환하지 않고 지도 검색을 실패 상태로 남긴다.
 
-OpenStreetMap 타일은 화면에 출처를 표시한다. 대량 다운로드, 오프라인 저장, 타일 프록시 운영은 하지 않는다. 장기적으로 대중 사용량이 커지면 별도 무료 호스팅 정책을 가진 타일 공급자 또는 자체 타일 서버를 검토해야 한다.
+Wikimedia Maps 타일은 언어 매개변수를 지원하므로 한국어·영어 모드에서 지도 라벨을 해당 언어로 요청한다. 번역된 지명이 없는 장소는 원어 표기로 남을 수 있다. 화면에는 Wikimedia Maps와 OpenStreetMap 출처를 표시한다. 대량 다운로드, 오프라인 저장, 타일 프록시 운영은 하지 않는다. 장기적으로 대중 사용량이 커지면 별도 무료 호스팅 정책을 가진 타일 공급자 또는 자체 타일 서버를 검토해야 한다.
 
 운영 기준은 [OpenStreetMap 타일 이용 정책](https://operations.osmfoundation.org/policies/tiles/)과 [Nominatim 이용 정책](https://operations.osmfoundation.org/policies/nominatim/)을 따른다. 두 공용 서비스 모두 무제한·무중단을 보장하는 API가 아니므로 사용량이 커지면 공급자를 교체할 수 있게 구성했다.
 
