@@ -9,6 +9,7 @@ v2의 해외 여행 모드는 `MapLibre GL JS + OpenFreeMap` 조합을 기본으
 - 지도 화면: MapLibre GL JS
 - 지도 스타일·벡터 타일: OpenFreeMap Liberty 스타일. 영문명을 우선 표시한다.
 - 장소·주소 검색: 서버 프록시를 거친 Geoapify 우선 검색, Nominatim 자동 대체
+- 외부 검색 보호: 각 Geoapify·Nominatim 요청은 5초 안에 끝나지 않으면 중단하고 재시도 안내로 전환
 - 검색 캐시: 동일 검색은 Cloudflare D1에서 먼저 조회. 검색은 30일, 좌표의 주소 변환은 90일 보관
 - 상세보기: 선택한 장소를 Google Maps 검색 링크로 열며 Google API는 호출하지 않음
 - 거리뷰: Google Maps URL로 외부 페이지를 여는 방식이며 Google API 호출은 하지 않음

@@ -45,6 +45,7 @@ const MAX_CACHE_ENTRIES = 300;
 const MEMORY_CACHE_MS = 5 * 60 * 1000;
 const SEARCH_CACHE_MS = 30 * 24 * 60 * 60 * 1000;
 const REVERSE_CACHE_MS = 90 * 24 * 60 * 60 * 1000;
+const EXTERNAL_SEARCH_TIMEOUT_MS = 5_000;
 let lastNominatimRequestAt = 0;
 
 /**
@@ -207,7 +208,7 @@ async function geoapifySearch(query: string, near: string, language: 'ko' | 'en'
   endpoint.searchParams.set('lang', language);
   endpoint.searchParams.set('apiKey', apiKey);
   try {
-    const response = await fetch(endpoint, { headers: { Accept: 'application/json' } });
+    const response = await fetch(endpoint, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(EXTERNAL_SEARCH_TIMEOUT_MS) });
     if (!response.ok) return null;
     const body = await response.json() as { results?: GeoapifyItem[] } | GeoapifyItem[];
     const results = Array.isArray(body) ? body : body.results || [];
@@ -228,7 +229,7 @@ async function geoapifyReverse(lat: number, lon: number, language: 'ko' | 'en') 
   endpoint.searchParams.set('lang', language);
   endpoint.searchParams.set('apiKey', apiKey);
   try {
-    const response = await fetch(endpoint, { headers: { Accept: 'application/json' } });
+    const response = await fetch(endpoint, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(EXTERNAL_SEARCH_TIMEOUT_MS) });
     if (!response.ok) return null;
     const body = await response.json() as { results?: GeoapifyItem[] } | GeoapifyItem[];
     const result = (Array.isArray(body) ? body : body.results || [])[0];
@@ -254,6 +255,7 @@ async function nominatimSearch(query: string, near: string, language: 'ko' | 'en
         'User-Agent': 'travel-note/2.0 (https://travel.whales-teatime.workers.dev)',
         Referer: 'https://travel.whales-teatime.workers.dev/',
       },
+      signal: AbortSignal.timeout(EXTERNAL_SEARCH_TIMEOUT_MS),
       cf: { cacheTtl: 300, cacheEverything: true },
     } as RequestInit & { cf: Record<string, number | boolean> });
     if (!response.ok) return null;
@@ -291,6 +293,7 @@ async function nominatimReverse(lat: number, lon: number, language: 'ko' | 'en')
         'User-Agent': 'travel-note/2.0 (https://travel.whales-teatime.workers.dev)',
         Referer: 'https://travel.whales-teatime.workers.dev/',
       },
+      signal: AbortSignal.timeout(EXTERNAL_SEARCH_TIMEOUT_MS),
       cf: { cacheTtl: 300, cacheEverything: true },
     } as RequestInit & { cf: Record<string, number | boolean> });
     if (!response.ok) return null;
