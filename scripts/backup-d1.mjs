@@ -25,7 +25,9 @@ if (result.status === 0) {
 // D1 cannot export a database containing an FTS5 virtual table. Keep the
 // backup command useful by falling back to the durable application tables;
 // the derived search indexes are rebuilt by the deployment backfill step.
-const tables = ['plans', 'feedback'];
+// Keep every user-authored table in the fallback export. Search indexes and
+// lookup caches are derived data and can be rebuilt, but comments cannot.
+const tables = ['plans', 'feedback', 'feedback_comments'];
 const rows = [];
 for (const table of tables) {
   const query = spawnSync(process.execPath, [wrangler, 'd1', 'execute', databaseName, '--remote', ...configArgs, '--json', '--command', `SELECT * FROM ${table}`], {
