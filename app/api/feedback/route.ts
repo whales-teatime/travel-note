@@ -23,7 +23,7 @@ export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
   const limit = Math.min(50, Math.max(1, Number.parseInt(params.get('limit') || '30', 10) || 30));
   const offset = Math.min(10_000, Math.max(0, Number.parseInt(params.get('offset') || '0', 10) || 0));
-  const result = await db.prepare('SELECT id,category,message,likes,created_at,photo_data FROM feedback ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?').bind(limit + 1, offset).all();
+  const result = await db.prepare('SELECT id,category,message,likes,created_at,(photo_data IS NOT NULL) AS has_photo FROM feedback ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?').bind(limit + 1, offset).all();
   const rows = result.results || [];
   const visibleRows = rows.slice(0, limit);
   const ids = visibleRows.map(row => feedbackId(row.id)).filter(Boolean);
@@ -41,7 +41,7 @@ export async function GET(request: Request) {
   }
   return Response.json({
     items: visibleRows.map(row => ({
-      id: String(row.id), category: String(row.category), message: String(row.message), likes: Number(row.likes) || 0, createdAt: String(row.created_at), photoData: typeof row.photo_data === 'string' ? row.photo_data : null, comments: commentsByFeedback.get(feedbackId(row.id)) || [],
+      id: String(row.id), category: String(row.category), message: String(row.message), likes: Number(row.likes) || 0, createdAt: String(row.created_at), hasPhoto: Boolean(row.has_photo), comments: commentsByFeedback.get(feedbackId(row.id)) || [],
     })),
     nextOffset: rows.length > limit ? offset + limit : null,
   }, { headers: { 'Cache-Control': 'no-store' } });
