@@ -55,6 +55,7 @@ type FreeSearchItem = {
   mapy: string;
   provider: 'osm';
   placeId?: string;
+  osmType?: string;
   region?: string;
   country?: string;
 };
@@ -73,7 +74,7 @@ const EXTERNAL_SEARCH_TIMEOUT_MS = 5_000;
 // a city/town/county, not a neighborhood, apartment complex, or landmark.
 // Bump this when the filtering policy changes so old D1 results cannot leak
 // back into the suggestions.
-const CITY_SEARCH_CACHE_VERSION = 'city-v5';
+const CITY_SEARCH_CACHE_VERSION = 'city-v6';
 let lastNominatimRequestAt = 0;
 
 /**
@@ -257,8 +258,13 @@ function cityIdentity(item: FreeSearchItem) {
 
 function normalizeCityResults(items: FreeSearchItem[], query: string) {
   const queryBase = cityBaseName(query);
-  const ranked = items
-    .filter(isCityLevelItem)
+  const candidates = items.filter(isCityLevelItem);
+  // Photon can tag a small named place as `city` when it is represented by a
+  // node. If a top-level relation with the same name exists, prefer it over
+  // those regional duplicates (for example Beijing vs. Beijing in Guangxi).
+  const hasTopLevelRelation = candidates.some(item => cityBaseName(item.title) === queryBase && item.osmType === 'R' && !item.region);
+  const ranked = candidates
+    .filter(item => !(hasTopLevelRelation && cityBaseName(item.title) === queryBase && item.osmType === 'N' && item.region))
     .map((item, index) => {
       const name = cityBaseName(item.title);
       const score = name === queryBase ? 0 : name.startsWith(queryBase) || queryBase.startsWith(name) ? 1 : 2;
@@ -305,6 +311,7 @@ async function photonCitySearch(query: string, language: 'ko' | 'en') {
         mapy: String(Math.round(lat * 1e7)),
         provider: 'osm' as const,
         placeId: properties.osm_id ? `photon:${properties.osm_type || 'n'}:${properties.osm_id}` : undefined,
+        osmType: cleanText(properties.osm_type).toUpperCase() || undefined,
         region,
         country,
       }];
@@ -400,6 +407,7 @@ async function nominatimSearch(query: string, near: string, language: 'ko' | 'en
         mapy: String(Math.round(Number(item.lat) * 1e7)),
         provider: 'osm' as const,
         placeId: item.place_id ? `osm:${item.osm_type || 'n'}:${item.osm_id || item.place_id}` : undefined,
+        osmType: cleanText(item.osm_type).toUpperCase() || undefined,
         region: cleanText(details.state || details.province || details.county),
         country: cleanText(details.country),
       };
