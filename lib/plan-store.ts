@@ -20,6 +20,18 @@ export type PlanStop = {
   costBasis?: 'person' | 'total';
 };
 
+/** A city/region segment within a trip. Dates are inclusive. */
+export type PlanDestination = {
+  id: string;
+  name: string;
+  startDate: string;
+  endDate: string;
+  lat?: number;
+  lng?: number;
+  region?: string;
+  country?: string;
+};
+
 export type PlanInput = {
   title: string;
   destination: string;
@@ -28,6 +40,7 @@ export type PlanInput = {
   people: number;
   editPolicy: 'owner' | 'all' | 'password';
   mapProvider: 'naver' | 'google' | 'osm';
+  destinations: PlanDestination[];
   stops: PlanStop[];
 };
 
@@ -242,6 +255,34 @@ export function sanitizeStops(value: unknown, startDate = '', endDate = ''): Pla
   return stops;
 }
 
+export function sanitizeDestinations(value: unknown, startDate = '', endDate = ''): PlanDestination[] | null {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value) || value.length > 30) return null;
+  const destinations: PlanDestination[] = [];
+  for (const [index, item] of value.entries()) {
+    if (!item || typeof item !== 'object') return null;
+    const source = item as Record<string, unknown>;
+    const name = textValue(source.name).trim().slice(0, 160);
+    const segmentStart = textValue(source.startDate).slice(0, 20);
+    const segmentEnd = textValue(source.endDate).slice(0, 20);
+    if (!name || !validDate(segmentStart) || !validDate(segmentEnd) || segmentStart > segmentEnd) return null;
+    if (startDate && (segmentStart < startDate || segmentEnd > endDate)) return null;
+    const destination: PlanDestination = {
+      id: textValue(source.id, `destination-${index}`).slice(0, 100),
+      name,
+      startDate: segmentStart,
+      endDate: segmentEnd,
+    };
+    const lat = Number(source.lat), lng = Number(source.lng);
+    if (Number.isFinite(lat) && lat >= -90 && lat <= 90) destination.lat = lat;
+    if (Number.isFinite(lng) && lng >= -180 && lng <= 180) destination.lng = lng;
+    if (typeof source.region === 'string' && source.region.trim()) destination.region = source.region.trim().slice(0, 120);
+    if (typeof source.country === 'string' && source.country.trim()) destination.country = source.country.trim().slice(0, 120);
+    destinations.push(destination);
+  }
+  return destinations.sort((left, right) => left.startDate.localeCompare(right.startDate) || left.endDate.localeCompare(right.endDate));
+}
+
 export function sanitizePlan(value: unknown): PlanInput | null {
   if (!value || typeof value !== 'object') return null;
   const source = value as Record<string, unknown>;
@@ -253,9 +294,11 @@ export function sanitizePlan(value: unknown): PlanInput | null {
   const editPolicy = source.editPolicy === 'all' ? 'all' : source.editPolicy === 'password' ? 'password' : 'owner';
   const mapProvider = source.mapProvider === 'google' ? 'google' : source.mapProvider === 'osm' ? 'osm' : 'naver';
   if (!title || !destination || !validDate(startDate) || !validDate(endDate) || startDate > endDate || dateNumber(endDate) - dateNumber(startDate) > 366 * 24 * 60 * 60 * 1000) return null;
+  const destinations = sanitizeDestinations(source.destinations, startDate, endDate);
+  if (!destinations) return null;
   const stops = sanitizeStops(source.stops, startDate, endDate);
   if (!stops) return null;
-  return { title, destination, startDate, endDate, people, editPolicy, mapProvider, stops };
+  return { title, destination, startDate, endDate, people, editPolicy, mapProvider, destinations, stops };
 }
 
 export function publicPlan(row: Record<string, unknown>) {
@@ -273,6 +316,9 @@ export function publicPlan(row: Record<string, unknown>) {
     version: Math.max(1, Number(row.version) || 1),
     createdAt: textValue(row.created_at),
     updatedAt: textValue(row.updated_at),
+    destinations: (() => {
+      try { return JSON.parse(textValue(row.destinations_json, '[]')) as PlanDestination[]; } catch { return []; }
+    })(),
     ...(row.deleted_at ? { deletedAt: textValue(row.deleted_at) } : {}),
   };
   return plan;
@@ -281,6 +327,9 @@ export function publicPlan(row: Record<string, unknown>) {
 export function fullPlan(row: Record<string, unknown>) {
   return {
     ...publicPlan(row),
+    destinations: (() => {
+      try { return JSON.parse(textValue(row.destinations_json, '[]')) as PlanDestination[]; } catch { return []; }
+    })(),
     stops: JSON.parse(textValue(row.stops_json, '[]')) as PlanStop[],
   };
 }
