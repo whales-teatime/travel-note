@@ -749,19 +749,32 @@ function OsmMap({stops,destination,onSelect,placeResults,onPlaceSelect,dateLabel
         mapInstance.addControl(new MapLibre.NavigationControl({showCompass:false}),'bottom-right');
         mapInstance.addControl(new MapLibre.AttributionControl({compact:true,customAttribution:'<a href="https://openfreemap.org/" target="_blank" rel="noreferrer">OpenFreeMap</a> · <a href="https://www.openstreetmap.de/germanstyle.html" target="_blank" rel="noreferrer">OpenStreetMap.de</a> · &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors'}),'bottom-right');
         const vectorSourceIds=Object.entries(style?.sources||{}).filter(([,source]:any)=>source?.type==='vector'||source?.url||source?.tiles).map(([id])=>id);
-        let vectorContentLoaded=false;
+        const vectorLayerIds=(style?.layers||[]).filter((layer:any)=>['fill','line','symbol','circle','fill-extrusion','heatmap'].includes(layer?.type)).map((layer:any)=>layer.id).filter(Boolean);
         let fallbackTimer:number|null=null;
+        const hasRenderedVector=()=>{
+          try{return vectorLayerIds.length>0&&mapInstance.queryRenderedFeatures(undefined,{layers:vectorLayerIds}).length>0}catch{return false}
+        };
+        const removeRasterFallback=()=>{
+          try{
+            if(mapInstance.getLayer('osm-raster-fallback'))mapInstance.removeLayer('osm-raster-fallback');
+            if(mapInstance.getSource('osm-raster-fallback'))mapInstance.removeSource('osm-raster-fallback');
+          }catch{}
+        };
         const addRasterFallback=()=>{
-          if(!alive||vectorContentLoaded||mapInstance.getSource('osm-raster-fallback'))return;
+          if(!alive||hasRenderedVector()||mapInstance.getSource('osm-raster-fallback'))return;
           try{
             mapInstance.addSource('osm-raster-fallback',{type:'raster',tiles:['https://tile.openstreetmap.de/{z}/{x}/{y}.png'],tileSize:256,maxzoom:19,attribution:'OpenStreetMap.de · OpenStreetMap contributors'});
-            const firstSymbol=style?.layers?.find((layer:any)=>layer.type==='symbol')?.id;
-            mapInstance.addLayer({id:'osm-raster-fallback',type:'raster',source:'osm-raster-fallback',paint:{'raster-opacity':1,'raster-fade-duration':0}},firstSymbol);
+            // Put the emergency raster on top so an opaque but empty vector
+            // background cannot hide it. It is removed as soon as vector
+            // features become visible.
+            mapInstance.addLayer({id:'osm-raster-fallback',type:'raster',source:'osm-raster-fallback',paint:{'raster-opacity':1,'raster-fade-duration':0}});
           }catch{}
         };
         const scheduleRasterFallback=(delay=3000)=>{if(fallbackTimer!==null)window.clearTimeout(fallbackTimer);fallbackTimer=window.setTimeout(()=>{fallbackTimer=null;addRasterFallback()},delay)};
-        const onSourceData=(event:any)=>{if(vectorSourceIds.includes(event?.sourceId)&&event?.sourceDataType==='content'){vectorContentLoaded=true;if(fallbackTimer!==null){window.clearTimeout(fallbackTimer);fallbackTimer=null}}};
-        const onMapError=(event:any)=>{if(vectorSourceIds.includes(event?.sourceId))scheduleRasterFallback(900)};
+        const onSourceData=(event:any)=>{
+          if(vectorSourceIds.includes(event?.sourceId)&&event?.sourceDataType==='content')window.setTimeout(()=>{if(alive&&hasRenderedVector())removeRasterFallback()},180);
+        };
+        const onMapError=()=>scheduleRasterFallback(900);
         mapInstance.on('sourcedata',onSourceData);
         mapInstance.on('error',onMapError);
         mapInstance.on('click',(event:any)=>{
