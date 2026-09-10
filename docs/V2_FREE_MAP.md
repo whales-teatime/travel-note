@@ -9,7 +9,7 @@ v2의 해외 여행 모드는 `MapLibre GL JS + OpenFreeMap` 조합을 기본으
 - 지도 화면: MapLibre GL JS
 - 지도 스타일·벡터 타일: OpenFreeMap Liberty 스타일. 영문명을 우선 표시한다.
 - 장소·주소 검색: 서버 프록시를 거친 Geoapify 우선 검색, Nominatim 자동 대체
-- 여행지 입력: Photon 도시 검색을 우선 사용하고 실패 시 Geoapify·Nominatim으로 대체. 도시·읍·군 단위(`city`, `town`, `municipality`, `county`)만 남기며, 동네·아파트·관광지와 한국 행정리(`리`)는 제외한다. 동명이 도시는 시/도·국가를 함께 표시해 선택한 표기를 일정에 저장
+- 여행지 입력: Photon 도시 검색을 우선 사용하고 실패 시 Geoapify·Nominatim으로 대체. 도시·읍·군 단위(`city`, `town`, `municipality`, `county`)만 남기며, 동네·아파트·관광지·타운십과 한국 행정리(`리`)는 제외한다. 동명이 도시는 시/도·국가를 함께 표시하고 상위 5개 후보만 보여줘 선택한 표기를 일정에 저장
 - 외부 검색 보호: 각 Geoapify·Nominatim 요청은 5초 안에 끝나지 않으면 중단하고 재시도 안내로 전환
 - 검색 캐시: 동일 검색은 Cloudflare D1에서 먼저 조회. 검색은 30일, 좌표의 주소 변환은 90일 보관
 - 상세보기: 선택한 장소를 Google Maps 검색 링크로 열며 Google API는 호출하지 않음

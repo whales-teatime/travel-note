@@ -73,7 +73,7 @@ const EXTERNAL_SEARCH_TIMEOUT_MS = 5_000;
 // a city/town/county, not a neighborhood, apartment complex, or landmark.
 // Bump this when the filtering policy changes so old D1 results cannot leak
 // back into the suggestions.
-const CITY_SEARCH_CACHE_VERSION = 'city-v4';
+const CITY_SEARCH_CACHE_VERSION = 'city-v5';
 let lastNominatimRequestAt = 0;
 
 /**
@@ -226,10 +226,16 @@ function asSearchItem(item: GeoapifyItem, fallback: string): FreeSearchItem | nu
 const SETTLEMENT_TYPES = new Set(['city', 'town', 'municipality', 'county']);
 
 function isCityLevelItem(item: FreeSearchItem) {
-  if (!SETTLEMENT_TYPES.has(normalized(item.category))) return false;
+  const category = normalized(item.category);
+  if (!SETTLEMENT_TYPES.has(category)) return false;
+  // A county is useful for Korean destinations (군), but an English county is
+  // an administrative area rather than the city a traveller is choosing.
+  if (category === 'county' && !cleanText(item.title).endsWith('군')) return false;
   // Photon occasionally labels Korean village administrative units (리) as
   // cities. They are too granular for the trip destination field.
+  const title = normalized(item.title);
   if (cleanText(item.title).endsWith('리')) return false;
+  if (['township', 'village', 'borough', 'district', 'parish', 'hamlet'].some(suffix => title.endsWith(` ${suffix}`) || title === suffix)) return false;
   return true;
 }
 
@@ -265,7 +271,7 @@ function normalizeCityResults(items: FreeSearchItem[], query: string) {
     if (seen.has(key)) return [];
     seen.add(key);
     return [item];
-  }).slice(0, 8);
+  }).slice(0, 5);
 }
 
 async function photonCitySearch(query: string, language: 'ko' | 'en') {
