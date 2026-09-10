@@ -158,6 +158,11 @@ function destinationLabel(place:SearchPlace,language:'ko'|'en'){
   const country=parts.at(-1)||'';
   return country&&country.toLocaleLowerCase()!==title.toLocaleLowerCase()&&!address.toLocaleLowerCase().startsWith(`${title.toLocaleLowerCase()}, ${country.toLocaleLowerCase()}`)?`${title}, ${country}`:address;
 }
+function destinationSearchLanguage(value:string,interfaceLanguage:'ko'|'en'){
+  if(interfaceLanguage==='en')return 'en' as const;
+  const asciiOnly=Array.from(value).every(character=>character.charCodeAt(0)<128);
+  return asciiOnly&&/[A-Za-z]/u.test(value)?'en' as const:interfaceLanguage;
+}
 function useDestinationSuggestions(query:string,enabled:boolean){
   const { language } = useLanguage();
   const text = useCallback((korean:string, english:string) => tr(language, korean, english), [language]);
@@ -165,13 +170,14 @@ function useDestinationSuggestions(query:string,enabled:boolean){
   useEffect(()=>{
     const value=query.trim();
     if(!enabled||value.length<2){setResults([]);setSearching(false);return}
-    const cacheKey=`destination|${language}|${value}`.toLocaleLowerCase('ko-KR'),cached=suggestionCache.get(cacheKey);
+    const requestLanguage=destinationSearchLanguage(value,language);
+    const cacheKey=`destination|${requestLanguage}|${value}`.toLocaleLowerCase('ko-KR'),cached=suggestionCache.get(cacheKey);
     if(cached){setResults(cached);setSearching(false);return}
     const controller=new AbortController();
     const timer=window.setTimeout(async()=>{
       setSearching(true);
       try{
-        const response=await fetch(`/api/free-search?q=${encodeURIComponent(value)}&mode=city&lang=${language}&v=3`,{signal:controller.signal}),body=await readJsonResponse<{items?:SearchPlace[];message?:string}>(response);
+        const response=await fetch(`/api/free-search?q=${encodeURIComponent(value)}&mode=city&lang=${requestLanguage}&v=5`,{signal:controller.signal}),body=await readJsonResponse<{items?:SearchPlace[];message?:string}>(response);
         if(!response.ok)throw new Error(body.message||text('도시 검색에 실패했습니다.','City search failed.'));
         const items=(body.items||[]).map(item=>({...item,provider:'osm' as const}));
         const seen=new Set<string>(),deduped=items.filter(item=>{const key=destinationLabel(item,language).toLocaleLowerCase();if(seen.has(key))return false;seen.add(key);return true}).slice(0,8);
