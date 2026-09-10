@@ -197,7 +197,7 @@ function geoapifyKey() {
   return cleanText(process.env.GEOAPIFY_API_KEY);
 }
 
-async function geoapifySearch(query: string, near: string, language: 'ko' | 'en') {
+async function geoapifySearch(query: string, near: string, language: 'ko' | 'en', cityOnly = false) {
   const apiKey = geoapifyKey();
   if (!apiKey) return null;
   const searchText = near && !normalized(query).includes(normalized(near)) ? `${query}, ${near}` : query;
@@ -206,6 +206,7 @@ async function geoapifySearch(query: string, near: string, language: 'ko' | 'en'
   endpoint.searchParams.set('format', 'json');
   endpoint.searchParams.set('limit', '8');
   endpoint.searchParams.set('lang', language);
+  if (cityOnly) endpoint.searchParams.set('type', 'city');
   endpoint.searchParams.set('apiKey', apiKey);
   try {
     const response = await fetch(endpoint, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(EXTERNAL_SEARCH_TIMEOUT_MS) });
@@ -239,7 +240,7 @@ async function geoapifyReverse(lat: number, lon: number, language: 'ko' | 'en') 
   }
 }
 
-async function nominatimSearch(query: string, near: string, language: 'ko' | 'en') {
+async function nominatimSearch(query: string, near: string, language: 'ko' | 'en', cityOnly = false) {
   if (!await nominatimRequestAllowed()) return null;
   const searchQuery = near && !normalized(query).includes(normalized(near)) ? `${query}, ${near}` : query;
   const endpoint = new URL('https://nominatim.openstreetmap.org/search');
@@ -248,6 +249,7 @@ async function nominatimSearch(query: string, near: string, language: 'ko' | 'en
   endpoint.searchParams.set('limit', '8');
   endpoint.searchParams.set('addressdetails', '1');
   endpoint.searchParams.set('accept-language', language);
+  if (cityOnly) endpoint.searchParams.set('featuretype', 'city');
   try {
     const response = await fetch(endpoint, {
       headers: {
@@ -309,6 +311,7 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   const language = url.searchParams.get('lang') === 'en' ? 'en' : 'ko';
+  const cityOnly = url.searchParams.get('mode') === 'city';
   if (url.searchParams.get('mode') === 'reverse') {
     const lat = Number(url.searchParams.get('lat'));
     const lon = Number(url.searchParams.get('lon'));
@@ -340,7 +343,7 @@ export async function GET(request: Request) {
   if (query.length > 120) return Response.json({ message: '검색어가 너무 깁니다.' }, { status: 400 });
 
   const cacheValue = `${near}|${query}`;
-  const key = await lookupCacheKey('search', language, cacheValue);
+  const key = await lookupCacheKey('search', language, `${cityOnly ? 'city|' : ''}${cacheValue}`);
   const memory = memoryCached<SearchPayload>(key);
   if (memory) return Response.json({ ...memory, source: 'cache' }, { headers: { 'Cache-Control': 'private, max-age=300' } });
   const persistent = await readPersistentCache<SearchPayload>(key);
@@ -349,9 +352,9 @@ export async function GET(request: Request) {
     return Response.json({ ...persistent, source: 'cache' }, { headers: { 'Cache-Control': 'private, max-age=300' } });
   }
 
-  const geoItems = await geoapifySearch(query, near, language);
+  const geoItems = await geoapifySearch(query, near, language, cityOnly);
   const provider = geoItems ? 'geoapify' as const : 'nominatim' as const;
-  const items = geoItems || await nominatimSearch(query, near, language);
+  const items = geoItems || await nominatimSearch(query, near, language, cityOnly);
   if (!items) return Response.json({ message: '지도 검색이 잠시 바빠요. 잠시 뒤 다시 시도해주세요.' }, { status: 503 });
   const payload: SearchPayload = { items, source: provider };
   remember(key, payload);
