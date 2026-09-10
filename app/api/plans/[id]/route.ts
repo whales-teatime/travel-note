@@ -41,12 +41,6 @@ function accessResponse(row: Record<string, unknown>) {
   return Response.json({ requiresPassword: true, plan: publicPlan(row) }, { status: 401, headers: { 'Cache-Control': 'no-store' } });
 }
 
-function clientIp(request: Request) {
-  const forwarded = request.headers.get('CF-Connecting-IP') || request.headers.get('X-Real-IP') || '';
-  const value = forwarded.split(',')[0].trim();
-  return /^[0-9a-f:.]{2,64}$/i.test(value) ? value : '기기';
-}
-
 async function getId(context: Context) { return (await context.params).id; }
 
 async function parseBody(request: Request) {
@@ -164,7 +158,8 @@ export async function PUT(request: Request, context: Context) {
     const copiedPasswordSalt = passwordChanged ? salt : latest.password_salt ? textValue(latest.password_salt) : null;
     const copiedEditHash = editPasswordChanged ? editHash : latest.edit_password_hash ? textValue(latest.edit_password_hash) : null;
     const copiedEditSalt = editPasswordChanged ? editSalt : latest.edit_password_salt ? textValue(latest.edit_password_salt) : null;
-    const copied = await insertCopy(db, latest, { id, title: `${plan.title} - (${clientIp(request)})`.slice(0, 160), destination: plan.destination, startDate: plan.startDate, endDate: plan.endDate, people: plan.people, editPolicy: plan.editPolicy, mapProvider: plan.mapProvider, stops: JSON.stringify(plan.stops), passwordHash: copiedPasswordHash, passwordSalt: copiedPasswordSalt, passwordAlgo: passwordChanged ? (newPassword ? 'pbkdf2' : 'sha256') : latest.password_algo === 'pbkdf2' ? 'pbkdf2' : 'sha256', editHash: copiedEditHash, editSalt: copiedEditSalt, editAlgo: editPasswordChanged ? (copiedEditHash ? 'pbkdf2' : 'sha256') : latest.edit_password_algo === 'pbkdf2' ? 'pbkdf2' : 'sha256', tokenHash: await sha256(editToken), now });
+    const conflictLabel = new Date().toISOString().slice(11, 16).replace(':', '') + '-' + randomHex(2);
+    const copied = await insertCopy(db, latest, { id, title: `${plan.title} - (동시편집본 ${conflictLabel})`.slice(0, 160), destination: plan.destination, startDate: plan.startDate, endDate: plan.endDate, people: plan.people, editPolicy: plan.editPolicy, mapProvider: plan.mapProvider, stops: JSON.stringify(plan.stops), passwordHash: copiedPasswordHash, passwordSalt: copiedPasswordSalt, passwordAlgo: passwordChanged ? (newPassword ? 'pbkdf2' : 'sha256') : latest.password_algo === 'pbkdf2' ? 'pbkdf2' : 'sha256', editHash: copiedEditHash, editSalt: copiedEditSalt, editAlgo: editPasswordChanged ? (copiedEditHash ? 'pbkdf2' : 'sha256') : latest.edit_password_algo === 'pbkdf2' ? 'pbkdf2' : 'sha256', tokenHash: await sha256(editToken), now });
     return jsonResult({ id, editToken, conflict: true, message: '동시에 편집한 내용이라 별도 계획으로 저장했어요.', plan: fullPlan(copied), adminAuthenticated }, { status: 201 }, directAdmin);
   }
   const updated = { ...row, title: plan.title, destination: plan.destination, start_date: plan.startDate, end_date: plan.endDate, people: plan.people, edit_policy: plan.editPolicy, map_provider: plan.mapProvider, stops_json: JSON.stringify(plan.stops), updated_at: now, version: nextVersion, ...(passwordChanged ? { password_hash: hash, password_salt: salt, password_algo: newPassword ? 'pbkdf2' : 'sha256', password_protected: Number(Boolean(hash)) } : {}), ...(editPasswordChanged ? { edit_password_hash: editHash, edit_password_salt: editSalt, edit_password_algo: editHash ? 'pbkdf2' : 'sha256', edit_password_protected: Number(Boolean(editHash)) } : {}) };
