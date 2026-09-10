@@ -74,7 +74,7 @@ const EXTERNAL_SEARCH_TIMEOUT_MS = 5_000;
 // a city/town/county, not a neighborhood, apartment complex, or landmark.
 // Bump this when the filtering policy changes so old D1 results cannot leak
 // back into the suggestions.
-const CITY_SEARCH_CACHE_VERSION = 'city-v8';
+const CITY_SEARCH_CACHE_VERSION = 'city-v11';
 let lastNominatimRequestAt = 0;
 
 /**
@@ -110,6 +110,10 @@ function cleanText(value: unknown) {
 
 function normalized(value: string) {
   return value.normalize('NFKC').replace(/\s+/g, ' ').trim().toLocaleLowerCase('en-US');
+}
+
+function compactNormalized(value: string) {
+  return normalized(value).replace(/[\s,]+/gu, '');
 }
 
 async function lookupCacheKey(kind: 'search' | 'reverse', language: string, value: string) {
@@ -235,7 +239,7 @@ function isCityLevelItem(item: FreeSearchItem) {
   // Photon occasionally labels Korean village administrative units (리) as
   // cities. They are too granular for the trip destination field.
   const title = normalized(item.title);
-  if (cleanText(item.title).endsWith('리')) return false;
+  if (/[리읍면]$/u.test(cleanText(item.title))) return false;
   if (['township', 'village', 'borough', 'district', 'parish', 'hamlet'].some(suffix => title.endsWith(` ${suffix}`) || title === suffix)) return false;
   return true;
 }
@@ -256,6 +260,49 @@ function cityIdentity(item: FreeSearchItem) {
   return `${cityBaseName(item.title)}|${region || fallbackArea}|${country}`;
 }
 
+function photonStateCityRecommendations(features: PhotonFeature[], query: string) {
+  const queryValue = compactNormalized(query);
+  const state = features.find(feature => {
+    const properties = feature.properties || {};
+    const type = normalized(cleanText(properties.type));
+    const name = compactNormalized(cleanText(properties.name));
+    return type === 'state' && name && (name === queryValue || queryValue.startsWith(name));
+  });
+  if (!state) return [] as FreeSearchItem[];
+  const stateProperties = state.properties || {};
+  const stateName = cleanText(stateProperties.name);
+  const country = cleanText(stateProperties.country);
+  const byCity = new Map<string, { item: FreeSearchItem; count: number; index: number }>();
+  features.forEach((feature, index) => {
+    const properties = feature.properties || {};
+    const city = cleanText(properties.city);
+    const region = cleanText(properties.state);
+    const coordinates = feature.geometry?.coordinates || [];
+    const lon = Number(coordinates[0]), lat = Number(coordinates[1]);
+    if (!city || !region || normalized(region) !== normalized(stateName) || normalized(city) === normalized(stateName) || !Number.isFinite(lat) || !Number.isFinite(lon)) return;
+    const key = normalized(city);
+    const existing = byCity.get(key);
+    if (existing) { existing.count += 1; return; }
+    byCity.set(key, {
+      count: 1,
+      index,
+      item: {
+        title: city,
+        category: 'city',
+        address: [city, stateName, country].filter(Boolean).join(', '),
+        roadAddress: [city, stateName, country].filter(Boolean).join(', '),
+        mapx: String(Math.round(lon * 1e7)),
+        mapy: String(Math.round(lat * 1e7)),
+        provider: 'osm',
+        placeId: `photon:state-city:${key}:${normalized(stateName)}`,
+        region: stateName,
+        country,
+      },
+    });
+  });
+  return [...byCity.values()].sort((a, b) => b.count - a.count || a.index - b.index).map(entry => entry.item).slice(0, 5);
+}
+
 function normalizeCityResults(items: FreeSearchItem[], query: string) {
   const queryBase = cityBaseName(query);
   const candidates = items.filter(isCityLevelItem);
@@ -271,6 +318,10 @@ function normalizeCityResults(items: FreeSearchItem[], query: string) {
       return { item, index, score };
     })
     .sort((a, b) => a.score - b.score || a.index - b.index);
+  // For a multi-word city name, do not surface an unrelated place just
+  // because one token happens to match ("new mexico" → Mexico, New York).
+  // Users can still disambiguate with a comma-separated region/country.
+  if (/\s/u.test(cleanText(query)) && !cleanText(query).includes(',') && !ranked.some(({ score }) => score <= 1)) return [];
   const seen = new Set<string>();
   return ranked.flatMap(({ item }) => {
     const key = cityIdentity(item);
@@ -316,6 +367,8 @@ async function photonCitySearch(query: string, language: 'ko' | 'en') {
         country,
       }];
     });
+    const stateCities = photonStateCityRecommendations(body.features || [], query);
+    if (stateCities.length) return stateCities;
     const normalizedItems = normalizeCityResults(items, query);
     return normalizedItems.length ? normalizedItems : null;
   } catch {
@@ -494,7 +547,11 @@ export async function GET(request: Request) {
   const geoItems = photonItems ? null : await geoapifySearch(query, near, language, cityOnly);
   const provider = photonItems ? 'photon' as const : geoItems ? 'geoapify' as const : 'nominatim' as const;
   const rawItems = photonItems || geoItems || await nominatimSearch(query, near, language, cityOnly);
-  const items = rawItems && cityOnly ? normalizeCityResults(rawItems, query) : rawItems;
+  // Photon results have already been normalized inside photonCitySearch. In
+  // particular, state searches may return synthetic city recommendations
+  // whose names intentionally do not contain the state name, so running the
+  // multi-word guard a second time would erase them.
+  const items = rawItems && cityOnly && !photonItems ? normalizeCityResults(rawItems, query) : rawItems;
   if (!items) return Response.json({ message: '지도 검색이 잠시 바빠요. 잠시 뒤 다시 시도해주세요.' }, { status: 503 });
   const payload: SearchPayload = { items, source: provider };
   remember(key, payload);
