@@ -69,7 +69,11 @@ const MEMORY_CACHE_MS = 5 * 60 * 1000;
 const SEARCH_CACHE_MS = 30 * 24 * 60 * 60 * 1000;
 const REVERSE_CACHE_MS = 90 * 24 * 60 * 60 * 1000;
 const EXTERNAL_SEARCH_TIMEOUT_MS = 5_000;
-const CITY_SEARCH_CACHE_VERSION = 'city-v2';
+// Keep destination autocomplete intentionally narrow: the trip destination is
+// a city/town/county, not a neighborhood, apartment complex, or landmark.
+// Bump this when the filtering policy changes so old D1 results cannot leak
+// back into the suggestions.
+const CITY_SEARCH_CACHE_VERSION = 'city-v4';
 let lastNominatimRequestAt = 0;
 
 /**
@@ -219,7 +223,15 @@ function asSearchItem(item: GeoapifyItem, fallback: string): FreeSearchItem | nu
   };
 }
 
-const SETTLEMENT_TYPES = new Set(['city', 'town', 'village', 'municipality', 'county', 'district', 'state', 'locality', 'hamlet', 'administrative', 'populated place']);
+const SETTLEMENT_TYPES = new Set(['city', 'town', 'municipality', 'county']);
+
+function isCityLevelItem(item: FreeSearchItem) {
+  if (!SETTLEMENT_TYPES.has(normalized(item.category))) return false;
+  // Photon occasionally labels Korean village administrative units (리) as
+  // cities. They are too granular for the trip destination field.
+  if (cleanText(item.title).endsWith('리')) return false;
+  return true;
+}
 
 function cityBaseName(value: string) {
   return normalized(value)
@@ -240,7 +252,7 @@ function cityIdentity(item: FreeSearchItem) {
 function normalizeCityResults(items: FreeSearchItem[], query: string) {
   const queryBase = cityBaseName(query);
   const ranked = items
-    .filter(item => SETTLEMENT_TYPES.has(normalized(item.category)))
+    .filter(isCityLevelItem)
     .map((item, index) => {
       const name = cityBaseName(item.title);
       const score = name === queryBase ? 0 : name.startsWith(queryBase) || queryBase.startsWith(name) ? 1 : 2;

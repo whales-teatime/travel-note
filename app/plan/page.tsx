@@ -171,7 +171,7 @@ function useDestinationSuggestions(query:string,enabled:boolean){
     const timer=window.setTimeout(async()=>{
       setSearching(true);
       try{
-        const response=await fetch(`/api/free-search?q=${encodeURIComponent(value)}&mode=city&lang=${language}&v=2`,{signal:controller.signal}),body=await readJsonResponse<{items?:SearchPlace[];message?:string}>(response);
+        const response=await fetch(`/api/free-search?q=${encodeURIComponent(value)}&mode=city&lang=${language}&v=3`,{signal:controller.signal}),body=await readJsonResponse<{items?:SearchPlace[];message?:string}>(response);
         if(!response.ok)throw new Error(body.message||text('도시 검색에 실패했습니다.','City search failed.'));
         const items=(body.items||[]).map(item=>({...item,provider:'osm' as const}));
         const seen=new Set<string>(),deduped=items.filter(item=>{const key=destinationLabel(item,language).toLocaleLowerCase();if(seen.has(key))return false;seen.add(key);return true}).slice(0,8);
