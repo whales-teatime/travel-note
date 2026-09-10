@@ -35,6 +35,11 @@ type PhotonFeature = {
   properties?: {
     name?: string;
     type?: string;
+    osm_key?: string;
+    osm_value?: string;
+    street?: string;
+    housenumber?: string;
+    postcode?: string;
     city?: string;
     district?: string;
     county?: string;
@@ -75,6 +80,7 @@ const EXTERNAL_SEARCH_TIMEOUT_MS = 5_000;
 // Bump this when the filtering policy changes so old D1 results cannot leak
 // back into the suggestions.
 const CITY_SEARCH_CACHE_VERSION = 'city-v11';
+const PLACE_SEARCH_CACHE_VERSION = 'place-v2';
 let lastNominatimRequestAt = 0;
 
 /**
@@ -376,6 +382,68 @@ async function photonCitySearch(query: string, language: 'ko' | 'en') {
   }
 }
 
+async function photonPlaceSearch(query: string, near: string, language: 'ko' | 'en') {
+  const endpoint = new URL('https://photon.komoot.io/api/');
+  const searchText = near && !normalized(query).includes(normalized(near)) ? `${query}, ${near}` : query;
+  endpoint.searchParams.set('q', searchText);
+  endpoint.searchParams.set('limit', '12');
+  if (language === 'en') endpoint.searchParams.set('lang', 'en');
+  try {
+    const response = await fetch(endpoint, {
+      headers: { Accept: 'application/json', 'User-Agent': 'travel-note/2.0 (https://travel.whales-teatime.workers.dev)' },
+      signal: AbortSignal.timeout(EXTERNAL_SEARCH_TIMEOUT_MS),
+    });
+    if (!response.ok) return null;
+    const body = await response.json() as { features?: PhotonFeature[] };
+    const seen = new Set<string>();
+    const items = (body.features || []).flatMap(feature => {
+      const properties = feature.properties || {};
+      const coordinates = feature.geometry?.coordinates || [];
+      const lon = Number(coordinates[0]), lat = Number(coordinates[1]);
+      const title = cleanText(properties.name);
+      if (!title || !Number.isFinite(lat) || !Number.isFinite(lon)) return [];
+      const key = `${normalized(title)}|${lat.toFixed(5)}|${lon.toFixed(5)}`;
+      if (seen.has(key)) return [];
+      seen.add(key);
+      const category = cleanText(properties.osm_value || properties.type).replace(/_/g, ' ') || 'place';
+      const address = [
+        properties.street && [properties.street, properties.housenumber].filter(Boolean).join(' '),
+        properties.city,
+        properties.state,
+        properties.country,
+        properties.postcode,
+      ].map(cleanText).filter(Boolean).filter((part, index, values) => values.indexOf(part) === index).join(', ');
+      return [{
+        title,
+        category,
+        address: address || title,
+        roadAddress: address || title,
+        mapx: String(Math.round(lon * 1e7)),
+        mapy: String(Math.round(lat * 1e7)),
+        provider: 'osm' as const,
+        placeId: properties.osm_id ? `photon:${properties.osm_type || 'n'}:${properties.osm_id}` : undefined,
+        osmType: cleanText(properties.osm_type).toUpperCase() || undefined,
+        region: cleanText(properties.state || properties.county || properties.district),
+        country: cleanText(properties.country),
+      }];
+    });
+    if (!items.length) return null;
+    // Photon can return a globally famous place when the requested business
+    // name is not indexed in the selected city. Keep the fallback local to
+    // the trip destination instead of showing a plausible but distant match.
+    const context = normalized(near);
+    if (!context) return items;
+    const contextTokens = context.split(/[\s,]+/u).filter(token => token.length >= 2);
+    const scoped = items.filter(item => {
+      const haystack = normalized([item.title, item.address, item.region, item.country].filter(Boolean).join(' '));
+      return haystack.includes(context) || contextTokens.some(token => haystack.includes(token));
+    });
+    return scoped.length ? scoped : null;
+  } catch {
+    return null;
+  }
+}
+
 function geoapifyKey() {
   return cleanText(process.env.GEOAPIFY_API_KEY);
 }
@@ -534,7 +602,8 @@ export async function GET(request: Request) {
   if (query.length > 120) return Response.json({ message: '검색어가 너무 깁니다.' }, { status: 400 });
 
   const cacheValue = `${near}|${query}`;
-  const key = await lookupCacheKey('search', language, `${cityOnly ? `${CITY_SEARCH_CACHE_VERSION}|` : ''}${cacheValue}`);
+  const cacheVersion = cityOnly ? CITY_SEARCH_CACHE_VERSION : PLACE_SEARCH_CACHE_VERSION;
+  const key = await lookupCacheKey('search', language, `${cacheVersion}|${cacheValue}`);
   const memory = memoryCached<SearchPayload>(key);
   if (memory) return Response.json({ ...memory, source: 'cache' }, { headers: { 'Cache-Control': 'private, max-age=300' } });
   const persistent = await readPersistentCache<SearchPayload>(key);
@@ -545,8 +614,15 @@ export async function GET(request: Request) {
 
   const photonItems = cityOnly ? await photonCitySearch(query, language) : null;
   const geoItems = photonItems ? null : await geoapifySearch(query, near, language, cityOnly);
-  const provider = photonItems ? 'photon' as const : geoItems ? 'geoapify' as const : 'nominatim' as const;
-  const rawItems = photonItems || geoItems || await nominatimSearch(query, near, language, cityOnly);
+  const nominatimItems = photonItems || geoItems ? null : await nominatimSearch(query, near, language, cityOnly);
+  // Nominatim is a good address geocoder but can return no named POIs for
+  // businesses. Photon is used as a bounded fallback so one missing index
+  // does not make a valid OSM place impossible to find.
+  const photonPlaceItems = !cityOnly && near && !photonItems && !geoItems && (!nominatimItems || !nominatimItems.length)
+    ? await photonPlaceSearch(query, near, language)
+    : null;
+  const provider = photonItems ? 'photon' as const : geoItems ? 'geoapify' as const : photonPlaceItems ? 'photon' as const : 'nominatim' as const;
+  const rawItems = photonItems || geoItems || photonPlaceItems || nominatimItems;
   // Photon results have already been normalized inside photonCitySearch. In
   // particular, state searches may return synthetic city recommendations
   // whose names intentionally do not contain the state name, so running the

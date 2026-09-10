@@ -8,7 +8,7 @@ v2의 해외 여행 모드는 `MapLibre GL JS + OpenFreeMap` 조합을 기본으
 
 - 지도 화면: MapLibre GL JS
 - 지도 스타일·벡터 타일: OpenFreeMap Liberty 스타일. 영문명을 우선 표시한다.
-- 장소·주소 검색: 서버 프록시를 거친 Geoapify 우선 검색, Nominatim 자동 대체
+- 장소·주소 검색: 서버 프록시를 거친 Geoapify 우선 검색, Nominatim 자동 대체. Nominatim에 결과가 없거나 일시 제한되면 Photon을 장소 검색 보조 경로로 사용
 - 여행지 입력: Photon 도시 검색을 우선 사용하고 실패 시 Geoapify·Nominatim으로 대체. 도시·읍·군 단위(`city`, `town`, `municipality`, `county`)만 남기며, 동네·아파트·관광지·타운십과 한국의 세부 행정단위(`리`, `읍`, `면`)는 제외한다. 주·도 같은 광역 행정구역을 검색하면 Photon 응답 안에서 해당 지역의 도시명을 모아 먼저 추천한다. 동명이 도시는 시/도·국가를 함께 표시하고 상위 5개 후보만 보여줘 선택한 표기를 일정에 저장
 - 외부 검색 보호: 각 Geoapify·Nominatim 요청은 5초 안에 끝나지 않으면 중단하고 재시도 안내로 전환
 - 검색 캐시: 동일 검색은 Cloudflare D1에서 먼저 조회. 검색은 30일, 좌표의 주소 변환은 90일 보관
@@ -19,7 +19,7 @@ v2의 해외 여행 모드는 `MapLibre GL JS + OpenFreeMap` 조합을 기본으
 
 ## 무료 운영 원칙
 
-Geoapify는 `GEOAPIFY_API_KEY`를 Worker secret으로만 읽으며 브라우저에는 노출하지 않는다. 한국어·영어 설정은 검색 요청의 `lang` 값에 반영된다. 동일한 언어·여행지·검색어는 D1 캐시를 먼저 사용하므로 반복 검색은 API 사용량을 소모하지 않는다. Geoapify가 한도에 닿거나 장애가 생기면 Nominatim으로 자동 전환한다.
+Geoapify는 `GEOAPIFY_API_KEY`를 Worker secret으로만 읽으며 브라우저에는 노출하지 않는다. 한국어·영어 설정은 검색 요청의 `lang` 값에 반영된다. 동일한 언어·여행지·검색어는 D1 캐시를 먼저 사용하므로 반복 검색은 API 사용량을 소모하지 않는다. Geoapify가 한도에 닿거나 장애가 생기면 Nominatim으로 자동 전환하고, Nominatim에 결과가 없거나 공용 요청 슬롯이 잠시 사용 중이면 Photon으로 장소 검색을 보완한다. Photon 공개 데모도 합리적인 요청량만 허용하므로 검색 입력은 기존 디바운스와 캐시를 거친다.
 
 Photon과 Nominatim은 공용 서비스이므로 자동완성과 대체 경로에 필요한 요청만 보낸다. 도시 검색 결과는 D1에 30일간 저장해 반복 입력이 외부 요청으로 이어지지 않게 한다. Nominatim에는 D1에 저장한 공용 슬롯으로 사이트 전체 요청 사이에 최소 1초 간격을 적용하고, 슬롯이 사용 중이면 외부 요청을 보내지 않고 재시도를 안내한다. 공개 이용자가 급격히 늘면 Photon의 합리적 사용 범위, Geoapify 일일 한도, 공용 Nominatim 정책에 닿을 수 있지만, 결제가 자동으로 발생하는 공급자는 연결하지 않는다.
 
