@@ -23,7 +23,7 @@ Geoapify는 `GEOAPIFY_API_KEY`를 Worker secret으로만 읽으며 브라우저�
 
 Nominatim은 공용 서비스이므로 자동 대체 경로에만 사용한다. D1에 저장한 공용 슬롯으로 사이트 전체 요청 사이에 최소 1초 간격을 적용하고, 슬롯이 사용 중이면 외부 요청을 보내지 않고 재시도를 안내한다. 공개 이용자가 급격히 늘면 Geoapify 일일 한도와 공용 Nominatim 정책에 닿을 수 있지만, 결제가 자동으로 발생하는 공급자는 연결하지 않는다.
 
-OpenFreeMap 벡터 스타일은 영문명(`name_en` → `name:latin` → 원래 이름)을 우선 표시한다. 번역 데이터가 없는 지명은 원어 표기로 남을 수 있다. 외부 래스터 지도를 겹쳐 요청하지 않고 OpenFreeMap 한 공급자만 사용해 중복 타일 요청을 줄인다. 화면에는 OpenFreeMap과 OpenStreetMap 출처를 표시한다. 대량 다운로드, 오프라인 저장, 타일 프록시 운영은 하지 않는다. 장기적으로 대중 사용량이 커지면 별도 무료 호스팅 정책을 가진 타일 공급자 또는 자체 타일 서버를 검토해야 한다.
+OpenFreeMap 벡터 스타일은 영문명(`name_en` → `name:latin` → 원래 이름)을 우선 표시한다. 번역 데이터가 없는 지명은 원어 표기로 남을 수 있다. 벡터 타일이 일정 시간 안에 도착하지 않을 때만 OpenStreetMap.de 래스터를 대체 화면으로 요청해 하얀 지도를 피한다. 정상 상태에서는 OpenFreeMap 한 공급자만 사용해 중복 타일 요청을 줄인다. 화면에는 OpenFreeMap·OpenStreetMap.de·OpenStreetMap 출처를 표시한다. 대량 다운로드, 오프라인 저장, 타일 프록시 운영은 하지 않는다. 장기적으로 대중 사용량이 커지면 별도 무료 호스팅 정책을 가진 타일 공급자 또는 자체 타일 서버를 검토해야 한다.
 
 운영 기준은 [OpenStreetMap 타일 이용 정책](https://operations.osmfoundation.org/policies/tiles/)과 [Nominatim 이용 정책](https://operations.osmfoundation.org/policies/nominatim/)을 따른다. 두 공용 서비스 모두 무제한·무중단을 보장하는 API가 아니므로 사용량이 커지면 공급자를 교체할 수 있게 구성했다.
 
