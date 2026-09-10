@@ -36,7 +36,7 @@ type DayKey = string;
 type PlaceType = '식사' | '간식' | '관광' | '숙소' | '기타';
 type MapProvider = 'naver' | 'google' | 'osm';
 type Stop = { id: string; day: DayKey; time: string; name: string; category: PlaceType; memo: string; address: string; lat: number; lng: number; customLocation?: boolean; naverLink?: string; mapProvider?: MapProvider; placeId?: string; costPerPerson?: number; costTotal?: number; costBasis?: 'person'|'total' };
-type SearchPlace = { title: string; category: string; address: string; roadAddress: string; mapx: string; mapy: string; link?: string; description?: string; titleEnglish?: string; categoryEnglish?: string; addressEnglish?: string; roadAddressEnglish?: string; provider?: MapProvider; placeId?: string; googlePrediction?: any };
+type SearchPlace = { title: string; category: string; address: string; roadAddress: string; mapx: string; mapy: string; link?: string; description?: string; titleEnglish?: string; categoryEnglish?: string; addressEnglish?: string; roadAddressEnglish?: string; provider?: MapProvider; placeId?: string; region?: string; country?: string; googlePrediction?: any };
 type EditPolicy = 'owner' | 'all' | 'password';
 type TripSettings = { title: string; destination: string; startDate: string; endDate: string; people: number; editPolicy: EditPolicy; mapProvider: MapProvider };
 type StoredPlan = { id: string; title: string; destination: string; startDate: string; endDate: string; people: number; editPolicy?: EditPolicy; mapProvider?: MapProvider; passwordProtected?: boolean; editPasswordProtected?: boolean; updatedAt?: string; version?: number; stops: Stop[] };
@@ -147,6 +147,12 @@ function usePlaceSuggestions(query:string,enabled:boolean,context='',provider:Ma
 }
 function destinationLabel(place:SearchPlace,language:'ko'|'en'){
   const title=placeTitle(place,language),address=placeAddress(place,language);
+  if(place.region||place.country){
+    const region=place.region?.trim();
+    const context=region&&region.toLocaleLowerCase()!==title.toLocaleLowerCase()?region:place.country?.trim();
+    const parts=[title,context].filter((part):part is string=>Boolean(part));
+    return parts.filter((part,index)=>parts.findIndex(value=>value.toLocaleLowerCase()===part.toLocaleLowerCase())===index).join(', ');
+  }
   if(!address||address===title)return title;
   const parts=address.split(',').map(part=>part.trim()).filter(Boolean);
   const country=parts.at(-1)||'';
@@ -165,7 +171,7 @@ function useDestinationSuggestions(query:string,enabled:boolean){
     const timer=window.setTimeout(async()=>{
       setSearching(true);
       try{
-        const response=await fetch(`/api/free-search?q=${encodeURIComponent(value)}&mode=city&lang=${language}`,{signal:controller.signal}),body=await readJsonResponse<{items?:SearchPlace[];message?:string}>(response);
+        const response=await fetch(`/api/free-search?q=${encodeURIComponent(value)}&mode=city&lang=${language}&v=2`,{signal:controller.signal}),body=await readJsonResponse<{items?:SearchPlace[];message?:string}>(response);
         if(!response.ok)throw new Error(body.message||text('도시 검색에 실패했습니다.','City search failed.'));
         const items=(body.items||[]).map(item=>({...item,provider:'osm' as const}));
         const seen=new Set<string>(),deduped=items.filter(item=>{const key=destinationLabel(item,language).toLocaleLowerCase();if(seen.has(key))return false;seen.add(key);return true}).slice(0,8);

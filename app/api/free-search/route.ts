@@ -23,6 +23,27 @@ type GeoapifyItem = {
   address_line2?: string;
   category?: string;
   result_type?: string;
+  city?: string;
+  county?: string;
+  state?: string;
+  country?: string;
+  country_code?: string;
+};
+
+type PhotonFeature = {
+  geometry?: { coordinates?: unknown[] };
+  properties?: {
+    name?: string;
+    type?: string;
+    city?: string;
+    district?: string;
+    county?: string;
+    state?: string;
+    country?: string;
+    countrycode?: string;
+    osm_type?: string;
+    osm_id?: number | string;
+  };
 };
 
 type FreeSearchItem = {
@@ -34,9 +55,11 @@ type FreeSearchItem = {
   mapy: string;
   provider: 'osm';
   placeId?: string;
+  region?: string;
+  country?: string;
 };
 
-type SearchPayload = { items: FreeSearchItem[]; source: 'geoapify' | 'nominatim' | 'cache' };
+type SearchPayload = { items: FreeSearchItem[]; source: 'geoapify' | 'photon' | 'nominatim' | 'cache' };
 type ReversePayload = { address: string; source: 'geoapify' | 'nominatim' | 'cache' };
 type CacheRow = { payload_json: string; expires_at: string };
 
@@ -46,6 +69,7 @@ const MEMORY_CACHE_MS = 5 * 60 * 1000;
 const SEARCH_CACHE_MS = 30 * 24 * 60 * 60 * 1000;
 const REVERSE_CACHE_MS = 90 * 24 * 60 * 60 * 1000;
 const EXTERNAL_SEARCH_TIMEOUT_MS = 5_000;
+const CITY_SEARCH_CACHE_VERSION = 'city-v2';
 let lastNominatimRequestAt = 0;
 
 /**
@@ -114,7 +138,7 @@ async function readPersistentCache<T extends SearchPayload | ReversePayload>(key
 async function writePersistentCache(
   key: string,
   kind: 'search' | 'reverse',
-  provider: 'geoapify' | 'nominatim',
+  provider: 'geoapify' | 'photon' | 'nominatim',
   language: string,
   payload: SearchPayload | ReversePayload,
   ttlMs: number,
@@ -190,7 +214,88 @@ function asSearchItem(item: GeoapifyItem, fallback: string): FreeSearchItem | nu
     mapy: String(Math.round(lat * 1e7)),
     provider: 'osm',
     placeId: item.place_id ? `geoapify:${item.place_id}` : undefined,
+    region: cleanText(item.state || item.county),
+    country: cleanText(item.country),
   };
+}
+
+const SETTLEMENT_TYPES = new Set(['city', 'town', 'village', 'municipality', 'county', 'district', 'state', 'locality', 'hamlet', 'administrative', 'populated place']);
+
+function cityBaseName(value: string) {
+  return normalized(value)
+    .replace(/[^\p{L}\p{N}]+/gu, '')
+    .replace(/(특별자치시|특별시|광역시|자치시|자치도|도|시|군|구)$/u, '')
+    .replace(/(metropolitancity|specialcity|municipality|city|town|county)$/u, '');
+}
+
+function cityIdentity(item: FreeSearchItem) {
+  const lat = Number(item.mapy) / 1e7;
+  const lon = Number(item.mapx) / 1e7;
+  const region = normalized(item.region || '');
+  const country = normalized(item.country || '');
+  const fallbackArea = Number.isFinite(lat) && Number.isFinite(lon) ? `${lat.toFixed(1)}|${lon.toFixed(1)}` : normalized(item.address);
+  return `${cityBaseName(item.title)}|${region || fallbackArea}|${country}`;
+}
+
+function normalizeCityResults(items: FreeSearchItem[], query: string) {
+  const queryBase = cityBaseName(query);
+  const ranked = items
+    .filter(item => SETTLEMENT_TYPES.has(normalized(item.category)))
+    .map((item, index) => {
+      const name = cityBaseName(item.title);
+      const score = name === queryBase ? 0 : name.startsWith(queryBase) || queryBase.startsWith(name) ? 1 : 2;
+      return { item, index, score };
+    })
+    .sort((a, b) => a.score - b.score || a.index - b.index);
+  const seen = new Set<string>();
+  return ranked.flatMap(({ item }) => {
+    const key = cityIdentity(item);
+    if (seen.has(key)) return [];
+    seen.add(key);
+    return [item];
+  }).slice(0, 8);
+}
+
+async function photonCitySearch(query: string, language: 'ko' | 'en') {
+  const endpoint = new URL('https://photon.komoot.io/api/');
+  endpoint.searchParams.set('q', query);
+  endpoint.searchParams.set('limit', '30');
+  if (language === 'en') endpoint.searchParams.set('lang', 'en');
+  try {
+    const response = await fetch(endpoint, {
+      headers: { Accept: 'application/json', 'User-Agent': 'travel-note/2.0 (https://travel.whales-teatime.workers.dev)' },
+      signal: AbortSignal.timeout(EXTERNAL_SEARCH_TIMEOUT_MS),
+    });
+    if (!response.ok) return null;
+    const body = await response.json() as { features?: PhotonFeature[] };
+    const items = (body.features || []).flatMap(feature => {
+      const properties = feature.properties || {};
+      const coordinates = feature.geometry?.coordinates || [];
+      const lon = Number(coordinates[0]), lat = Number(coordinates[1]);
+      const title = cleanText(properties.name);
+      const category = normalized(cleanText(properties.type));
+      if (!title || !SETTLEMENT_TYPES.has(category) || !Number.isFinite(lat) || !Number.isFinite(lon)) return [];
+      const region = cleanText(properties.state || properties.county || properties.district);
+      const country = cleanText(properties.country);
+      const address = [title, region, country].filter((part, index, values) => part && values.indexOf(part) === index).join(', ');
+      return [{
+        title,
+        category,
+        address,
+        roadAddress: address,
+        mapx: String(Math.round(lon * 1e7)),
+        mapy: String(Math.round(lat * 1e7)),
+        provider: 'osm' as const,
+        placeId: properties.osm_id ? `photon:${properties.osm_type || 'n'}:${properties.osm_id}` : undefined,
+        region,
+        country,
+      }];
+    });
+    const normalizedItems = normalizeCityResults(items, query);
+    return normalizedItems.length ? normalizedItems : null;
+  } catch {
+    return null;
+  }
 }
 
 function geoapifyKey() {
@@ -246,10 +351,13 @@ async function nominatimSearch(query: string, near: string, language: 'ko' | 'en
   const endpoint = new URL('https://nominatim.openstreetmap.org/search');
   endpoint.searchParams.set('q', searchQuery);
   endpoint.searchParams.set('format', 'jsonv2');
-  endpoint.searchParams.set('limit', '8');
+  endpoint.searchParams.set('limit', cityOnly ? '20' : '8');
   endpoint.searchParams.set('addressdetails', '1');
   endpoint.searchParams.set('accept-language', language);
-  if (cityOnly) endpoint.searchParams.set('featuretype', 'city');
+  if (cityOnly) {
+    endpoint.searchParams.set('featureType', 'city');
+    endpoint.searchParams.set('layer', 'address');
+  }
   try {
     const response = await fetch(endpoint, {
       headers: {
@@ -262,8 +370,9 @@ async function nominatimSearch(query: string, near: string, language: 'ko' | 'en
     } as RequestInit & { cf: Record<string, number | boolean> });
     if (!response.ok) return null;
     const data = await response.json() as NominatimItem[];
-    return data.filter(item => Number.isFinite(Number(item.lat)) && Number.isFinite(Number(item.lon))).map(item => {
+    const items = data.filter(item => Number.isFinite(Number(item.lat)) && Number.isFinite(Number(item.lon))).map(item => {
       const address = nominatimAddress(item);
+      const details = item.address || {};
       return {
         title: nominatimTitle(item, query),
         category: nominatimType(item),
@@ -273,8 +382,11 @@ async function nominatimSearch(query: string, near: string, language: 'ko' | 'en
         mapy: String(Math.round(Number(item.lat) * 1e7)),
         provider: 'osm' as const,
         placeId: item.place_id ? `osm:${item.osm_type || 'n'}:${item.osm_id || item.place_id}` : undefined,
+        region: cleanText(details.state || details.province || details.county),
+        country: cleanText(details.country),
       };
     });
+    return cityOnly ? normalizeCityResults(items, query) : items;
   } catch {
     return null;
   }
@@ -343,7 +455,7 @@ export async function GET(request: Request) {
   if (query.length > 120) return Response.json({ message: '검색어가 너무 깁니다.' }, { status: 400 });
 
   const cacheValue = `${near}|${query}`;
-  const key = await lookupCacheKey('search', language, `${cityOnly ? 'city|' : ''}${cacheValue}`);
+  const key = await lookupCacheKey('search', language, `${cityOnly ? `${CITY_SEARCH_CACHE_VERSION}|` : ''}${cacheValue}`);
   const memory = memoryCached<SearchPayload>(key);
   if (memory) return Response.json({ ...memory, source: 'cache' }, { headers: { 'Cache-Control': 'private, max-age=300' } });
   const persistent = await readPersistentCache<SearchPayload>(key);
@@ -352,9 +464,11 @@ export async function GET(request: Request) {
     return Response.json({ ...persistent, source: 'cache' }, { headers: { 'Cache-Control': 'private, max-age=300' } });
   }
 
-  const geoItems = await geoapifySearch(query, near, language, cityOnly);
-  const provider = geoItems ? 'geoapify' as const : 'nominatim' as const;
-  const items = geoItems || await nominatimSearch(query, near, language, cityOnly);
+  const photonItems = cityOnly ? await photonCitySearch(query, language) : null;
+  const geoItems = photonItems ? null : await geoapifySearch(query, near, language, cityOnly);
+  const provider = photonItems ? 'photon' as const : geoItems ? 'geoapify' as const : 'nominatim' as const;
+  const rawItems = photonItems || geoItems || await nominatimSearch(query, near, language, cityOnly);
+  const items = rawItems && cityOnly ? normalizeCityResults(rawItems, query) : rawItems;
   if (!items) return Response.json({ message: '지도 검색이 잠시 바빠요. 잠시 뒤 다시 시도해주세요.' }, { status: 503 });
   const payload: SearchPayload = { items, source: provider };
   remember(key, payload);
