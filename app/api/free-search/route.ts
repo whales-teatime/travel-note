@@ -47,8 +47,28 @@ const SEARCH_CACHE_MS = 30 * 24 * 60 * 60 * 1000;
 const REVERSE_CACHE_MS = 90 * 24 * 60 * 60 * 1000;
 let lastNominatimRequestAt = 0;
 
-function nominatimRequestAllowed() {
+/**
+ * Reserve one shared Nominatim request slot for the whole deployment.
+ * Nominatim's limit is per application, not per Worker isolate. D1 is
+ * single-threaded, so a conditional UPDATE gives concurrent isolates one
+ * atomic gate without keeping a request open while waiting. The in-memory
+ * branch is only for local development before a D1 binding is available.
+ */
+async function nominatimRequestAllowed() {
   const now = Date.now();
+  const db = getDb();
+  if (db) {
+    try {
+      const result = await db.prepare(`
+        UPDATE service_throttle
+        SET next_allowed_ms = ?
+        WHERE id = 'nominatim' AND next_allowed_ms <= ?
+      `).bind(now + 1000, now).run();
+      return Number(result?.meta?.changes || 0) > 0;
+    } catch {
+      // A local preview may run before the migration is applied.
+    }
+  }
   if (now - lastNominatimRequestAt < 1000) return false;
   lastNominatimRequestAt = now;
   return true;
@@ -219,7 +239,7 @@ async function geoapifyReverse(lat: number, lon: number, language: 'ko' | 'en') 
 }
 
 async function nominatimSearch(query: string, near: string, language: 'ko' | 'en') {
-  if (!nominatimRequestAllowed()) return null;
+  if (!await nominatimRequestAllowed()) return null;
   const searchQuery = near && !normalized(query).includes(normalized(near)) ? `${query}, ${near}` : query;
   const endpoint = new URL('https://nominatim.openstreetmap.org/search');
   endpoint.searchParams.set('q', searchQuery);
@@ -257,7 +277,7 @@ async function nominatimSearch(query: string, near: string, language: 'ko' | 'en
 }
 
 async function nominatimReverse(lat: number, lon: number, language: 'ko' | 'en') {
-  if (!nominatimRequestAllowed()) return null;
+  if (!await nominatimRequestAllowed()) return null;
   const endpoint = new URL('https://nominatim.openstreetmap.org/reverse');
   endpoint.searchParams.set('lat', String(lat));
   endpoint.searchParams.set('lon', String(lon));

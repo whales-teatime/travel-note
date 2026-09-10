@@ -17,3 +17,8 @@ export const planSearchGramsSchema = {
   table: 'plan_search_grams',
   columns: ['plan_id', 'gram'],
 } as const;
+
+export const serviceThrottleSchema = {
+  table: 'service_throttle',
+  columns: ['id', 'next_allowed_ms'],
+} as const;
