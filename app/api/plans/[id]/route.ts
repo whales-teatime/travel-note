@@ -152,8 +152,10 @@ export async function PUT(request: Request, context: Context) {
   const now = new Date().toISOString(), nextVersion = Math.max(1, Number(row.version) || 1) + 1;
   const passwordSql = passwordChanged ? ',password_hash=?,password_salt=?,password_algo=?' : '';
   const editPasswordSql = editPasswordChanged ? ',edit_password_hash=?,edit_password_salt=?,edit_password_algo=?' : '';
-  const values = [plan.title, plan.destination, plan.startDate, plan.endDate, plan.people, plan.editPolicy, plan.mapProvider, JSON.stringify(plan.stops), ...(passwordChanged ? [hash, salt, newPassword ? 'pbkdf2' : 'sha256'] : []), ...(editPasswordChanged ? [editHash, editSalt, editHash ? 'pbkdf2' : 'sha256'] : []), now, nextVersion, String(row.id), baseVersion];
-  const guarded = await db.prepare(`UPDATE plans SET title=?,destination=?,start_date=?,end_date=?,people=?,edit_policy=?,map_provider=?,stops_json=?${passwordSql}${editPasswordSql},updated_at=?,version=? WHERE id=? AND version=?`).bind(...values).run();
+  const titleChanged = textValue(row.title) !== plan.title || textValue(row.destination) !== plan.destination;
+  const titleSql = titleChanged ? 'title=?,destination=?,' : '';
+  const values = [...(titleChanged ? [plan.title, plan.destination] : []), plan.startDate, plan.endDate, plan.people, plan.editPolicy, plan.mapProvider, JSON.stringify(plan.stops), ...(passwordChanged ? [hash, salt, newPassword ? 'pbkdf2' : 'sha256'] : []), ...(editPasswordChanged ? [editHash, editSalt, editHash ? 'pbkdf2' : 'sha256'] : []), now, nextVersion, String(row.id), baseVersion];
+  const guarded = await db.prepare(`UPDATE plans SET ${titleSql}start_date=?,end_date=?,people=?,edit_policy=?,map_provider=?,stops_json=?${passwordSql}${editPasswordSql},updated_at=?,version=? WHERE id=? AND version=?`).bind(...values).run();
   if (Number(guarded?.meta?.changes || 0) === 0) {
     const latestResult = await db.prepare(`SELECT ${PLAN_COLUMNS} FROM plans WHERE id = ? LIMIT 1`).bind(String(row.id)).first();
     const latest = latestResult as Record<string, unknown> || row;
