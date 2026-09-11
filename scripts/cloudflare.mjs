@@ -52,6 +52,7 @@ if (existsSync(generatedHandler)) {
   writeFileSync(generatedHandler, `import handler from './vinext-handler.js';
 
 const RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const ACCESS_LOG_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 async function purgeExpiredPlans(env) {
   if (!env?.DB) return;
@@ -62,10 +63,47 @@ async function purgeExpiredPlans(env) {
   } catch {
     // The cache table may not exist yet during a rolling deployment.
   }
+  try {
+    const accessCutoff = new Date(Date.now() - ACCESS_LOG_RETENTION_MS).toISOString();
+    await env.DB.prepare('DELETE FROM access_logs WHERE created_at <= ?').bind(accessCutoff).run();
+  } catch {
+    // Access logging is optional while the migration rolls out.
+  }
+}
+
+function shouldRecordAccess(request) {
+  if (request.method !== 'GET') return false;
+  const url = new URL(request.url);
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/_next/') || url.pathname === '/favicon.svg' || url.pathname === '/robots.txt') return false;
+  return (request.headers.get('accept') || '').toLowerCase().includes('text/html');
+}
+
+async function visitorHash(request, env) {
+  const ip = request.headers.get('CF-Connecting-IP') || request.headers.get('X-Real-IP') || '';
+  if (!ip || typeof env?.ADMIN_MASTER_PASSWORD !== 'string' || !env.ADMIN_MASTER_PASSWORD) return null;
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(env.ADMIN_MASTER_PASSWORD), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(ip.split(',')[0].trim()));
+  return Array.from(new Uint8Array(signature), byte => byte.toString(16).padStart(2, '0')).join('').slice(0, 16);
+}
+
+async function recordAccess(request, response, env) {
+  if (!env?.DB || !shouldRecordAccess(request)) return;
+  const url = new URL(request.url);
+  const id = 'access_' + Date.now().toString(36) + '_' + crypto.randomUUID().replaceAll('-', '').slice(0, 10);
+  const path = url.pathname.slice(0, 180) || '/';
+  const country = (request.headers.get('CF-IPCountry') || '').slice(0, 8) || null;
+  const hash = await visitorHash(request, env);
+  await env.DB.prepare('INSERT INTO access_logs (id,created_at,path,status,country,visitor_hash) VALUES (?,?,?,?,?,?)').bind(id, new Date().toISOString(), path, response.status, country, hash).run();
 }
 
 export default {
-  fetch(request, env, ctx) { return handler.fetch(request, env, ctx); },
+  fetch(request, env, ctx) {
+    return Promise.resolve(handler.fetch(request, env, ctx)).then(response => {
+      const log = recordAccess(request, response, env).catch(() => {});
+      if (ctx?.waitUntil) ctx.waitUntil(log);
+      return response;
+    });
+  },
   async scheduled(_controller, env, ctx) {
     const cleanup = purgeExpiredPlans(env);
     if (ctx?.waitUntil) ctx.waitUntil(cleanup);

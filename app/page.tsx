@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowRight, BookOpen, ChevronDown, Compass, LockKeyhole, LogOut, MapPin, MessageSquareText, Plane, Settings2, Trash2 } from 'lucide-react';
+import { Activity, ArrowRight, BookOpen, ChevronDown, Compass, LockKeyhole, LogOut, MapPin, MessageSquareText, Plane, Settings2, Trash2 } from 'lucide-react';
 import type { PlanSummary } from '@/components/plan-library';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -140,6 +140,7 @@ export default function HomePage() {
       {hasDraft && <div className="draft-pill"><span><small>{text('이 기기에 남은 초안', 'Draft on this device')}</small><strong>{draftTitle || text('이 기기의 여행 초안', 'Untitled trip draft')}</strong></span><div className="draft-pill-actions"><Link className="draft-pill-action" href="/plan/new?draft=1">{text('계속 쓰기', 'Continue')}<ArrowRight /></Link><button type="button" onClick={clearDraft}>{text('초안 삭제', 'Delete draft')}</button></div></div>}
     </section>
     <WhaleSupportButton />
+    {adminAuthenticated && <Link className="landing-admin-log-link" href="/admin"><Activity /><span>{text('접속 기록', 'Access logs')}</span></Link>}
     <button type="button" className={`landing-admin-button ${adminAuthenticated?'is-active':''}`} onClick={()=>adminAuthenticated?void logoutAdmin():setAdminOpen(true)} title={adminAuthenticated?text('관리자 모드 종료', 'Exit admin mode'):text('관리자 로그인', 'Admin login')} aria-label={adminAuthenticated?text('관리자 모드 종료', 'Exit admin mode'):text('관리자 로그인', 'Admin login')}>{adminAuthenticated?<LogOut/>:<LockKeyhole/>}</button>
     <Dialog open={adminOpen} onOpenChange={open=>{setAdminOpen(open);if(!open){setAdminPassword('');setAdminError('')}}}><DialogContent className="password-dialog sm:max-w-[420px]"><DialogHeader><DialogTitle>{text('관리자 로그인', 'Admin login')}</DialogTitle></DialogHeader><label>{text('관리자 비밀번호', 'Admin password')}<Input type="password" value={adminPassword} onChange={event=>setAdminPassword(event.target.value)} onKeyDown={event=>{if(event.key==='Enter')void loginAdmin()}} placeholder={text('관리자 비밀번호', 'Admin password')}/></label>{adminError&&<div className="inline-notice">{adminError}</div>}<DialogFooter><Button variant="outline" onClick={()=>setAdminOpen(false)}>{text('취소', 'Cancel')}</Button><Button onClick={()=>void loginAdmin()} disabled={!adminPassword||adminChecking}>{adminChecking?text('확인 중…', 'Checking…'):text('로그인', 'Log in')}</Button></DialogFooter></DialogContent></Dialog>
     <footer className="landing-footer"><span className="landing-meta"><small>ver. 1.0</small><a href="https://github.com/whales-teatime/travel-note/releases" target="_blank" rel="noreferrer">GitHub Releases</a></span><span>{text('TRAVEL NOTE', 'TRAVEL NOTE')}</span></footer>

@@ -22,3 +22,8 @@ export const serviceThrottleSchema = {
   table: 'service_throttle',
   columns: ['id', 'next_allowed_ms'],
 } as const;
+
+export const accessLogSchema = {
+  table: 'access_logs',
+  columns: ['id', 'created_at', 'path', 'status', 'country', 'visitor_hash'],
+} as const;
