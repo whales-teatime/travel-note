@@ -91,9 +91,12 @@ async function recordAccess(request, response, env) {
   const url = new URL(request.url);
   const id = 'access_' + Date.now().toString(36) + '_' + crypto.randomUUID().replaceAll('-', '').slice(0, 10);
   const path = url.pathname.slice(0, 180) || '/';
-  const country = (request.headers.get('CF-IPCountry') || '').slice(0, 8) || null;
+  const cf = request.cf && typeof request.cf === 'object' ? request.cf : {};
+  const country = (request.headers.get('CF-IPCountry') || (typeof cf.country === 'string' ? cf.country : '')).slice(0, 8) || null;
+  const city = (typeof cf.city === 'string' ? cf.city : '').slice(0, 120) || null;
+  const region = (typeof cf.region === 'string' ? cf.region : '').slice(0, 120) || null;
   const hash = await visitorHash(request, env);
-  await env.DB.prepare('INSERT INTO access_logs (id,created_at,path,status,country,visitor_hash) VALUES (?,?,?,?,?,?)').bind(id, new Date().toISOString(), path, response.status, country, hash).run();
+  await env.DB.prepare('INSERT INTO access_logs (id,created_at,path,status,country,city,region,visitor_hash) VALUES (?,?,?,?,?,?,?,?)').bind(id, new Date().toISOString(), path, response.status, country, city, region, hash).run();
 }
 
 export default {

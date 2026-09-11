@@ -25,5 +25,5 @@ export const serviceThrottleSchema = {
 
 export const accessLogSchema = {
   table: 'access_logs',
-  columns: ['id', 'created_at', 'path', 'status', 'country', 'visitor_hash'],
+  columns: ['id', 'created_at', 'path', 'status', 'country', 'city', 'region', 'visitor_hash'],
 } as const;
