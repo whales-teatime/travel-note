@@ -53,6 +53,8 @@ if (existsSync(generatedHandler)) {
 
 const RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const ACCESS_LOG_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+const VISITOR_COOKIE = '__Host-travel_visitor';
+const VISITOR_COOKIE_MAX_AGE = 400 * 24 * 60 * 60;
 
 async function purgeExpiredPlans(env) {
   if (!env?.DB) return;
@@ -78,15 +80,37 @@ function shouldRecordAccess(request) {
   return (request.headers.get('accept') || '').toLowerCase().includes('text/html');
 }
 
-async function visitorHash(request, env) {
-  const ip = request.headers.get('CF-Connecting-IP') || request.headers.get('X-Real-IP') || '';
-  if (!ip || typeof env?.ADMIN_MASTER_PASSWORD !== 'string' || !env.ADMIN_MASTER_PASSWORD) return null;
-  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(env.ADMIN_MASTER_PASSWORD), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-  const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(ip.split(',')[0].trim()));
-  return Array.from(new Uint8Array(signature), byte => byte.toString(16).padStart(2, '0')).join('').slice(0, 16);
+function requestCookie(request, name) {
+  const cookies = request.headers.get('Cookie') || '';
+  for (const part of cookies.split(';')) {
+    const separator = part.indexOf('=');
+    if (separator < 0 || part.slice(0, separator).trim() !== name) continue;
+    const value = part.slice(separator + 1).trim();
+    return /^[a-f0-9]{32}$/i.test(value) ? value.toLowerCase() : '';
+  }
+  return '';
 }
 
-async function recordAccess(request, response, env) {
+function visitorIdentity(request) {
+  const existing = requestCookie(request, VISITOR_COOKIE);
+  return existing
+    ? { id: existing, isNew: false }
+    : { id: crypto.randomUUID().replaceAll('-', ''), isNew: true };
+}
+
+async function visitorHash(visitorId) {
+  if (!visitorId) return null;
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('browser:' + visitorId));
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('').slice(0, 16);
+}
+
+function setVisitorCookie(response, visitorId) {
+  const headers = new Headers(response.headers);
+  headers.append('Set-Cookie', VISITOR_COOKIE + '=' + visitorId + '; Max-Age=' + VISITOR_COOKIE_MAX_AGE + '; Path=/; Secure; HttpOnly; SameSite=Lax');
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
+async function recordAccess(request, response, env, visitorId) {
   if (!env?.DB || !shouldRecordAccess(request)) return;
   const url = new URL(request.url);
   const id = 'access_' + Date.now().toString(36) + '_' + crypto.randomUUID().replaceAll('-', '').slice(0, 10);
@@ -95,16 +119,18 @@ async function recordAccess(request, response, env) {
   const country = (request.headers.get('CF-IPCountry') || (typeof cf.country === 'string' ? cf.country : '')).slice(0, 8) || null;
   const city = (typeof cf.city === 'string' ? cf.city : '').slice(0, 120) || null;
   const region = (typeof cf.region === 'string' ? cf.region : '').slice(0, 120) || null;
-  const hash = await visitorHash(request, env);
+  const hash = await visitorHash(visitorId);
   await env.DB.prepare('INSERT INTO access_logs (id,created_at,path,status,country,city,region,visitor_hash) VALUES (?,?,?,?,?,?,?,?)').bind(id, new Date().toISOString(), path, response.status, country, city, region, hash).run();
 }
 
 export default {
   fetch(request, env, ctx) {
+    const trackedVisit = shouldRecordAccess(request) ? visitorIdentity(request) : null;
     return Promise.resolve(handler.fetch(request, env, ctx)).then(response => {
-      const log = recordAccess(request, response, env).catch(() => {});
+      const outgoingResponse = trackedVisit?.isNew ? setVisitorCookie(response, trackedVisit.id) : response;
+      const log = recordAccess(request, outgoingResponse, env, trackedVisit?.id || null).catch(() => {});
       if (ctx?.waitUntil) ctx.waitUntil(log);
-      return response;
+      return outgoingResponse;
     });
   },
   async scheduled(_controller, env, ctx) {
