@@ -1161,7 +1161,7 @@ export default function Home(){
   const focusStopOnMap=useCallback((stop:Stop)=>{setSelected(stop);setFocusRequest({id:stop.id,nonce:Date.now()})},[]);
   const handleStopCardClick=useCallback((stop:Stop)=>{
     const now=Date.now(),last=lastStopCardClickRef.current;
-    if(last?.id===stop.id&&now-last.at<=650){
+    if(last?.id===stop.id&&now-last.at<=1000){
       lastStopCardClickRef.current=null;
       focusStopOnMap(stop);
       return;
