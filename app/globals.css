@@ -300,3 +300,4 @@
 /* Double-clicking a place card focuses its pin on the map. */
 .osm-stop-icon.is-focused{position:relative;z-index:3;animation:mapPinFocus 1.15s ease-in-out 3}
 @keyframes mapPinFocus{0%,100%{scale:1;filter:brightness(1);box-shadow:0 4px 9px rgba(0,0,0,.24)}35%,70%{scale:1.3;filter:brightness(1.18);box-shadow:0 0 0 8px rgba(3,169,77,.28),0 0 18px rgba(3,169,77,.62),0 4px 9px rgba(0,0,0,.24)}}
+.naver-marker.is-focused{animation:mapPinFocus 1.15s ease-in-out 3}

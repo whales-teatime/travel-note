@@ -552,14 +552,14 @@ function NaverMap({stops,clientId,destination,onSelect,placeResults,onPlaceSelec
     overlaysRef.current.forEach(o=>{try{o?.setMap(null)}catch{}}); overlaysRef.current=[];
     stops.forEach((stop,index)=>{
       const position=new naver.maps.LatLng(stop.lat,stop.lng), color=dayColor(stop.day,orderedDays);
-      const marker=new naver.maps.Marker({map,position,title:stop.name,clickable:true,draggable:editableStopId===stop.id,zIndex:100+index,icon:{content:`<button type="button" class="naver-marker" style="--pin:${color}" aria-label="${escapeHtml(stop.name)} 정보 보기"><span>${index+1}</span></button>`,anchor:new naver.maps.Point(20,45)}});
+      const marker=new naver.maps.Marker({map,position,title:stop.name,clickable:true,draggable:editableStopId===stop.id,zIndex:100+index,icon:{content:`<button type="button" class="naver-marker${focusRequest?.id===stop.id?' is-focused':''}" style="--pin:${color}" aria-label="${escapeHtml(stop.name)} 정보 보기"><span>${index+1}</span></button>`,anchor:new naver.maps.Point(20,45)}});
       (marker as any).__stopId=stop.id;
       naver.maps.Event.addListener(marker,'click',()=>onSelect(stop));
       if(editableStopId===stop.id){naver.maps.Event.addListener(marker,'dragend',()=>{const point=marker.getPosition();onStopPositionChange(stop.id,point.lat(),point.lng())})}
       overlaysRef.current.push(marker);
     });
     if(stops.length>1){const line=new naver.maps.Polyline({map,path:stops.map(s=>new naver.maps.LatLng(s.lat,s.lng)),strokeColor:dayColor(stops[0].day,orderedDays),strokeWeight:5,strokeOpacity:.7,strokeStyle:'shortdash',zIndex:20});overlaysRef.current.push(line)}
-  },[stops,status,onSelect,editableStopId,onStopPositionChange,dateLabels,orderedDays]);
+  },[stops,status,onSelect,editableStopId,onStopPositionChange,dateLabels,orderedDays,focusRequest]);
   useEffect(()=>{
     const map=mapRef.current,naver=window.naver,target=focusRequest&&stops.find(stop=>stop.id===focusRequest.id);
     if(!map||!naver?.maps||status!=='ready'||!target)return;
@@ -685,16 +685,20 @@ function GoogleMap({stops,apiKey,destination,onSelect,placeResults,onPlaceSelect
   useEffect(()=>{
     const map=mapRef.current,google=window.google;if(!map||!google?.maps||status!=='ready')return;
     overlaysRef.current.forEach(overlay=>{try{overlay.setMap(null)}catch{}});overlaysRef.current=[];
+    const focusTimers:number[]=[];
     stops.forEach((stop,index)=>{
       const color=dayColor(stop.day,orderedDays);
-      const marker=new google.maps.Marker({map,position:{lat:stop.lat,lng:stop.lng},title:stop.name,clickable:true,draggable:editableStopId===stop.id,zIndex:100+index,label:{text:String(index+1),color:'#fff',fontWeight:'800'},icon:{path:google.maps.SymbolPath.CIRCLE,scale:17,fillColor:color,fillOpacity:1,strokeColor:'#fff',strokeWeight:3}});
+      const isFocused=focusRequest?.id===stop.id;
+      const marker=new google.maps.Marker({map,position:{lat:stop.lat,lng:stop.lng},title:stop.name,clickable:true,draggable:editableStopId===stop.id,zIndex:100+index,label:{text:String(index+1),color:'#fff',fontWeight:'800'},icon:{path:google.maps.SymbolPath.CIRCLE,scale:isFocused?22:17,fillColor:color,fillOpacity:1,strokeColor:isFocused?'#03a94d':'#fff',strokeWeight:isFocused?5:3},animation:isFocused?google.maps.Animation.BOUNCE:undefined});
       (marker as any).__stopId=stop.id;
       marker.addListener('click',()=>onSelect(stop));
       if(editableStopId===stop.id)marker.addListener('dragend',()=>{const point=marker.getPosition();if(point)onStopPositionChange(stop.id,point.lat(),point.lng())});
+      if(isFocused)focusTimers.push(window.setTimeout(()=>marker.setAnimation(null),2200));
       overlaysRef.current.push(marker);
     });
     if(stops.length>1)overlaysRef.current.push(new google.maps.Polyline({map,path:stops.map(stop=>({lat:stop.lat,lng:stop.lng})),strokeColor:dayColor(stops[0].day,orderedDays),strokeWeight:5,strokeOpacity:.72,icons:[{icon:{path:'M 0,-1 0,1',strokeOpacity:1,scale:2},offset:'0',repeat:'14px'}]}));
-  },[stops,status,onSelect,editableStopId,onStopPositionChange,orderedDays]);
+    return()=>focusTimers.forEach(timer=>window.clearTimeout(timer));
+  },[stops,status,onSelect,editableStopId,onStopPositionChange,orderedDays,focusRequest]);
   useEffect(()=>{
     const map=mapRef.current,google=window.google,target=focusRequest&&stops.find(stop=>stop.id===focusRequest.id);
     if(!map||!google?.maps||status!=='ready'||!target)return;
@@ -1021,7 +1025,7 @@ export default function Home(){
   const [destinationSuggestionsOpen,setDestinationSuggestionsOpen]=useState(false);
   const [linkedDestinationIndex,setLinkedDestinationIndex]=useState<number|null>(null), [linkedDestinationSuggestionsOpen,setLinkedDestinationSuggestionsOpen]=useState(false), [linkedDestinationQuery,setLinkedDestinationQuery]=useState('');
   const plannerPanelRef=useRef<HTMLElement|null>(null);
-  const lastStopCardClickRef=useRef<{id:string;at:number}|null>(null);
+  const lastStopCardClickRef=useRef<{id:string;at:number;rect:{left:number;right:number;top:number;bottom:number}}|null>(null);
   const draggedIdRef=useRef<string|null>(null);
   const dragScrollVelocityRef=useRef(0);
   const dragScrollFrameRef=useRef<number|null>(null);
@@ -1158,17 +1162,38 @@ export default function Home(){
   const dayCostSummary=useMemo(()=>dayStops.reduce((summary,stop)=>{const cost=costValues(stop,peopleCount);return {personal:summary.personal+cost.personal,total:summary.total+cost.total}},{personal:0,total:0}),[dayStops,peopleCount]);
   const tripCostSummary=useMemo(()=>stops.reduce((summary,stop)=>{const cost=costValues(stop,peopleCount);return {personal:summary.personal+cost.personal,total:summary.total+cost.total}},{personal:0,total:0}),[stops,peopleCount]);
   const selectStop=useCallback((stop:Stop)=>setSelected(stop),[]);
-  const focusStopOnMap=useCallback((stop:Stop)=>{setSelected(stop);setFocusRequest({id:stop.id,nonce:Date.now()})},[]);
-  const handleStopCardClick=useCallback((stop:Stop)=>{
-    const now=Date.now(),last=lastStopCardClickRef.current;
-    if(last?.id===stop.id&&now-last.at<=1000){
-      lastStopCardClickRef.current=null;
-      focusStopOnMap(stop);
-      return;
-    }
-    lastStopCardClickRef.current={id:stop.id,at:now};
-    setSelected(stop);
-  },[focusStopOnMap]);
+  const focusStopOnMap=useCallback((stop:Stop)=>{setSelected(null);setFocusRequest({id:stop.id,nonce:Date.now()})},[]);
+  useEffect(()=>{
+    const handleCardClick=(event:MouseEvent)=>{
+      const target=event.target instanceof Element?event.target:null;
+      const card=target?.closest<HTMLElement>('.stop-card[data-stop-id]');
+      const isIgnoredTarget=Boolean(target?.closest('.stop-cost,.card-actions,button,input,textarea,select,a'));
+      const now=Date.now();
+      const last=lastStopCardClickRef.current;
+      let stop:Stop|undefined;
+      let rect:{left:number;right:number;top:number;bottom:number}|undefined;
+      if(card&&!isIgnoredTarget){
+        stop=dayStops.find(candidate=>candidate.id===card.dataset.stopId);
+        const bounds=card.getBoundingClientRect();
+        rect={left:bounds.left,right:bounds.right,top:bounds.top,bottom:bounds.bottom};
+      }else if(last&&now-last.at<=1000&&event.clientX>=last.rect.left&&event.clientX<=last.rect.right&&event.clientY>=last.rect.top&&event.clientY<=last.rect.bottom){
+        stop=dayStops.find(candidate=>candidate.id===last.id);
+        rect=last.rect;
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      if(!stop||!rect)return;
+      if(last?.id===stop.id&&now-last.at<=1000){
+        lastStopCardClickRef.current=null;
+        focusStopOnMap(stop);
+        return;
+      }
+      lastStopCardClickRef.current={id:stop.id,at:now,rect};
+      setSelected(stop);
+    };
+    window.addEventListener('click',handleCardClick,true);
+    return()=>window.removeEventListener('click',handleCardClick,true);
+  },[dayStops,focusStopOnMap]);
   const toggleMapFocus=useCallback(()=>setMapFocused(current=>!current),[]);
   const selectMapCandidate=useCallback((place:SearchPlace)=>setMapCandidate(place),[]);
   const updateCustomPin=useCallback((point:{lat:number;lng:number})=>setCustomPin(point),[]);
@@ -1412,7 +1437,7 @@ export default function Home(){
             const previous=dayStops[index-1],gap=previous?distanceKm(previous,stop):null,reverse=previous&&timeMinutes(stop.time)<timeMinutes(previous.time);
             return <div key={stop.id}>
               {gap!==null&&<div className="distance-chip"><span/>{text('직선 ','Straight line ')}{gap<1?`${Math.round(gap*1000)}m`:`${gap.toFixed(1)}km`}</div>}
-              <article className={`stop-card ${draggedId===stop.id?'is-dragging':''} ${dragOverId===stop.id&&draggedId!==stop.id?'is-drag-over':''} ${justMovedId===stop.id?'just-moved':''}`} draggable={canDragCards} onContextMenu={event=>{if(!canDragCards)event.preventDefault()}} onDragStart={()=>{if(canDragCards){draggedIdRef.current=stop.id;setDraggedId(stop.id)}}} onDragOver={event=>{if(!canDragCards)return;event.preventDefault();if(draggedId!==stop.id)setDragOverId(stop.id)}} onDragLeave={()=>setDragOverId(current=>current===stop.id?null:current)} onDrop={()=>{if(canDragCards)reorderByDrop(stop.id)}} onDragEnd={()=>{draggedIdRef.current=null;stopDragAutoScroll();setDraggedId(null);setDragOverId(null)}} onClick={()=>handleStopCardClick(stop)}>
+              <article data-stop-id={stop.id} className={`stop-card ${draggedId===stop.id?'is-dragging':''} ${dragOverId===stop.id&&draggedId!==stop.id?'is-drag-over':''} ${justMovedId===stop.id?'just-moved':''}`} draggable={canDragCards} onContextMenu={event=>{if(!canDragCards)event.preventDefault()}} onDragStart={()=>{if(canDragCards){draggedIdRef.current=stop.id;setDraggedId(stop.id)}}} onDragOver={event=>{if(!canDragCards)return;event.preventDefault();if(draggedId!==stop.id)setDragOverId(stop.id)}} onDragLeave={()=>setDragOverId(current=>current===stop.id?null:current)} onDrop={()=>{if(canDragCards)reorderByDrop(stop.id)}} onDragEnd={()=>{draggedIdRef.current=null;stopDragAutoScroll();setDraggedId(null);setDragOverId(null)}}>
                 <div className="drag-handle" aria-hidden="true"><GripVertical/></div>
                 <div className="order-pin" style={{background:dayColor(activeDay,dayKeys)}}>{index+1}</div>
                 <div className="stop-main">
