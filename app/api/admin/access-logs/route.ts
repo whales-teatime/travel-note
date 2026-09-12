@@ -21,17 +21,27 @@ export async function GET(request: Request) {
   const now = Date.now();
   const since24h = new Date(now - 24 * 60 * 60 * 1000).toISOString();
   const since7d = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const since30d = new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString();
   try {
-    const [last24h, last7d, unique24h, recent, popular] = await Promise.all([
-      db.prepare('SELECT COUNT(*) AS total FROM access_logs WHERE created_at >= ?').bind(since24h).first<{ total: unknown }>(),
-      db.prepare('SELECT COUNT(*) AS total FROM access_logs WHERE created_at >= ?').bind(since7d).first<{ total: unknown }>(),
+    const [visitors24h, visitors7d, visitors30d, recent, popular] = await Promise.all([
       db.prepare('SELECT COUNT(DISTINCT visitor_hash) AS total FROM access_logs WHERE created_at >= ? AND visitor_hash IS NOT NULL').bind(since24h).first<{ total: unknown }>(),
-      db.prepare('SELECT id,created_at,path,status,country,city,region,visitor_hash FROM access_logs ORDER BY created_at DESC,id DESC LIMIT 100').all<AccessLogRow>(),
-      db.prepare('SELECT path,COUNT(*) AS total FROM access_logs WHERE created_at >= ? GROUP BY path ORDER BY total DESC,path ASC LIMIT 8').bind(since7d).all<{ path: unknown; total: unknown }>(),
+      db.prepare('SELECT COUNT(DISTINCT visitor_hash) AS total FROM access_logs WHERE created_at >= ? AND visitor_hash IS NOT NULL').bind(since7d).first<{ total: unknown }>(),
+      db.prepare('SELECT COUNT(DISTINCT visitor_hash) AS total FROM access_logs WHERE created_at >= ? AND visitor_hash IS NOT NULL').bind(since30d).first<{ total: unknown }>(),
+      db.prepare('SELECT id,created_at,path,status,country,city,region,visitor_hash FROM access_logs ORDER BY created_at DESC,id DESC LIMIT 500').all<AccessLogRow>(),
+      db.prepare('SELECT path,COUNT(DISTINCT visitor_hash) AS total FROM access_logs WHERE created_at >= ? AND visitor_hash IS NOT NULL GROUP BY path ORDER BY total DESC,path ASC LIMIT 8').bind(since7d).all<{ path: unknown; total: unknown }>(),
     ]);
+    const seenVisitors = new Set<string>();
+    const items = [];
+    for (const row of recent.results || []) {
+      const visitorHash = textValue(row.visitor_hash);
+      if (visitorHash && seenVisitors.has(visitorHash)) continue;
+      if (visitorHash) seenVisitors.add(visitorHash);
+      items.push({ id: textValue(row.id), createdAt: textValue(row.created_at), path: textValue(row.path, '/'), status: numberValue(row.status), country: textValue(row.country), city: textValue(row.city), region: textValue(row.region), visitor: visitorHash.slice(0, 8) });
+      if (items.length >= 100) break;
+    }
     return Response.json({
-      summary: { last24h: numberValue(last24h?.total), last7d: numberValue(last7d?.total), unique24h: numberValue(unique24h?.total) },
-      items: (recent.results || []).map(row => ({ id: textValue(row.id), createdAt: textValue(row.created_at), path: textValue(row.path, '/'), status: numberValue(row.status), country: textValue(row.country), city: textValue(row.city), region: textValue(row.region), visitor: textValue(row.visitor_hash).slice(0, 8) })),
+      summary: { visitors24h: numberValue(visitors24h?.total), visitors7d: numberValue(visitors7d?.total), visitors30d: numberValue(visitors30d?.total) },
+      items,
       popular: (popular.results || []).map(row => ({ path: textValue(row.path, '/'), total: numberValue(row.total) })),
     }, { headers: { 'Cache-Control': 'no-store' } });
   } catch {
