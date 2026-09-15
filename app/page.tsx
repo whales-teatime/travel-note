@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import type { CSSProperties } from 'react';
 import Link from 'next/link';
-import { Activity, ArrowRight, Bird, BookOpen, ChevronDown, Compass, LockKeyhole, LogOut, MapPin, MessageSquareText, Plane, Settings2, Trash2 } from 'lucide-react';
+import { Activity, ArrowRight, BookOpen, ChevronDown, Compass, LockKeyhole, LogOut, MapPin, MessageSquareText, Plane, Settings2, Trash2 } from 'lucide-react';
 import type { PlanSummary } from '@/components/plan-library';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -29,28 +29,33 @@ const effectParticles = {
     [29, 13, 11, 34, 19], [36, 15, 7, -50, 16], [43, 11, 2, 40, 18], [50, 17, 13, -36, 15],
     [57, 12, 5, 46, 20], [64, 15, 10, -44, 16], [71, 13, 1, 32, 18], [78, 16, 8, -50, 15],
     [85, 11, 6, 38, 19], [91, 14, 12, -34, 16], [96, 13, 4, 42, 18], [99, 17, 9, -30, 15],
+    [5, 18, 14, -46, 17], [25, 14, 8, 56, 19], [61, 17, 15, -52, 16], [74, 12, 4, 48, 18],
+    [88, 16, 11, -42, 17], [34, 13, 6, 54, 20],
   ],
   autumn: [
     [2, 13, 7, 58, 25], [10, 17, 2, -50, 21], [18, 15, 11, 66, 23], [27, 19, 6, -58, 20],
     [36, 14, 9, 52, 24], [45, 18, 3, -68, 21], [54, 16, 13, 60, 23], [63, 20, 7, -54, 20],
     [72, 13, 4, 48, 24], [80, 17, 12, -62, 21], [87, 15, 1, 56, 23], [93, 19, 10, -48, 20],
     [97, 14, 5, 44, 24], [99, 18, 14, -42, 21],
+    [7, 19, 15, -56, 22], [32, 16, 5, 64, 20], [69, 18, 11, -60, 23],
   ],
   winter: [
-    [1, 10, 6, 24, 13], [6, 14, 2, -22, 18], [11, 12, 9, 26, 14], [17, 16, 5, -28, 17],
-    [23, 11, 8, 22, 15], [29, 15, 3, -26, 19], [35, 13, 11, 28, 13], [41, 17, 7, -24, 18],
-    [47, 10, 1, 26, 15], [53, 14, 10, -28, 17], [59, 12, 4, 24, 14], [65, 16, 12, -26, 19],
-    [71, 11, 5, 28, 13], [77, 15, 9, -24, 18], [83, 13, 2, 26, 15], [89, 17, 13, -28, 17],
-    [94, 10, 7, 22, 14], [98, 14, 3, -24, 19], [4, 16, 12, 30, 13], [86, 12, 6, -22, 18],
+    [1, 8, 6, 82, 4], [5, 12, 2, -68, 7], [9, 10, 9, 94, 5], [13, 14, 5, -86, 6],
+    [17, 9, 8, 72, 4], [21, 13, 3, -92, 8], [25, 11, 10, 88, 5], [29, 15, 7, -76, 7],
+    [33, 8, 1, 96, 4], [37, 12, 10, -84, 6], [41, 10, 4, 78, 5], [45, 14, 12, -98, 8],
+    [49, 9, 5, 86, 4], [53, 13, 9, -74, 7], [57, 11, 2, 92, 5], [61, 15, 13, -88, 6],
+    [65, 8, 7, 76, 4], [69, 12, 3, -96, 8], [73, 14, 11, 84, 5], [77, 10, 6, -82, 7],
+    [81, 9, 4, 90, 4], [85, 13, 12, -72, 6], [89, 11, 8, 98, 5], [93, 15, 2, -86, 8],
+    [97, 10, 7, 80, 4], [3, 14, 11, -94, 7], [19, 12, 1, 88, 5], [39, 9, 6, -78, 6],
+    [59, 13, 10, 96, 4], [79, 11, 3, -90, 7],
   ],
 } as const;
 
 function SeasonalEffect({ season }: { season: Season['key'] }) {
   if (season === 'summer') {
-    return <div className="seasonal-effect seasonal-effect-summer" aria-hidden="true"><Bird className="summer-gull summer-gull-one" /><Bird className="summer-gull summer-gull-two" /></div>;
+    return <div className="seasonal-effect seasonal-effect-summer" aria-hidden="true"><span className="summer-gull summer-gull-one" /><span className="summer-gull summer-gull-two" /></div>;
   }
-  const glyphs = season === 'spring' ? ['❀', '✿', '❀'] : season === 'autumn' ? ['🍂', '🍁', '🍂'] : ['•', '❄', '•'];
-  return <div className={`seasonal-effect seasonal-effect-${season}`} aria-hidden="true">{effectParticles[season].map(([left, duration, delay, drift, size], index) => <span key={`${season}-${index}`} style={{ left: `${left}%`, fontSize: `${size}px`, animationDuration: `${duration}s`, animationDelay: `-${delay}s`, '--season-drift': `${drift}px` } as CSSProperties}>{glyphs[index % glyphs.length]}</span>)}</div>;
+  return <div className={`seasonal-effect seasonal-effect-${season}`} aria-hidden="true">{effectParticles[season].map(([left, duration, delay, drift, size], index) => <span key={`${season}-${index}`} style={{ left: `${left}%`, animationDuration: `${duration}s`, animationDelay: `-${delay}s`, '--season-size': `${size}px`, '--season-drift-a': `${Math.round(drift * -.55)}px`, '--season-drift-b': `${Math.round(drift * .8)}px`, '--season-drift-c': `${Math.round(drift * -.32)}px`, '--season-drift': `${drift}px`, '--season-spin': `${index % 2 === 0 ? 620 : -620}deg` } as CSSProperties} />)}</div>;
 }
 
 function currentSeason(): Season {
