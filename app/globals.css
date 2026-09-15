@@ -318,14 +318,13 @@
 .theme-style-choice button:hover,.theme-style-choice button.is-selected{border-color:#9ed0ac;background:#eaf7ee;color:#1d7a43}
 .seasonal-effect{position:absolute;z-index:1;inset:0;overflow:hidden;pointer-events:none}.landing-hero,.landing-footer{z-index:2}
 .seasonal-effect>span{position:absolute;top:-9vh;display:block;opacity:0;will-change:transform,opacity}
-.seasonal-effect-spring>span{color:#ffb4c4;text-shadow:0 1px 3px rgba(152,53,78,.2);animation:season-petal-fall linear infinite}
-.seasonal-effect-autumn>span{filter:drop-shadow(0 2px 2px rgba(82,33,8,.2));animation:season-leaf-fall linear infinite}
-.seasonal-effect-winter>span{color:rgba(255,255,255,.92);text-shadow:0 0 5px rgba(76,109,151,.38);animation:season-snow-fall linear infinite}
-.summer-gull{position:absolute;left:-70px;top:18%;width:31px;height:31px;color:rgba(255,255,255,.9);filter:drop-shadow(0 2px 2px rgba(35,81,111,.3));opacity:0;stroke-width:1.45;animation:season-gull-flight 26s linear infinite}
-.summer-gull-two{top:31%;width:22px;height:22px;animation-delay:-13s;animation-duration:31s}
-@keyframes season-petal-fall{0%{opacity:0;transform:translate3d(0,-8vh,0) rotate(0deg)}8%{opacity:.72}82%{opacity:.58}100%{opacity:0;transform:translate3d(var(--season-drift),112vh,0) rotate(520deg)}}
-@keyframes season-leaf-fall{0%{opacity:0;transform:translate3d(0,-8vh,0) rotate(-30deg)}9%{opacity:.76}78%{opacity:.67}100%{opacity:0;transform:translate3d(var(--season-drift),112vh,0) rotate(610deg)}}
-@keyframes season-snow-fall{0%{opacity:0;transform:translate3d(0,-7vh,0) rotate(0deg)}7%{opacity:.76}88%{opacity:.68}100%{opacity:0;transform:translate3d(var(--season-drift),109vh,0) rotate(160deg)}}
-@keyframes season-gull-flight{0%,9%{opacity:0;transform:translate3d(-40px,0,0) scale(.78)}13%{opacity:.82}43%{opacity:.82}51%,100%{opacity:0;transform:translate3d(calc(100vw + 130px),-46px,0) scale(1)}}
-@media(max-width:760px){.seasonal-effect>span:nth-child(n+9){display:none}.summer-gull{width:25px;height:25px}.summer-gull-two{display:none}.home-landing.character-theme.season-spring{--season-position:42% center}.home-landing.character-theme.season-summer{--season-position:58% center}.home-landing.character-theme.season-autumn{--season-position:43% center}.home-landing.character-theme.season-winter{--season-position:61% center}}
-@media(prefers-reduced-motion:reduce){.seasonal-effect{display:none}}
+.seasonal-effect-spring>span{color:#ff9fba;text-shadow:0 1px 4px rgba(152,53,78,.3);animation:season-petal-fall linear infinite}
+.seasonal-effect-autumn>span{filter:drop-shadow(0 2px 3px rgba(82,33,8,.32));animation:season-leaf-fall linear infinite}
+.seasonal-effect-winter>span{color:rgba(255,255,255,.98);text-shadow:0 0 7px rgba(55,91,141,.55);animation:season-snow-fall linear infinite}
+.summer-gull{position:absolute;left:-70px;top:18%;width:38px;height:38px;color:rgba(255,255,255,.96);filter:drop-shadow(0 2px 3px rgba(35,81,111,.48));opacity:0;stroke-width:1.7;animation:season-gull-flight 20s linear -4s infinite}
+.summer-gull-two{top:32%;width:27px;height:27px;animation-delay:-14s;animation-duration:25s}
+@keyframes season-petal-fall{0%{opacity:0;transform:translate3d(0,-8vh,0) rotate(0deg)}5%{opacity:.94}86%{opacity:.82}100%{opacity:0;transform:translate3d(var(--season-drift),112vh,0) rotate(560deg)}}
+@keyframes season-leaf-fall{0%{opacity:0;transform:translate3d(0,-8vh,0) rotate(-30deg)}5%{opacity:.96}84%{opacity:.88}100%{opacity:0;transform:translate3d(var(--season-drift),112vh,0) rotate(650deg)}}
+@keyframes season-snow-fall{0%{opacity:0;transform:translate3d(0,-7vh,0) rotate(0deg)}4%{opacity:.94}91%{opacity:.86}100%{opacity:0;transform:translate3d(var(--season-drift),109vh,0) rotate(180deg)}}
+@keyframes season-gull-flight{0%{opacity:.9;transform:translate3d(-40px,0,0) scale(.82)}8%{opacity:.94}56%{opacity:.9}64%,100%{opacity:0;transform:translate3d(calc(100vw + 130px),-52px,0) scale(1)}}
+@media(max-width:760px){.seasonal-effect>span:nth-child(n+11){display:none}.summer-gull{width:30px;height:30px;animation-delay:-3s}.summer-gull-two{display:none}.home-landing.character-theme.season-spring{--season-position:42% center}.home-landing.character-theme.season-summer{--season-position:58% center}.home-landing.character-theme.season-autumn{--season-position:43% center}.home-landing.character-theme.season-winter{--season-position:61% center}}

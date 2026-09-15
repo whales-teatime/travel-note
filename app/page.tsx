@@ -25,19 +25,23 @@ type ThemeStyle = 'scenic' | 'character';
 
 const effectParticles = {
   spring: [
-    [4, 13, 0, 34, 16], [12, 16, 5, -26, 12], [21, 12, 8, 40, 14], [29, 18, 2, -34, 11],
-    [39, 14, 7, 28, 15], [48, 17, 11, -42, 12], [58, 13, 3, 32, 14], [67, 19, 9, -30, 11],
-    [76, 15, 6, 38, 16], [84, 18, 1, -36, 12], [92, 14, 10, 24, 14], [97, 20, 4, -28, 11],
+    [2, 11, 7, 42, 20], [8, 14, 3, -32, 16], [15, 12, 9, 48, 18], [22, 16, 5, -40, 15],
+    [29, 13, 11, 34, 19], [36, 15, 7, -50, 16], [43, 11, 2, 40, 18], [50, 17, 13, -36, 15],
+    [57, 12, 5, 46, 20], [64, 15, 10, -44, 16], [71, 13, 1, 32, 18], [78, 16, 8, -50, 15],
+    [85, 11, 6, 38, 19], [91, 14, 12, -34, 16], [96, 13, 4, 42, 18], [99, 17, 9, -30, 15],
   ],
   autumn: [
-    [3, 16, 1, 48, 18], [14, 20, 9, -42, 15], [27, 18, 4, 56, 17], [41, 22, 13, -50, 14],
-    [55, 17, 7, 42, 18], [68, 21, 2, -58, 15], [81, 19, 11, 50, 17], [94, 23, 6, -44, 14],
+    [2, 13, 7, 58, 25], [10, 17, 2, -50, 21], [18, 15, 11, 66, 23], [27, 19, 6, -58, 20],
+    [36, 14, 9, 52, 24], [45, 18, 3, -68, 21], [54, 16, 13, 60, 23], [63, 20, 7, -54, 20],
+    [72, 13, 4, 48, 24], [80, 17, 12, -62, 21], [87, 15, 1, 56, 23], [93, 19, 10, -48, 20],
+    [97, 14, 5, 44, 24], [99, 18, 14, -42, 21],
   ],
   winter: [
-    [2, 12, 1, 22, 10], [8, 17, 8, -18, 14], [15, 14, 4, 20, 9], [22, 19, 12, -24, 12],
-    [30, 13, 6, 18, 11], [37, 18, 2, -20, 15], [44, 15, 10, 24, 9], [51, 20, 5, -22, 13],
-    [58, 14, 11, 18, 10], [65, 17, 3, -24, 14], [72, 12, 9, 20, 9], [79, 19, 1, -18, 13],
-    [86, 15, 7, 24, 11], [93, 18, 13, -22, 14], [98, 13, 4, 16, 9],
+    [1, 10, 6, 24, 13], [6, 14, 2, -22, 18], [11, 12, 9, 26, 14], [17, 16, 5, -28, 17],
+    [23, 11, 8, 22, 15], [29, 15, 3, -26, 19], [35, 13, 11, 28, 13], [41, 17, 7, -24, 18],
+    [47, 10, 1, 26, 15], [53, 14, 10, -28, 17], [59, 12, 4, 24, 14], [65, 16, 12, -26, 19],
+    [71, 11, 5, 28, 13], [77, 15, 9, -24, 18], [83, 13, 2, 26, 15], [89, 17, 13, -28, 17],
+    [94, 10, 7, 22, 14], [98, 14, 3, -24, 19], [4, 16, 12, 30, 13], [86, 12, 6, -22, 18],
   ],
 } as const;
 
@@ -72,7 +76,8 @@ export default function HomePage() {
   const { currency, setCurrency } = useCurrency(language);
   const autoSeason = currentSeason();
   const [theme, setTheme] = useState<ThemeKey>('auto');
-  const [themeStyle, setThemeStyle] = useState<ThemeStyle>('scenic');
+  const [themeStyle, setThemeStyle] = useState<ThemeStyle>('character');
+  const [effectsEnabled, setEffectsEnabled] = useState(true);
   const [themeOpen, setThemeOpen] = useState(false);
   const season = theme === 'auto' ? autoSeason : seasonFor(theme);
   const seasonLabel = language === 'en' ? season.englishLabel : season.label;
@@ -100,8 +105,10 @@ export default function HomePage() {
     const settings = window.localStorage.getItem('route-note-trip-settings');
     const savedTheme = window.localStorage.getItem('route-note-theme') as ThemeKey | null;
     const savedThemeStyle = window.localStorage.getItem('route-note-theme-style') as ThemeStyle | null;
+    const savedEffects = window.localStorage.getItem('route-note-seasonal-effects');
     if (savedTheme && (savedTheme === 'auto' || ['spring', 'summer', 'autumn', 'winter'].includes(savedTheme))) setTheme(savedTheme);
     if (savedThemeStyle === 'scenic' || savedThemeStyle === 'character') setThemeStyle(savedThemeStyle);
+    if (savedEffects === 'off') setEffectsEnabled(false);
     if (saved) {
       setHasDraft(true);
       try {
@@ -121,6 +128,11 @@ export default function HomePage() {
   const chooseThemeStyle = (next: ThemeStyle) => {
     setThemeStyle(next);
     window.localStorage.setItem('route-note-theme-style', next);
+  };
+
+  const chooseEffects = (enabled: boolean) => {
+    setEffectsEnabled(enabled);
+    window.localStorage.setItem('route-note-seasonal-effects', enabled ? 'on' : 'off');
   };
 
   const clearDraft = () => {
@@ -143,7 +155,7 @@ export default function HomePage() {
 
   return <main className={`home-landing season-${season.key} ${themeStyle}-theme`}>
     <div className="home-season-wash" aria-hidden="true" />
-    <SeasonalEffect season={season.key} />
+    {effectsEnabled && <SeasonalEffect season={season.key} />}
     <header className="landing-topbar">
       <Link className="landing-brand" href="/"><span className="landing-brand-mark"><MapPin /></span><span>{text('여행을 떠나요', 'Let’s Travel')}<span className="brand-note">♬</span></span></Link>
       <nav className="landing-nav" aria-label={text('주요 메뉴', 'Main menu')}>
@@ -169,6 +181,12 @@ export default function HomePage() {
             <div className="theme-style-choice" aria-label={text('테마 스타일 선택', 'Choose theme style')}>
               <button type="button" className={themeStyle === 'scenic' ? 'is-selected' : ''} onClick={() => chooseThemeStyle('scenic')}>{text('풍경 테마', 'Scenery')}</button>
               <button type="button" className={themeStyle === 'character' ? 'is-selected' : ''} onClick={() => chooseThemeStyle('character')}>{text('캐릭터 테마', 'Character')}</button>
+            </div>
+            <div className="theme-menu-divider" />
+            <strong>{text('계절 효과', 'Seasonal effects')}</strong>
+            <div className="theme-style-choice" aria-label={text('계절 효과 선택', 'Choose seasonal effects')}>
+              <button type="button" className={effectsEnabled ? 'is-selected' : ''} onClick={() => chooseEffects(true)}>{text('켜기', 'On')}</button>
+              <button type="button" className={!effectsEnabled ? 'is-selected' : ''} onClick={() => chooseEffects(false)}>{text('끄기', 'Off')}</button>
             </div>
             <div className="theme-menu-divider" />
             <strong>{text('언어', 'Language')}</strong>
