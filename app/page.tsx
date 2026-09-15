@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import type { CSSProperties } from 'react';
 import Link from 'next/link';
-import { Activity, ArrowRight, BookOpen, ChevronDown, Compass, LockKeyhole, LogOut, MapPin, MessageSquareText, Plane, Settings2, Trash2 } from 'lucide-react';
+import { Activity, ArrowRight, Bird, BookOpen, ChevronDown, Compass, LockKeyhole, LogOut, MapPin, MessageSquareText, Plane, Settings2, Trash2 } from 'lucide-react';
 import type { PlanSummary } from '@/components/plan-library';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -20,6 +21,33 @@ type Season = {
 };
 
 type ThemeKey = Season['key'] | 'auto';
+type ThemeStyle = 'scenic' | 'character';
+
+const effectParticles = {
+  spring: [
+    [4, 13, 0, 34, 16], [12, 16, 5, -26, 12], [21, 12, 8, 40, 14], [29, 18, 2, -34, 11],
+    [39, 14, 7, 28, 15], [48, 17, 11, -42, 12], [58, 13, 3, 32, 14], [67, 19, 9, -30, 11],
+    [76, 15, 6, 38, 16], [84, 18, 1, -36, 12], [92, 14, 10, 24, 14], [97, 20, 4, -28, 11],
+  ],
+  autumn: [
+    [3, 16, 1, 48, 18], [14, 20, 9, -42, 15], [27, 18, 4, 56, 17], [41, 22, 13, -50, 14],
+    [55, 17, 7, 42, 18], [68, 21, 2, -58, 15], [81, 19, 11, 50, 17], [94, 23, 6, -44, 14],
+  ],
+  winter: [
+    [2, 12, 1, 22, 10], [8, 17, 8, -18, 14], [15, 14, 4, 20, 9], [22, 19, 12, -24, 12],
+    [30, 13, 6, 18, 11], [37, 18, 2, -20, 15], [44, 15, 10, 24, 9], [51, 20, 5, -22, 13],
+    [58, 14, 11, 18, 10], [65, 17, 3, -24, 14], [72, 12, 9, 20, 9], [79, 19, 1, -18, 13],
+    [86, 15, 7, 24, 11], [93, 18, 13, -22, 14], [98, 13, 4, 16, 9],
+  ],
+} as const;
+
+function SeasonalEffect({ season }: { season: Season['key'] }) {
+  if (season === 'summer') {
+    return <div className="seasonal-effect seasonal-effect-summer" aria-hidden="true"><Bird className="summer-gull summer-gull-one" /><Bird className="summer-gull summer-gull-two" /></div>;
+  }
+  const glyphs = season === 'spring' ? ['❀', '✿', '❀'] : season === 'autumn' ? ['🍂', '🍁', '🍂'] : ['•', '❄', '•'];
+  return <div className={`seasonal-effect seasonal-effect-${season}`} aria-hidden="true">{effectParticles[season].map(([left, duration, delay, drift, size], index) => <span key={`${season}-${index}`} style={{ left: `${left}%`, fontSize: `${size}px`, animationDuration: `${duration}s`, animationDelay: `-${delay}s`, '--season-drift': `${drift}px` } as CSSProperties}>{glyphs[index % glyphs.length]}</span>)}</div>;
+}
 
 function currentSeason(): Season {
   const month = new Date().getMonth() + 1;
@@ -44,6 +72,7 @@ export default function HomePage() {
   const { currency, setCurrency } = useCurrency(language);
   const autoSeason = currentSeason();
   const [theme, setTheme] = useState<ThemeKey>('auto');
+  const [themeStyle, setThemeStyle] = useState<ThemeStyle>('scenic');
   const [themeOpen, setThemeOpen] = useState(false);
   const season = theme === 'auto' ? autoSeason : seasonFor(theme);
   const seasonLabel = language === 'en' ? season.englishLabel : season.label;
@@ -70,7 +99,9 @@ export default function HomePage() {
     const saved = window.localStorage.getItem('route-note-stops');
     const settings = window.localStorage.getItem('route-note-trip-settings');
     const savedTheme = window.localStorage.getItem('route-note-theme') as ThemeKey | null;
+    const savedThemeStyle = window.localStorage.getItem('route-note-theme-style') as ThemeStyle | null;
     if (savedTheme && (savedTheme === 'auto' || ['spring', 'summer', 'autumn', 'winter'].includes(savedTheme))) setTheme(savedTheme);
+    if (savedThemeStyle === 'scenic' || savedThemeStyle === 'character') setThemeStyle(savedThemeStyle);
     if (saved) {
       setHasDraft(true);
       try {
@@ -85,6 +116,11 @@ export default function HomePage() {
     setTheme(next);
     setThemeOpen(false);
     window.localStorage.setItem('route-note-theme', next);
+  };
+
+  const chooseThemeStyle = (next: ThemeStyle) => {
+    setThemeStyle(next);
+    window.localStorage.setItem('route-note-theme-style', next);
   };
 
   const clearDraft = () => {
@@ -105,8 +141,9 @@ export default function HomePage() {
   };
   const logoutAdmin = async () => { await fetch('/api/admin/session',{method:'DELETE'}).catch(()=>{});setAdminAuthenticated(false); };
 
-  return <main className={`home-landing season-${season.key}`}>
+  return <main className={`home-landing season-${season.key} ${themeStyle}-theme`}>
     <div className="home-season-wash" aria-hidden="true" />
+    <SeasonalEffect season={season.key} />
     <header className="landing-topbar">
       <Link className="landing-brand" href="/"><span className="landing-brand-mark"><MapPin /></span><span>{text('여행을 떠나요', 'Let’s Travel')}<span className="brand-note">♬</span></span></Link>
       <nav className="landing-nav" aria-label={text('주요 메뉴', 'Main menu')}>
@@ -123,7 +160,23 @@ export default function HomePage() {
         <Link className="landing-nav-link feedback-nav-link" href="/feedback"><MessageSquareText /><span>{text('피드백', 'Feedback')}</span></Link>
         <div className="theme-menu-wrap">
           <button type="button" className="theme-button" onClick={() => setThemeOpen(value => !value)} aria-label={text('테마 및 언어 설정', 'Theme and language settings')} aria-haspopup="true" aria-expanded={themeOpen}><Settings2 /><span>{text('설정', 'Settings')}</span></button>
-          {themeOpen && <div className="theme-menu" role="menu"><strong>{text('배경 테마', 'Background')}</strong><button type="button" className={theme === 'auto' ? 'is-selected' : ''} onClick={() => chooseTheme('auto')}><span className="theme-swatch auto-swatch" />{text('오늘의 계절', 'Today’s season')}<small>{text('자동', 'Auto')}</small></button>{(['spring', 'summer', 'autumn', 'winter'] as const).map(key => <button type="button" className={theme === key ? 'is-selected' : ''} key={key} onClick={() => chooseTheme(key)}><span className={`theme-swatch ${key}-swatch`} />{language === 'en' ? seasonFor(key).englishLabel : seasonFor(key).label}</button>)}<div className="theme-menu-divider" /><strong>{text('언어', 'Language')}</strong><div className="language-choice" aria-label={text('언어 선택', 'Choose language')}><button type="button" className={language === 'ko' ? 'is-selected' : ''} onClick={() => setLanguage('ko')}>한국어</button><button type="button" className={language === 'en' ? 'is-selected' : ''} onClick={() => setLanguage('en')}>English</button></div><div className="theme-menu-divider" /><strong>{text('통화', 'Currency')}</strong><div className="language-choice currency-choice" aria-label={text('통화 선택', 'Choose currency')}><button type="button" className={currency === 'KRW' ? 'is-selected' : ''} onClick={() => setCurrency('KRW')}>{text('원 (₩)', 'Won (₩)')}</button><button type="button" className={currency === 'USD' ? 'is-selected' : ''} onClick={() => setCurrency('USD')}>{text('달러 ($)', 'Dollar ($)')}</button></div></div>}
+          {themeOpen && <div className="theme-menu" role="menu">
+            <strong>{text('배경 테마', 'Background')}</strong>
+            <button type="button" className={theme === 'auto' ? 'is-selected' : ''} onClick={() => chooseTheme('auto')}><span className="theme-swatch auto-swatch" />{text('오늘의 계절', 'Today’s season')}<small>{text('자동', 'Auto')}</small></button>
+            {(['spring', 'summer', 'autumn', 'winter'] as const).map(key => <button type="button" className={theme === key ? 'is-selected' : ''} key={key} onClick={() => chooseTheme(key)}><span className={`theme-swatch ${key}-swatch`} />{language === 'en' ? seasonFor(key).englishLabel : seasonFor(key).label}</button>)}
+            <div className="theme-menu-divider" />
+            <strong>{text('테마 스타일', 'Theme style')}</strong>
+            <div className="theme-style-choice" aria-label={text('테마 스타일 선택', 'Choose theme style')}>
+              <button type="button" className={themeStyle === 'scenic' ? 'is-selected' : ''} onClick={() => chooseThemeStyle('scenic')}>{text('풍경 테마', 'Scenery')}</button>
+              <button type="button" className={themeStyle === 'character' ? 'is-selected' : ''} onClick={() => chooseThemeStyle('character')}>{text('캐릭터 테마', 'Character')}</button>
+            </div>
+            <div className="theme-menu-divider" />
+            <strong>{text('언어', 'Language')}</strong>
+            <div className="language-choice" aria-label={text('언어 선택', 'Choose language')}><button type="button" className={language === 'ko' ? 'is-selected' : ''} onClick={() => setLanguage('ko')}>한국어</button><button type="button" className={language === 'en' ? 'is-selected' : ''} onClick={() => setLanguage('en')}>English</button></div>
+            <div className="theme-menu-divider" />
+            <strong>{text('통화', 'Currency')}</strong>
+            <div className="language-choice currency-choice" aria-label={text('통화 선택', 'Choose currency')}><button type="button" className={currency === 'KRW' ? 'is-selected' : ''} onClick={() => setCurrency('KRW')}>{text('원 (₩)', 'Won (₩)')}</button><button type="button" className={currency === 'USD' ? 'is-selected' : ''} onClick={() => setCurrency('USD')}>{text('달러 ($)', 'Dollar ($)')}</button></div>
+          </div>}
         </div>
       </nav>
     </header>
