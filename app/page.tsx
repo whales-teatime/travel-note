@@ -58,7 +58,10 @@ const winterCrystals = [
 
 function SeasonalEffect({ season }: { season: Season['key'] }) {
   if (season === 'summer') {
-    return <div className="seasonal-effect seasonal-effect-summer" aria-hidden="true"><span className="summer-gull summer-gull-one" /><span className="summer-gull summer-gull-two" /></div>;
+    return <div className="seasonal-effect seasonal-effect-summer" aria-hidden="true">
+      <span className="summer-gull summer-gull-one"><span className="summer-gull-frame summer-gull-frame-up" /><span className="summer-gull-frame summer-gull-frame-down" /></span>
+      <span className="summer-gull summer-gull-two"><span className="summer-gull-frame summer-gull-frame-up" /><span className="summer-gull-frame summer-gull-frame-down" /></span>
+    </div>;
   }
   return <div className={`seasonal-effect seasonal-effect-${season}`} aria-hidden="true">
     {effectParticles[season].map(([left, duration, delay, drift, size], index) => <span key={`${season}-${index}`} style={{ left: `${left}%`, animationDuration: `${duration}s`, animationDelay: `-${delay}s`, '--season-size': `${size}px`, '--season-drift-a': `${Math.round(drift * -.55)}px`, '--season-drift-b': `${Math.round(drift * .8)}px`, '--season-drift-c': `${Math.round(drift * -.32)}px`, '--season-drift': `${drift}px`, '--season-spin': `${index % 2 === 0 ? 620 : -620}deg` } as CSSProperties} />)}
