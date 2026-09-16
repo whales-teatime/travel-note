@@ -24,6 +24,18 @@ function localizeSearchText(value: string) {
   return output.replace(/\s+/g, ' ').trim();
 }
 
+function naverSearchArea(value: string) {
+  const localized = localizeSearchText(value);
+  // Destination autocomplete stores labels such as "전주, 대한민국" or
+  // "Jeonju, South Korea". Naver local search performs poorly when that
+  // display label is prefixed verbatim, so use the city portion only.
+  return (localized.split(',')[0] || localized)
+    .replace(/\b(?:south korea|republic of korea|korea)\b/gi, '')
+    .replace(/-(?:si|gun|gu)$/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 const TITLE_TRANSLATIONS: Array<[RegExp, string]> = [
   [/시외버스터미널/g, ' Intercity Bus Terminal '], [/고속버스터미널/g, ' Express Bus Terminal '], [/버스터미널/g, ' Bus Terminal '], [/터미널/g, ' Terminal '],
   [/한옥마을/g, ' Hanok Village '], [/남부시장/g, ' Nambu Market '], [/야시장/g, ' Night Market '], [/시청/g, ' City Hall '],
@@ -90,12 +102,15 @@ function displayItems(items: SearchItem[], language: SearchLanguage) {
 
 function searchQueries(query: string, near: string) {
   const localizedQuery = localizeSearchText(query);
-  const localizedNear = localizeSearchText(near);
+  const localizedNear = naverSearchArea(near);
   const wordCount = localizedQuery.split(/\s+/).filter(Boolean).length;
   // Keep multi-word queries intact: they often contain an explicit city or district.
   // Use the trip destination only for short, generic searches such as "카페" or "야시장".
   const scoped = localizedNear && wordCount <= 1 && !localizedQuery.includes(localizedNear) ? `${localizedNear} ${localizedQuery}` : localizedQuery;
-  const variants = [scoped];
+  // Always retain the unscoped query as a fallback. A city hint should
+  // improve ranking, but a malformed or unusually translated destination
+  // must never turn a valid business search into an empty result.
+  const variants = scoped === localizedQuery ? [scoped] : [scoped, localizedQuery];
   const compact = scoped.replace(/\s+/g, '');
   if (localizedQuery.includes('야시장')) {
     const area = localizedNear || localizedQuery.replace(/야시장/g, '').trim();
@@ -142,7 +157,7 @@ export async function GET(request: Request) {
   }));
   if (!responses.some(response => response.ok)) return Response.json({ message: '네이버 장소 검색 중 오류가 발생했습니다.' }, { status: 502 });
   const seen = new Set<string>();
-  const nearToken = localizeSearchText(near).replace(/\s+/g, '').replace(/(특별자치)?도$/,'').toLocaleLowerCase('ko-KR');
+  const nearToken = naverSearchArea(near).replace(/\s+/g, '').replace(/(특별자치)?도$/,'').toLocaleLowerCase('ko-KR');
   const items = responses.flatMap(response => response.items).filter(item => {
     const title = (item.title ?? '').replace(/<[^>]*>/g, '').trim();
     const key = `${title}|${item.roadAddress || item.address}`;
