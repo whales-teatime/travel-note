@@ -55,10 +55,14 @@ function ComboboxInput({
   disabled = false,
   showTrigger = true,
   showClear = false,
+  clearLabel = 'Clear',
+  onClear,
   ...props
 }: ComboboxPrimitive.Input.Props & {
   showTrigger?: boolean;
   showClear?: boolean;
+  clearLabel?: string;
+  onClear?: React.MouseEventHandler<HTMLButtonElement>;
 }) {
   return (
     <InputGroup className={cn('w-auto', className)}>
@@ -77,7 +81,14 @@ function ComboboxInput({
             disabled={disabled}
           />
         )}
-        {showClear && <ComboboxClear disabled={disabled} />}
+        {showClear && (
+          <ComboboxClear
+            disabled={disabled}
+            aria-label={clearLabel}
+            title={clearLabel}
+            onClick={onClear}
+          />
+        )}
       </InputGroupAddon>
       {children}
     </InputGroup>
