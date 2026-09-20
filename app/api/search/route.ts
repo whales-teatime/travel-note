@@ -164,12 +164,22 @@ export async function GET(request: Request) {
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
-  }).sort((a,b)=>{
+  });
+  // The unscoped fallback query is useful when Naver does not understand a
+  // short business name, but it can also return the same name in Seoul (or
+  // another city) while the trip is set to Jeonju. Keep the result list tied
+  // to the selected destination whenever a city context is available. This
+  // is intentionally a hard filter: showing a distant same-name place is
+  // more confusing than showing an empty list the user can refine.
+  const localItems = nearToken
+    ? items.filter(item => `${item.address ?? ''}${item.roadAddress ?? ''}`.replace(/\s+/g, '').toLocaleLowerCase('ko-KR').includes(nearToken))
+    : items;
+  const itemsForResponse = (nearToken ? localItems : items).sort((a,b)=>{
     if(!nearToken)return 0;
     const score=(item:SearchItem)=>`${item.address??''}${item.roadAddress??''}`.replace(/\s+/g,'').toLocaleLowerCase('ko-KR').includes(nearToken)?1:0;
     return score(b)-score(a);
   }).slice(0, 10);
-  resultCache.set(cacheKey, { expires: Date.now() + 5 * 60 * 1000, items });
+  resultCache.set(cacheKey, { expires: Date.now() + 5 * 60 * 1000, items: itemsForResponse });
   while (resultCache.size > MAX_CACHE_ENTRIES) resultCache.delete(resultCache.keys().next().value as string);
-  return Response.json({ items: displayItems(items, language) }, { headers: { 'Cache-Control': 'private, max-age=60' } });
+  return Response.json({ items: displayItems(itemsForResponse, language) }, { headers: { 'Cache-Control': 'private, max-age=60' } });
 }
