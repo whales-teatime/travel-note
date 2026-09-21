@@ -40,8 +40,9 @@ type Stop = { id: string; day: DayKey; time: string; name: string; category: Pla
 type SearchPlace = { title: string; category: string; address: string; roadAddress: string; mapx: string; mapy: string; link?: string; description?: string; titleEnglish?: string; categoryEnglish?: string; addressEnglish?: string; roadAddressEnglish?: string; provider?: MapProvider; placeId?: string; region?: string; country?: string; googlePrediction?: any };
 type EditPolicy = 'owner' | 'all' | 'password';
 type TripDestination = { id: string; name: string; startDate: string; endDate: string; lat?: number; lng?: number; region?: string; country?: string };
-type TripSettings = { title: string; destination: string; startDate: string; endDate: string; people: number; editPolicy: EditPolicy; mapProvider: MapProvider; destinations?: TripDestination[] };
-type StoredPlan = { id: string; title: string; destination: string; startDate: string; endDate: string; people: number; editPolicy?: EditPolicy; mapProvider?: MapProvider; destinations?: TripDestination[]; passwordProtected?: boolean; editPasswordProtected?: boolean; updatedAt?: string; version?: number; stops: Stop[] };
+type ViewMode = 'route' | 'distance';
+type TripSettings = { title: string; destination: string; startDate: string; endDate: string; people: number; editPolicy: EditPolicy; mapProvider: MapProvider; viewMode: ViewMode; destinations?: TripDestination[] };
+type StoredPlan = { id: string; title: string; destination: string; startDate: string; endDate: string; people: number; editPolicy?: EditPolicy; mapProvider?: MapProvider; viewMode?: ViewMode; destinations?: TripDestination[]; passwordProtected?: boolean; editPasswordProtected?: boolean; updatedAt?: string; version?: number; stops: Stop[] };
 type SavedDraft = { settings: TripSettings; stops: Stop[]; savedAt: string };
 type MapFocusRequest = { id: string; nonce: number };
 
@@ -52,7 +53,7 @@ declare global {
 const DAY_COLORS = ['#ff5b35', '#2279f2', '#7257d9', '#0c9b75', '#d15d9a', '#db8b18'];
 const DEFAULT_MAP_CENTER = { lat:35.8242, lng:127.1534 };
 const DEFAULT_WORLD_CENTER = { lat:20, lng:0 };
-const DEFAULT_TRIP: TripSettings = { title:'전주 맛집 여행', destination:'전주', startDate:'2026-09-19', endDate:'2026-09-20', people:5, editPolicy:'owner', mapProvider:'naver' };
+const DEFAULT_TRIP: TripSettings = { title:'전주 맛집 여행', destination:'전주', startDate:'2026-09-19', endDate:'2026-09-20', people:5, editPolicy:'owner', mapProvider:'naver', viewMode:'route' };
 const PLACE_CATEGORIES: PlaceType[] = ['식사','간식','관광','숙소','교통','기타'];
 const suggestionCache = new globalThis.Map<string, SearchPlace[]>();
 
@@ -320,6 +321,18 @@ function distanceKm(a: Stop, b: Stop) {
   const h = Math.sin(dLat/2)**2 + Math.sin(dLng/2)**2*Math.cos(lat1)*Math.cos(lat2);
   return r*2*Math.atan2(Math.sqrt(h), Math.sqrt(1-h));
 }
+function formatDistance(value:number, language:'ko'|'en') {
+  if (value < 1) return `${Math.round(value * 1000)}${language === 'en' ? ' m' : 'm'}`;
+  return `${value.toFixed(value < 10 ? 1 : 0)}${language === 'en' ? ' km' : 'km'}`;
+}
+function DistanceComparison({stops,dayKeys,text,language}:{stops:Stop[];dayKeys:DayKey[];text:(korean:string,english:string)=>string;language:'ko'|'en'}) {
+  const bases=stops.slice(0,4),candidates=stops.slice(4);
+  if (stops.length<5) return <div className="distance-comparison-empty"><CircleAlert/><span>{text('거점 4곳과 후보 장소를 비교하려면 장소를 5곳 이상 추가해주세요.','Add at least five places to compare four bases with candidate places.')}</span></div>;
+  return <section className="distance-comparison" aria-label={text('장소별 직선거리 비교','Straight-line distance comparison')}>
+    <div className="distance-comparison-heading"><div><span><Navigation/>{text('장소별 직선거리 비교','Straight-line distance comparison')}</span><strong>{text('앞 4곳은 거점 · 뒤 장소는 후보','First 4 are bases · the rest are candidates')}</strong></div><small>{text('직선거리 기준이라 실제 이동거리와는 다를 수 있어요.','Straight-line distances; actual travel distances may differ.')}</small></div>
+    <div className="distance-comparison-scroll"><table><thead><tr><th scope="col">{text('후보 장소','Candidate')}</th>{bases.map((base,index)=><th scope="col" key={base.id}><i style={{background:categoryColor(base.day,dayKeys,base.category,base.pinColor)}}/>{text('거점','Base')} {index+1}<small>{base.name}</small></th>)}</tr></thead><tbody>{candidates.map((candidate,index)=>{const values=bases.map(base=>distanceKm(base,candidate));const best=Math.min(...values);return <tr key={candidate.id}><th scope="row"><b style={{background:categoryColor(candidate.day,dayKeys,candidate.category,candidate.pinColor)}}>{index+5}</b><span>{candidate.name}<small>{candidate.address}</small></span></th>{values.map((value,baseIndex)=><td key={`${candidate.id}-${bases[baseIndex].id}`} className={value===best?'is-nearest':''}>{formatDistance(value,language)}</td>)}</tr>})}</tbody></table></div>
+  </section>;
+}
 function coordinateDistanceKm(a:{lat:number;lng:number},b:{lat:number;lng:number}) {
   const r=6371,rad=(value:number)=>value*Math.PI/180, dLat=rad(b.lat-a.lat), dLng=rad(b.lng-a.lng), lat1=rad(a.lat), lat2=rad(b.lat);
   const h=Math.sin(dLat/2)**2+Math.sin(dLng/2)**2*Math.cos(lat1)*Math.cos(lat2);
@@ -506,7 +519,7 @@ function loadNaverMaps(clientId: string, language: 'ko' | 'en') {
   return window.__naverMapsLoading;
 }
 
-function NaverMap({stops,clientId,destination,onSelect,placeResults,onPlaceSelect,dateLabels,activeDay,onDayChange,editableStopId,onStopPositionChange,onCancelStopPositionEdit,customPin,customPinMode,onCustomLocationChange,onCustomAddressChange,onCustomPinContinue,onMapTap,mapFocused,onToggleMapFocus,plannerCollapsed,focusRequest}:{stops:Stop[];clientId:string;destination:string;onSelect:(stop:Stop)=>void;placeResults:SearchPlace[];onPlaceSelect:(place:SearchPlace)=>void;dateLabels:Record<DayKey,string>;activeDay:DayKey;onDayChange:(day:DayKey)=>void;editableStopId:string|null;onStopPositionChange:(id:string,lat:number,lng:number)=>void;onCancelStopPositionEdit:()=>void;customPin:{lat:number;lng:number}|null;customPinMode:boolean;onCustomLocationChange:(point:{lat:number;lng:number})=>void;onCustomAddressChange:(address:string)=>void;onCustomPinContinue:()=>void;onMapTap:()=>void;mapFocused:boolean;onToggleMapFocus:()=>void;plannerCollapsed:boolean;focusRequest:MapFocusRequest|null}) {
+function NaverMap({stops,clientId,destination,onSelect,placeResults,onPlaceSelect,dateLabels,activeDay,onDayChange,editableStopId,onStopPositionChange,onCancelStopPositionEdit,customPin,customPinMode,onCustomLocationChange,onCustomAddressChange,onCustomPinContinue,onMapTap,mapFocused,onToggleMapFocus,plannerCollapsed,focusRequest,distanceMode}:{stops:Stop[];clientId:string;destination:string;onSelect:(stop:Stop)=>void;placeResults:SearchPlace[];onPlaceSelect:(place:SearchPlace)=>void;dateLabels:Record<DayKey,string>;activeDay:DayKey;onDayChange:(day:DayKey)=>void;editableStopId:string|null;onStopPositionChange:(id:string,lat:number,lng:number)=>void;onCancelStopPositionEdit:()=>void;customPin:{lat:number;lng:number}|null;customPinMode:boolean;onCustomLocationChange:(point:{lat:number;lng:number})=>void;onCustomAddressChange:(address:string)=>void;onCustomPinContinue:()=>void;onMapTap:()=>void;mapFocused:boolean;onToggleMapFocus:()=>void;plannerCollapsed:boolean;focusRequest:MapFocusRequest|null;distanceMode?:boolean}) {
   const { language } = useLanguage();
   const text = (korean:string, english:string) => tr(language, korean, english);
   const containerRef=useRef<HTMLDivElement>(null), mapRef=useRef<any>(null), overlaysRef=useRef<any[]>([]), placeOverlaysRef=useRef<any[]>([]), customOverlayRef=useRef<any>(null);
@@ -615,8 +628,8 @@ function NaverMap({stops,clientId,destination,onSelect,placeResults,onPlaceSelec
       if(editableStopId===stop.id){naver.maps.Event.addListener(marker,'dragend',()=>{const point=marker.getPosition();onStopPositionChange(stop.id,point.lat(),point.lng())})}
       overlaysRef.current.push(marker);
     });
-    if(stops.length>1){const line=new naver.maps.Polyline({map,path:stops.map(s=>new naver.maps.LatLng(s.lat,s.lng)),strokeColor:dayColor(stops[0].day,orderedDays),strokeWeight:5,strokeOpacity:.7,strokeStyle:'shortdash',zIndex:20});overlaysRef.current.push(line)}
-  },[stops,status,onSelect,editableStopId,onStopPositionChange,dateLabels,orderedDays,focusRequest]);
+    if(stops.length>1&&!distanceMode){const line=new naver.maps.Polyline({map,path:stops.map(s=>new naver.maps.LatLng(s.lat,s.lng)),strokeColor:dayColor(stops[0].day,orderedDays),strokeWeight:5,strokeOpacity:.7,strokeStyle:'shortdash',zIndex:20});overlaysRef.current.push(line)}
+  },[stops,status,onSelect,editableStopId,onStopPositionChange,dateLabels,orderedDays,focusRequest,distanceMode]);
   useEffect(()=>{
     const map=mapRef.current,naver=window.naver,target=focusRequest&&stops.find(stop=>stop.id===focusRequest.id);
     if(!map||!naver?.maps||status!=='ready'||!target)return;
@@ -688,7 +701,7 @@ function NaverMap({stops,clientId,destination,onSelect,placeResults,onPlaceSelec
   </div>
 }
 
-function GoogleMap({stops,apiKey,destination,onSelect,placeResults,onPlaceSelect,dateLabels,activeDay,onDayChange,editableStopId,onStopPositionChange,onCancelStopPositionEdit,customPin,customPinMode,onCustomLocationChange,onCustomAddressChange,onCustomPinContinue,onMapTap,mapFocused,onToggleMapFocus,plannerCollapsed,focusRequest}:{stops:Stop[];apiKey:string;destination:string;onSelect:(stop:Stop)=>void;placeResults:SearchPlace[];onPlaceSelect:(place:SearchPlace)=>void;dateLabels:Record<DayKey,string>;activeDay:DayKey;onDayChange:(day:DayKey)=>void;editableStopId:string|null;onStopPositionChange:(id:string,lat:number,lng:number)=>void;onCancelStopPositionEdit:()=>void;customPin:{lat:number;lng:number}|null;customPinMode:boolean;onCustomLocationChange:(point:{lat:number;lng:number})=>void;onCustomAddressChange:(address:string)=>void;onCustomPinContinue:()=>void;onMapTap:()=>void;mapFocused:boolean;onToggleMapFocus:()=>void;plannerCollapsed:boolean;focusRequest:MapFocusRequest|null}) {
+function GoogleMap({stops,apiKey,destination,onSelect,placeResults,onPlaceSelect,dateLabels,activeDay,onDayChange,editableStopId,onStopPositionChange,onCancelStopPositionEdit,customPin,customPinMode,onCustomLocationChange,onCustomAddressChange,onCustomPinContinue,onMapTap,mapFocused,onToggleMapFocus,plannerCollapsed,focusRequest,distanceMode}:{stops:Stop[];apiKey:string;destination:string;onSelect:(stop:Stop)=>void;placeResults:SearchPlace[];onPlaceSelect:(place:SearchPlace)=>void;dateLabels:Record<DayKey,string>;activeDay:DayKey;onDayChange:(day:DayKey)=>void;editableStopId:string|null;onStopPositionChange:(id:string,lat:number,lng:number)=>void;onCancelStopPositionEdit:()=>void;customPin:{lat:number;lng:number}|null;customPinMode:boolean;onCustomLocationChange:(point:{lat:number;lng:number})=>void;onCustomAddressChange:(address:string)=>void;onCustomPinContinue:()=>void;onMapTap:()=>void;mapFocused:boolean;onToggleMapFocus:()=>void;plannerCollapsed:boolean;focusRequest:MapFocusRequest|null;distanceMode?:boolean}) {
   const {language}=useLanguage();
   const text=(korean:string,english:string)=>tr(language,korean,english);
   const containerRef=useRef<HTMLDivElement>(null),mapRef=useRef<any>(null),overlaysRef=useRef<any[]>([]),placeOverlaysRef=useRef<any[]>([]),customOverlayRef=useRef<any>(null);
@@ -753,9 +766,9 @@ function GoogleMap({stops,apiKey,destination,onSelect,placeResults,onPlaceSelect
       if(isFocused)focusTimers.push(window.setTimeout(()=>marker.setAnimation(null),2200));
       overlaysRef.current.push(marker);
     });
-    if(stops.length>1)overlaysRef.current.push(new google.maps.Polyline({map,path:stops.map(stop=>({lat:stop.lat,lng:stop.lng})),strokeColor:dayColor(stops[0].day,orderedDays),strokeWeight:5,strokeOpacity:.72,icons:[{icon:{path:'M 0,-1 0,1',strokeOpacity:1,scale:2},offset:'0',repeat:'14px'}]}));
+    if(stops.length>1&&!distanceMode)overlaysRef.current.push(new google.maps.Polyline({map,path:stops.map(stop=>({lat:stop.lat,lng:stop.lng})),strokeColor:dayColor(stops[0].day,orderedDays),strokeWeight:5,strokeOpacity:.72,icons:[{icon:{path:'M 0,-1 0,1',strokeOpacity:1,scale:2},offset:'0',repeat:'14px'}]}));
     return()=>focusTimers.forEach(timer=>window.clearTimeout(timer));
-  },[stops,status,onSelect,editableStopId,onStopPositionChange,orderedDays,focusRequest]);
+  },[stops,status,onSelect,editableStopId,onStopPositionChange,orderedDays,focusRequest,distanceMode]);
   useEffect(()=>{
     const map=mapRef.current,google=window.google,target=focusRequest&&stops.find(stop=>stop.id===focusRequest.id);
     if(!map||!google?.maps||status!=='ready'||!target)return;
@@ -845,7 +858,7 @@ async function fetchLocalizedFreeMapStyle(_language:'ko'|'en') {
   return style;
 }
 
-function OsmMap({stops,destination,onSelect,placeResults,onPlaceSelect,dateLabels,activeDay,onDayChange,editableStopId,onStopPositionChange,onCancelStopPositionEdit,customPin,customPinMode,onCustomLocationChange,onCustomAddressChange,onCustomPinContinue,onMapTap,mapFocused,onToggleMapFocus,plannerCollapsed,focusRequest}:{stops:Stop[];destination:string;onSelect:(stop:Stop)=>void;placeResults:SearchPlace[];onPlaceSelect:(place:SearchPlace)=>void;dateLabels:Record<DayKey,string>;activeDay:DayKey;onDayChange:(day:DayKey)=>void;editableStopId:string|null;onStopPositionChange:(id:string,lat:number,lng:number)=>void;onCancelStopPositionEdit:()=>void;customPin:{lat:number;lng:number}|null;customPinMode:boolean;onCustomLocationChange:(point:{lat:number;lng:number})=>void;onCustomAddressChange:(address:string)=>void;onCustomPinContinue:()=>void;onMapTap:()=>void;mapFocused:boolean;onToggleMapFocus:()=>void;plannerCollapsed:boolean;focusRequest:MapFocusRequest|null}) {
+function OsmMap({stops,destination,onSelect,placeResults,onPlaceSelect,dateLabels,activeDay,onDayChange,editableStopId,onStopPositionChange,onCancelStopPositionEdit,customPin,customPinMode,onCustomLocationChange,onCustomAddressChange,onCustomPinContinue,onMapTap,mapFocused,onToggleMapFocus,plannerCollapsed,focusRequest,distanceMode}:{stops:Stop[];destination:string;onSelect:(stop:Stop)=>void;placeResults:SearchPlace[];onPlaceSelect:(place:SearchPlace)=>void;dateLabels:Record<DayKey,string>;activeDay:DayKey;onDayChange:(day:DayKey)=>void;editableStopId:string|null;onStopPositionChange:(id:string,lat:number,lng:number)=>void;onCancelStopPositionEdit:()=>void;customPin:{lat:number;lng:number}|null;customPinMode:boolean;onCustomLocationChange:(point:{lat:number;lng:number})=>void;onCustomAddressChange:(address:string)=>void;onCustomPinContinue:()=>void;onMapTap:()=>void;mapFocused:boolean;onToggleMapFocus:()=>void;plannerCollapsed:boolean;focusRequest:MapFocusRequest|null;distanceMode?:boolean}) {
   const { language } = useLanguage();
   const text = (korean:string, english:string) => tr(language,korean,english);
   const containerRef=useRef<HTMLDivElement>(null);
@@ -953,7 +966,7 @@ function OsmMap({stops,destination,onSelect,placeResults,onPlaceSelect,dateLabel
     stopMarkersRef.current.forEach(marker=>marker.remove());stopMarkersRef.current=[];
     const coordinates=current.stops.map(stop=>[stop.lng,stop.lat]);
     const sourceId='osm-itinerary-route';
-    const data={type:'Feature',properties:{},geometry:{type:'LineString',coordinates:coordinates.length>1?coordinates:[]}};
+    const data={type:'Feature',properties:{},geometry:{type:'LineString',coordinates:!distanceMode&&coordinates.length>1?coordinates:[]}};
     const source=map.getSource(sourceId);
     if(source)source.setData(data);else{
       map.addSource(sourceId,{type:'geojson',data});
@@ -992,7 +1005,7 @@ function OsmMap({stops,destination,onSelect,placeResults,onPlaceSelect,dateLabel
       const bounds=new maplibreRef.current.LngLatBounds();current.stops.forEach(stop=>bounds.extend([stop.lng,stop.lat]));
       map.fitBounds(bounds,{padding:90,maxZoom:13,duration:550});
     }
-  },[stops,status,editableStopId,onSelect,onStopPositionChange,dateLabels,focusRequest]);
+  },[stops,status,editableStopId,onSelect,onStopPositionChange,dateLabels,focusRequest,distanceMode]);
   useEffect(()=>{
     const map=mapRef.current,target=focusRequest&&latestRef.current.stops.find(stop=>stop.id===focusRequest.id);
     if(!map||status!=='ready'||!target)return;
@@ -1128,7 +1141,7 @@ export default function Home(){
   const applyStoredPlan=useCallback((data:StoredPlan,editToken?:string,permission?:boolean,adminAuthenticated=false)=>{
     const mapProvider:MapProvider=data.mapProvider==='google'?'google':data.mapProvider==='osm'?'osm':'naver';
     const storedDestinations=Array.isArray(data.destinations)&&data.destinations.length?data.destinations:undefined;
-    const settings={title:data.title,destination:storedDestinations?.[0]?.name||data.destination,startDate:data.startDate,endDate:data.endDate,people:data.people,editPolicy:data.editPolicy==='all'?'all':data.editPolicy==='password'?'password':'owner' as EditPolicy,mapProvider,destinations:storedDestinations};
+    const settings={title:data.title,destination:storedDestinations?.[0]?.name||data.destination,startDate:data.startDate,endDate:data.endDate,people:data.people,editPolicy:data.editPolicy==='all'?'all':data.editPolicy==='password'?'password':'owner' as EditPolicy,mapProvider,viewMode:data.viewMode==='distance'?'distance' as ViewMode:'route' as ViewMode,destinations:storedDestinations};
     const normalizedStops=(data.stops||[]).map(stop=>({...stop,day:normalizeStoredDay(String(stop.day),data.startDate,data.endDate),category:normalizeCategory(String(stop.category)),mapProvider:stop.mapProvider||mapProvider}));
     const editable=permission??Boolean(editToken);rememberPlanVisit(data);setPlanId(data.id);setPlanUpdatedAt(data.updatedAt||'');setPlanVersion(Math.max(1,Number(data.version)||1));setIsLocalDraft(false);setCanEdit(editable);setAdminMode(adminAuthenticated);setTripSettings(settings);setSettingsDraft(settings);setStops(normalizedStops);setActiveDay(dateDayKey(data.startDate)||firstDefaultDay);setCustomDay(dateDayKey(data.startDate)||firstDefaultDay);setPlanPassword('');setPlanPasswordAuth('');setPasswordConfigured(Boolean(data.passwordProtected));setPlanPasswordTouched(false);setShowPlanPassword(false);setEditPassword('');setEditPasswordAuth('');setEditPasswordConfigured(Boolean(data.editPasswordProtected));setEditPasswordTouched(false);setShowEditPassword(false);setPlanLoading(false);savedSnapshotRef.current=itinerarySnapshot(settings,normalizedStops);
     if(editToken)localStorage.setItem(`route-note-edit-token-${data.id}`,editToken);
@@ -1156,7 +1169,7 @@ export default function Home(){
           if(alive)applyStoredPlan(body.plan,undefined,body.canEdit,body.adminAuthenticated);
         }catch(error){if(alive){setPlanLoading(false);setPlanSaveMessage(error instanceof Error?error.message:'계획을 불러오지 못했습니다. 다시 시도해주세요.')}}
       }else if(isDraft){loadLocalDraft();if(alive)setPlanLoading(false)}
-      else if(alive){setStops([]);const clean={...DEFAULT_TRIP,title:window.localStorage.getItem('travel-note-language')==='en'?'My trip':'나의 여행',destination:'',destinations:[],people:1,editPolicy:'owner' as EditPolicy,mapProvider:mode==='overseas'?'osm' as MapProvider:'naver' as MapProvider};setTripSettings(clean);setSettingsDraft(clean);setPlanPassword('');setPlanPasswordAuth('');setPasswordConfigured(false);setPlanPasswordTouched(false);setShowPlanPassword(false);setEditPassword('');setEditPasswordAuth('');setEditPasswordConfigured(false);setEditPasswordTouched(false);setShowEditPassword(false);setCanEdit(true);setPlanUpdatedAt('');setPlanVersion(1);setPlanLoading(false);savedSnapshotRef.current=itinerarySnapshot(clean,[]);if(mode==='domestic'||mode==='overseas')window.setTimeout(()=>{if(alive)setSettingsOpen(true)},0)}
+      else if(alive){setStops([]);const clean={...DEFAULT_TRIP,title:window.localStorage.getItem('travel-note-language')==='en'?'My trip':'나의 여행',destination:'',destinations:[],people:1,editPolicy:'owner' as EditPolicy,mapProvider:mode==='overseas'?'osm' as MapProvider:'naver' as MapProvider,viewMode:'route' as ViewMode};setTripSettings(clean);setSettingsDraft(clean);setPlanPassword('');setPlanPasswordAuth('');setPasswordConfigured(false);setPlanPasswordTouched(false);setShowPlanPassword(false);setEditPassword('');setEditPasswordAuth('');setEditPasswordConfigured(false);setEditPasswordTouched(false);setShowEditPassword(false);setCanEdit(true);setPlanUpdatedAt('');setPlanVersion(1);setPlanLoading(false);savedSnapshotRef.current=itinerarySnapshot(clean,[]);if(mode==='domestic'||mode==='overseas')window.setTimeout(()=>{if(alive)setSettingsOpen(true)},0)}
     };
     void loadRoute();
     const embedded=document.querySelector<HTMLMetaElement>('meta[name="naver-map-client-id"]')?.content;
@@ -1318,7 +1331,7 @@ export default function Home(){
   const chooseDestination=(place:SearchPlace)=>{const value=destinationLabel(place,language),lat=Number(place.mapy)/1e7,lng=Number(place.mapx)/1e7;setSettingsDraft(current=>({...current,destination:value,destinations:current.destinations?.map((segment,index)=>index===0?{...segment,name:value,...(Number.isFinite(lat)?{lat}:{}),...(Number.isFinite(lng)?{lng}:{}),...(place.region?{region:place.region}:{}),...(place.country?{country:place.country}:{})}:segment)}));setDestinationSuggestionsOpen(false)};
   const saveTripSettings=()=>{
     const rawSegments=destinationSegments(settingsDraft), hasLinked=rawSegments.length>1;
-    const next={...settingsDraft,title:settingsDraft.title.trim()||text('나의 여행','My trip'),destination:settingsDraft.destination.trim(),people:Math.max(1,Math.round(Number(settingsDraft.people)||1)),editPolicy:settingsDraft.editPolicy==='all'?'all':settingsDraft.editPolicy==='password'?'password':'owner' as EditPolicy,mapProvider:settingsDraft.mapProvider==='google'?'google' as MapProvider:settingsDraft.mapProvider==='osm'?'osm' as MapProvider:'naver' as MapProvider};
+    const next={...settingsDraft,title:settingsDraft.title.trim()||text('나의 여행','My trip'),destination:settingsDraft.destination.trim(),people:Math.max(1,Math.round(Number(settingsDraft.people)||1)),editPolicy:settingsDraft.editPolicy==='all'?'all':settingsDraft.editPolicy==='password'?'password':'owner' as EditPolicy,mapProvider:settingsDraft.mapProvider==='google'?'google' as MapProvider:settingsDraft.mapProvider==='osm'?'osm' as MapProvider:'naver' as MapProvider,viewMode:settingsDraft.viewMode==='distance'?'distance' as ViewMode:'route' as ViewMode};
     if(hasLinked){
       const segments=rawSegments.map(segment=>({...segment,name:segment.name.trim()}));
       segments[0]={...segments[0],name:next.destination,startDate:next.startDate};
@@ -1377,7 +1390,7 @@ export default function Home(){
     if(tripSettings.editPolicy==='password'&&((!editPasswordConfigured&&!editPassword)||(editPasswordTouched&&!editPassword))){if(silent)setPlanSaveMessage('자동저장하지 못했어요. 편집 비밀번호는 빈칸으로 저장할 수 없습니다.');else{setEditPasswordWarningOpen(true);setSettingsOpen(true)}return}
     if(silent&&savedSnapshotRef.current===itinerarySnapshot(tripSettings,stops,planPassword,planPasswordTouched,editPassword,editPasswordTouched))return;
     saveInFlightRef.current=true;if(!silent){setPlanSaving(true);setPlanSaveMessage('')}
-    const payload={title:tripSettings.title,destination:destinationSummary(tripSettings)||tripSettings.destination,startDate:tripSettings.startDate,endDate:tripSettings.endDate,people:tripSettings.people,editPolicy:tripSettings.editPolicy,mapProvider:tripSettings.mapProvider,destinations:tripSettings.destinations||[],stops};
+    const payload={title:tripSettings.title,destination:destinationSummary(tripSettings)||tripSettings.destination,startDate:tripSettings.startDate,endDate:tripSettings.endDate,people:tripSettings.people,editPolicy:tripSettings.editPolicy,mapProvider:tripSettings.mapProvider,viewMode:tripSettings.viewMode==='distance'?'distance':'route',destinations:tripSettings.destinations||[],stops};
     try{
       const existing=Boolean(planId),token=planId?localStorage.getItem(`route-note-edit-token-${planId}`):null;
       const viewPasswordPayload=!existing?{password:planPassword}:planPasswordTouched?{password:planPassword,...(planPasswordAuth?{passwordAuth:planPasswordAuth}:{})}:(tripSettings.editPolicy==='all'&&passwordConfigured&&planPassword)?{password:planPassword,passwordAuth:planPasswordAuth||planPassword}:{};
@@ -1434,7 +1447,7 @@ export default function Home(){
 
   const visibleDayKeys=useMemo(()=>{if(dayKeys.length<=6||daysExpanded)return dayKeys;const first=dayKeys.slice(0,5);return first.includes(activeDay)?first:[...first,activeDay]},[dayKeys,daysExpanded,activeDay]);
   const pickEditPlace=async(place:SearchPlace|null)=>{if(!place||!editDraft)return;try{const resolved=await resolveSearchPlace(place,tripSettings.mapProvider,googleKey,language);if(!resolved)return;const name=placeTitle(resolved,language);setEditQuery(name);setEditPlaceLinked(true);setEditMapResults([resolved]);setEditDraft({...editDraft,name,address:placeAddress(resolved,language),lat:Number(resolved.mapy)/1e7,lng:Number(resolved.mapx)/1e7,mapProvider:tripSettings.mapProvider,placeId:resolved.placeId,...(tripSettings.mapProvider==='naver'?{naverLink:naverPlaceUrl({name:cleanTitle(resolved.title),address:resolved.roadAddress||resolved.address})}:{naverLink:undefined})})}catch(error){setPlanSaveMessage(error instanceof Error?error.message:text('장소를 확인하지 못했습니다.','Could not load this place.'))}};
-  const mapViewProps={stops:dayStops,destination:activeDestinationName,onSelect:selectStop,placeResults:editing?editMapResults:mapResultPlaces,onPlaceSelect:editing?(place:SearchPlace)=>{void pickEditPlace(place)}:selectMapCandidate,dateLabels:dayDates,activeDay,onDayChange:setActiveDay,editableStopId:locationEditingId,onStopPositionChange:updateStopPosition,onCancelStopPositionEdit:()=>setLocationEditingId(null),customPin,customPinMode,onCustomLocationChange:updateCustomPin,onCustomAddressChange:setCustomAddress,onCustomPinContinue:continueCustomPin,onMapTap:toggleMapFocus,mapFocused,onToggleMapFocus:toggleMapFocus,plannerCollapsed,focusRequest};
+  const mapViewProps={stops:dayStops,destination:activeDestinationName,onSelect:selectStop,placeResults:editing?editMapResults:mapResultPlaces,onPlaceSelect:editing?(place:SearchPlace)=>{void pickEditPlace(place)}:selectMapCandidate,dateLabels:dayDates,activeDay,onDayChange:setActiveDay,editableStopId:locationEditingId,onStopPositionChange:updateStopPosition,onCancelStopPositionEdit:()=>setLocationEditingId(null),customPin,customPinMode,onCustomLocationChange:updateCustomPin,onCustomAddressChange:setCustomAddress,onCustomPinContinue:continueCustomPin,onMapTap:toggleMapFocus,mapFocused,onToggleMapFocus:toggleMapFocus,plannerCollapsed,focusRequest,distanceMode:tripSettings.viewMode==='distance'};
 
   return <main className="app-shell">
     {editing&&editDraft&&<EditPinTools draft={editDraft} dayKeys={dayKeys} text={text} onColorChange={pinColor=>setEditDraft({...editDraft,pinColor})} onReset={()=>setEditDraft({...editDraft,pinColor:undefined})} onEditLocation={()=>{setLocationEditingId(editing.id);closeEdit()}}/>}
@@ -1509,8 +1522,9 @@ export default function Home(){
       <aside ref={plannerPanelRef} className="planner-panel" onDragOver={updateDragAutoScroll} onWheel={handlePlannerWheel}>
         {planId&&!canEdit&&<div className="inline-notice plan-readonly-notice"><CircleAlert/><span>{tripSettings.editPolicy==='password'?text('편집 비밀번호를 입력하면 일정을 수정할 수 있어요.','Enter the editing password to make changes.'):tripSettings.editPolicy==='all'?text('열람 비밀번호로 계획을 열면 수정할 수 있어요.','Open the plan with its viewing password to edit it.'):text('작성자의 편집 토큰이 있어야 일정을 바꿀 수 있어요.','The author token is required to edit this plan.')}</span>{tripSettings.editPolicy==='password'&&<Button variant="outline" onClick={()=>setEditPasswordPromptOpen(true)}>{text('편집 비밀번호 입력','Enter editing password')}</Button>}</div>}
         <div className="day-switch-wrap"><div className={`day-switch ${dayKeys.length>6&&!daysExpanded?'is-collapsed':''}`} role="tablist" aria-label={text('여행 날짜','Trip dates')}>{visibleDayKeys.map(day=>{const index=dayKeys.indexOf(day);return <button key={day} role="tab" aria-selected={activeDay===day} onClick={()=>setActiveDay(day)}><span style={{color:dayColor(day,dayKeys)}}>DAY {index+1}</span><strong>{formatTripDate(dayDates[day],true,language)}</strong></button>})}</div>{dayKeys.length>6&&<button type="button" className="day-rollup-toggle" onClick={()=>setDaysExpanded(current=>!current)} aria-expanded={daysExpanded}>{daysExpanded?<><ChevronUp/>{text('일정 접기','Collapse days')}</>:<><ChevronDown/>{text(`전체 ${dayKeys.length}일 보기`,`View all ${dayKeys.length} days`)}</>}</button>}</div>
-        <div className="panel-heading"><div><span><CalendarDays/>{text('방문 순서','Visit order')}</span><strong>{dayStops.length}{text('개 장소',' stops')}</strong></div></div>
+        <div className="panel-heading"><div><span><CalendarDays/>{tripSettings.viewMode==='distance'?text('거리 비교','Distance comparison'):text('방문 순서','Visit order')}</span><strong>{dayStops.length}{text('개 장소',' stops')}</strong></div></div>
         <div className="mobile-trip-cost-total" aria-label={text('전체 예상 경비','Total estimated budget')}><span>{text('전체 예상 경비','Total budget')}</span><strong><b>{formatMoney(tripCostSummary.personal,language,currency)} <small>{text('개인별','per person')}</small></b><i>·</i><b>{formatMoney(tripCostSummary.total,language,currency)} <small>{text('총 비용','total')}</small></b></strong></div>
+        {tripSettings.viewMode==='distance'&&<DistanceComparison stops={dayStops} dayKeys={dayKeys} text={text} language={language}/>} 
         <div className="stop-list">
           {dayStops.map((stop,index)=>{
             const previous=dayStops[index-1],gap=previous?distanceKm(previous,stop):null,reverse=previous&&timeMinutes(stop.time)<timeMinutes(previous.time);
@@ -1577,6 +1591,7 @@ export default function Home(){
             </div>;
           })}
           <div className={`map-provider-setting ${settingsDraft.mapProvider==='google'?'is-google':settingsDraft.mapProvider==='osm'?'is-osm':''}`}><Map/><span><strong>{mapProviderName(settingsDraft.mapProvider,language)}</strong><small>{mapProviderDescription(settingsDraft.mapProvider,language)}</small></span></div>
+          <label className="view-mode-setting">{text('보기 방식','View mode')}<select value={settingsDraft.viewMode||'route'} onChange={e=>setSettingsDraft({...settingsDraft,viewMode:e.target.value==='distance'?'distance':'route'})}><option value="route">{text('동선 순서','Route order')}</option><option value="distance">{text('각 장소별 거리 비교','Compare straight-line distances')}</option></select><small>{text('거리 비교는 앞 4곳을 거점으로 보고 뒤 장소와의 직선거리를 계산해요.','Distance mode treats the first 4 places as bases and compares straight-line distances to the rest.')}</small></label>
           <div className="date-fields"><label>{text('출발일','Start date')}<Input type="date" value={settingsDraft.startDate} onChange={e=>updateTripRange('startDate',e.target.value)}/></label><label>{text('돌아오는 날','End date')}<Input type="date" min={settingsDraft.startDate} value={settingsDraft.endDate} onChange={e=>updateTripRange('endDate',e.target.value)}/></label></div>
           <label>{text('인원','Travelers')}<div className="people-input"><Users/><Input type="number" min="1" max="99" value={settingsDraft.people} onChange={e=>setSettingsDraft({...settingsDraft,people:Number(e.target.value)})}/><span>{text('명','people')}</span></div></label>
           <label>{text('편집 권한','Edit access')}<select value={settingsDraft.editPolicy} onChange={e=>setSettingsDraft({...settingsDraft,editPolicy:e.target.value as EditPolicy})}><option value="owner">{text('작성자만','Author only')}</option><option value="all">{text('모두가','Everyone')}</option><option value="password">{text('편집 비밀번호 설정','Editing password')}</option></select></label>

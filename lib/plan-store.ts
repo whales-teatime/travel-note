@@ -40,6 +40,7 @@ export type PlanInput = {
   people: number;
   editPolicy: 'owner' | 'all' | 'password';
   mapProvider: 'naver' | 'google' | 'osm';
+  viewMode: 'route' | 'distance';
   destinations: PlanDestination[];
   stops: PlanStop[];
 };
@@ -293,12 +294,13 @@ export function sanitizePlan(value: unknown): PlanInput | null {
   const people = Math.min(99, Math.max(1, Math.round(Number(source.people) || 1)));
   const editPolicy = source.editPolicy === 'all' ? 'all' : source.editPolicy === 'password' ? 'password' : 'owner';
   const mapProvider = source.mapProvider === 'google' ? 'google' : source.mapProvider === 'osm' ? 'osm' : 'naver';
+  const viewMode = source.viewMode === 'distance' ? 'distance' : 'route';
   if (!title || !destination || !validDate(startDate) || !validDate(endDate) || startDate > endDate || dateNumber(endDate) - dateNumber(startDate) > 366 * 24 * 60 * 60 * 1000) return null;
   const destinations = sanitizeDestinations(source.destinations, startDate, endDate);
   if (!destinations) return null;
   const stops = sanitizeStops(source.stops, startDate, endDate);
   if (!stops) return null;
-  return { title, destination, startDate, endDate, people, editPolicy, mapProvider, destinations, stops };
+  return { title, destination, startDate, endDate, people, editPolicy, mapProvider, viewMode, destinations, stops };
 }
 
 export function publicPlan(row: Record<string, unknown>) {
@@ -310,6 +312,7 @@ export function publicPlan(row: Record<string, unknown>) {
     endDate: textValue(row.end_date),
     people: Number(row.people) || 1,
     mapProvider: row.map_provider === 'google' ? 'google' : row.map_provider === 'osm' ? 'osm' : 'naver',
+    viewMode: row.view_mode === 'distance' ? 'distance' : 'route',
     editPolicy: row.edit_policy === 'all' ? 'all' : row.edit_policy === 'password' ? 'password' : 'owner',
     passwordProtected: Boolean(Number(row.password_protected ?? (row.password_hash ? 1 : 0))),
     editPasswordProtected: Boolean(Number(row.edit_password_protected ?? (row.edit_password_hash ? 1 : 0))),
