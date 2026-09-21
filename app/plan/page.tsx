@@ -681,16 +681,19 @@ function NaverMap({stops,clientId,destination,onSelect,placeResults,onPlaceSelec
     const map=mapRef.current,naver=window.naver;
     if(!map||!naver?.maps||status!=='ready')return;
     const listener=naver.maps.Event.addListener(map,'click',(event:any)=>{
-      if(!customPinMode)return;
-      const point=event.coord||event.latlng;
-      if(point){
-        const next={lat:point.lat(),lng:point.lng()};
-        onCustomLocationChange(next);
-        reverseGeocodePoint(next.lat,next.lng).then(onCustomAddressChange).catch(()=>{});
+      if(customPinMode){
+        const point=event.coord||event.latlng;
+        if(point){
+          const next={lat:point.lat(),lng:point.lng()};
+          onCustomLocationChange(next);
+          reverseGeocodePoint(next.lat,next.lng).then(onCustomAddressChange).catch(()=>{});
+        }
+        return;
       }
+      if(!window.matchMedia('(max-width: 820px)').matches)onMapTap();
     });
     return()=>naver?.maps?.Event?.removeListener?.(listener);
-  },[customPinMode,status,onCustomLocationChange,onCustomAddressChange]);
+  },[customPinMode,status,onCustomLocationChange,onCustomAddressChange,onMapTap]);
   useEffect(()=>{
     const map=mapRef.current,naver=window.naver;
     if(!map||!naver?.maps||status!=='ready')return;
@@ -791,7 +794,7 @@ function GoogleMap({stops,apiKey,destination,onSelect,placeResults,onPlaceSelect
       (marker as any).__stopId=stop.id;
       marker.addListener('click',()=>onSelect(stop));
       if(editableStopId===stop.id)marker.addListener('dragend',()=>{const point=marker.getPosition();if(point)onStopPositionChange(stop.id,point.lat(),point.lng())});
-      if(isFocused)focusTimers.push(window.setTimeout(()=>marker.setAnimation(null),2200));
+      if(isFocused)focusTimers.push(window.setTimeout(()=>marker.setAnimation(null),1100));
       overlaysRef.current.push(marker);
     });
     if(stops.length>1&&!distanceMode)overlaysRef.current.push(new google.maps.Polyline({map,path:stops.map(stop=>({lat:stop.lat,lng:stop.lng})),strokeColor:dayColor(stops[0].day,orderedDays),strokeWeight:5,strokeOpacity:.72,icons:[{icon:{path:'M 0,-1 0,1',strokeOpacity:1,scale:2},offset:'0',repeat:'14px'}]}));
@@ -820,7 +823,7 @@ function GoogleMap({stops,apiKey,destination,onSelect,placeResults,onPlaceSelect
     const map=mapRef.current,google=window.google;if(!map||!google?.maps||status!=='ready')return;
     const listener=map.addListener('click',async(event:any)=>{
       if(customPinMode){const point=event.latLng;if(!point)return;const next={lat:point.lat(),lng:point.lng()};onCustomLocationChange(next);googleReverseGeocodePoint(next.lat,next.lng,apiKey,language).then(onCustomAddressChange).catch(()=>{});return}
-      if(!event.placeId)return;
+      if(!event.placeId){if(!window.matchMedia('(max-width: 820px)').matches)onMapTap();return}
       event.stop?.();
       try{
         const place=new google.maps.places.Place({id:event.placeId});
@@ -831,7 +834,7 @@ function GoogleMap({stops,apiKey,destination,onSelect,placeResults,onPlaceSelect
       }catch{}
     });
     return()=>google.maps.event.removeListener(listener);
-  },[customPinMode,status,onCustomLocationChange,onCustomAddressChange,onPlaceSelect,apiKey,language]);
+  },[customPinMode,status,onCustomLocationChange,onCustomAddressChange,onPlaceSelect,onMapTap,apiKey,language]);
   useEffect(()=>{
     const map=mapRef.current,google=window.google;if(!map||!google?.maps||status!=='ready')return;
     try{customOverlayRef.current?.setMap(null)}catch{}customOverlayRef.current=null;
@@ -956,7 +959,9 @@ function OsmMap({stops,destination,onSelect,placeResults,onPlaceSelect,dateLabel
             void osmReverseGeocodePoint(next.lat,next.lng,current.language).then(current.onCustomAddressChange).catch(()=>{});
             return;
           }
-          if(window.matchMedia('(max-width: 820px)').matches)current.onMapTap();
+          // Mobile taps are handled by the shared stage listener; desktop
+          // clicks need the map handler to clear a focused distance candidate.
+          if(!window.matchMedia('(max-width: 820px)').matches)current.onMapTap();
         });
         mapInstance.on('style.load',()=>{
           if(!alive)return;
@@ -1127,7 +1132,7 @@ export default function Home(){
   const { currency } = useCurrency(language);
   const text = (korean:string, english:string) => tr(language, korean, english);
   const firstDefaultDay=dateDayKey(DEFAULT_TRIP.startDate);
-  const [activeDay,setActiveDay]=useState<DayKey>(firstDefaultDay), [stops,setStops]=useState<Stop[]>(seedStops), [selected,setSelected]=useState<Stop|null>(null), [mapFocused,setMapFocused]=useState(false), [plannerCollapsed,setPlannerCollapsed]=useState(false), [focusRequest,setFocusRequest]=useState<MapFocusRequest|null>(null);
+  const [activeDay,setActiveDay]=useState<DayKey>(firstDefaultDay), [stops,setStops]=useState<Stop[]>(seedStops), [selected,setSelected]=useState<Stop|null>(null), [distanceDetailOpen,setDistanceDetailOpen]=useState(false), [mapFocused,setMapFocused]=useState(false), [plannerCollapsed,setPlannerCollapsed]=useState(false), [focusRequest,setFocusRequest]=useState<MapFocusRequest|null>(null);
   const [tripSettings,setTripSettings]=useState<TripSettings>(DEFAULT_TRIP), [settingsDraft,setSettingsDraft]=useState<TripSettings>(DEFAULT_TRIP);
   const [addOpen,setAddOpen]=useState(false), [settingsOpen,setSettingsOpen]=useState(false), [clientId,setClientId]=useState(''), [googleKey,setGoogleKey]=useState('');
   const [planId,setPlanId]=useState<string|null>(null), [planUpdatedAt,setPlanUpdatedAt]=useState(''), [planVersion,setPlanVersion]=useState(1), [planLoading,setPlanLoading]=useState(true), [planSaving,setPlanSaving]=useState(false), [planSaveMessage,setPlanSaveMessage]=useState(''), [isLocalDraft,setIsLocalDraft]=useState(true), [canEdit,setCanEdit]=useState(true), [planAction,setPlanAction]=useState<'duplicate'|'delete'|null>(null), [deleteDialogOpen,setDeleteDialogOpen]=useState(false), [editPasswordWarningOpen,setEditPasswordWarningOpen]=useState(false);
@@ -1297,13 +1302,20 @@ export default function Home(){
   const peopleCount=Math.max(1,tripSettings.people||1);
   const dayCostSummary=useMemo(()=>dayStops.reduce((summary,stop)=>{const cost=costValues(stop,peopleCount);return {personal:summary.personal+cost.personal,total:summary.total+cost.total}},{personal:0,total:0}),[dayStops,peopleCount]);
   const tripCostSummary=useMemo(()=>stops.reduce((summary,stop)=>{const cost=costValues(stop,peopleCount);return {personal:summary.personal+cost.personal,total:summary.total+cost.total}},{personal:0,total:0}),[stops,peopleCount]);
-  const selectStop=useCallback((stop:Stop)=>setSelected(stop),[]);
-  const focusStopOnMap=useCallback((stop:Stop)=>{setSelected(null);setFocusRequest({id:stop.id,nonce:Date.now()})},[]);
+  const selectStop=useCallback((stop:Stop)=>{
+    if(tripSettings.viewMode==='distance'&&selected?.id===stop.id){
+      setDistanceDetailOpen(true);
+      return;
+    }
+    setDistanceDetailOpen(false);
+    setSelected(stop);
+  },[selected,tripSettings.viewMode]);
+  const focusStopOnMap=useCallback((stop:Stop)=>{setSelected(null);setDistanceDetailOpen(false);setFocusRequest({id:stop.id,nonce:Date.now()})},[]);
   useEffect(()=>{
     // Distance comparison uses the selected stop only to focus its distance
     // lines on the map. Do not leave a route-mode detail sheet open when the
     // user switches into this view.
-    if(tripSettings.viewMode==='distance')setSelected(null);
+    if(tripSettings.viewMode==='distance'){setSelected(null);setDistanceDetailOpen(false)}
   },[tripSettings.viewMode]);
   useEffect(()=>{
     const handleCardClick=(event:MouseEvent)=>{
@@ -1337,6 +1349,10 @@ export default function Home(){
     return()=>window.removeEventListener('click',handleCardClick,true);
   },[dayStops,focusStopOnMap]);
   const toggleMapFocus=useCallback(()=>setMapFocused(current=>!current),[]);
+  const handleMapTap=useCallback(()=>{
+    if(tripSettings.viewMode==='distance'){setSelected(null);setDistanceDetailOpen(false);return}
+    setMapFocused(current=>!current);
+  },[tripSettings.viewMode]);
   const selectMapCandidate=useCallback((place:SearchPlace)=>setMapCandidate(place),[]);
   const updateCustomPin=useCallback((point:{lat:number;lng:number})=>setCustomPin(point),[]);
   const updateStopPosition=useCallback((id:string,lat:number,lng:number)=>{setStops(current=>current.map(stop=>stop.id===id?{...stop,lat,lng,customLocation:true}:stop));setLocationEditingId(null)},[]);
@@ -1504,11 +1520,11 @@ export default function Home(){
   const distanceBaseIds=(tripSettings.distanceBaseIds||[]).filter(id=>stops.some(stop=>stop.id===id));
   const distanceFocusCandidateId=tripSettings.viewMode==='distance'&&selected&&!distanceBaseIds.includes(selected.id)?selected.id:null;
   const toggleDistanceBase=useCallback((id:string)=>{if(!canEdit)return;setSettingsDraft(current=>{const currentIds=(current.distanceBaseIds||[]).filter(baseId=>stops.some(stop=>stop.id===baseId));const nextIds=currentIds.includes(id)?currentIds.filter(baseId=>baseId!==id):[...currentIds,id];return {...current,distanceBaseIds:nextIds}})},[canEdit,stops]);
-  const mapViewProps={stops:dayStops,destination:activeDestinationName,onSelect:selectStop,placeResults:editing?editMapResults:mapResultPlaces,onPlaceSelect:editing?(place:SearchPlace)=>{void pickEditPlace(place)}:selectMapCandidate,dateLabels:dayDates,activeDay,onDayChange:setActiveDay,editableStopId:locationEditingId,onStopPositionChange:updateStopPosition,onCancelStopPositionEdit:()=>setLocationEditingId(null),customPin,customPinMode,onCustomLocationChange:updateCustomPin,onCustomAddressChange:setCustomAddress,onCustomPinContinue:continueCustomPin,onMapTap:toggleMapFocus,mapFocused,onToggleMapFocus:toggleMapFocus,plannerCollapsed,focusRequest,distanceMode:tripSettings.viewMode==='distance',distanceBaseIds,distanceFocusCandidateId};
+  const mapViewProps={stops:dayStops,destination:activeDestinationName,onSelect:selectStop,placeResults:editing?editMapResults:mapResultPlaces,onPlaceSelect:editing?(place:SearchPlace)=>{void pickEditPlace(place)}:selectMapCandidate,dateLabels:dayDates,activeDay,onDayChange:setActiveDay,editableStopId:locationEditingId,onStopPositionChange:updateStopPosition,onCancelStopPositionEdit:()=>setLocationEditingId(null),customPin,customPinMode,onCustomLocationChange:updateCustomPin,onCustomAddressChange:setCustomAddress,onCustomPinContinue:continueCustomPin,onMapTap:handleMapTap,mapFocused,onToggleMapFocus:toggleMapFocus,plannerCollapsed,focusRequest,distanceMode:tripSettings.viewMode==='distance',distanceBaseIds,distanceFocusCandidateId};
 
   return <main className="app-shell">
     {editing&&editDraft&&<EditPinTools draft={editDraft} dayKeys={dayKeys} text={text} onColorChange={pinColor=>setEditDraft({...editDraft,pinColor})} onReset={()=>setEditDraft({...editDraft,pinColor:undefined})} onEditLocation={()=>{setLocationEditingId(editing.id);closeEdit()}}/>}
-    {selected&&tripSettings.viewMode!=='distance'&&<SelectedPlaceEditButton selected={selected} text={text} onEdit={()=>openEdit(selected)}/>}
+    {selected&&(tripSettings.viewMode!=='distance'||distanceDetailOpen)&&<SelectedPlaceEditButton selected={selected} text={text} onEdit={()=>openEdit(selected)}/>}
     <header className="topbar">
       <Link className="brand" href="/"><span className="brand-mark"><Navigation/></span><span>{text('여행을 떠나요', 'Let’s Travel')}</span></Link>
       <div className="trip-title"><strong>{tripSettings.title}</strong><span>{formatTripDate(tripSettings.startDate,false,language)} — {formatTripDate(tripSettings.endDate,false,language)} · {tripSettings.people}{text('명', ' people')}</span></div>
@@ -1616,7 +1632,7 @@ export default function Home(){
       </section>
     </section>
 
-    {tripSettings.viewMode!=='distance'&&<Sheet open={Boolean(selected)} onOpenChange={open=>!open&&setSelected(null)}><SheetContent className="place-sheet sm:max-w-[430px]">{selected&&<><SheetHeader><div className="sheet-eyebrow"><span style={{background:dayColor(selected.day,dayKeys)}}>{stops.filter(s=>s.day===selected.day).findIndex(s=>s.id===selected.id)+1}</span>{formatTripDate(dayDates[selected.day],false,language)} · {selected.time} · {text(selected.category,selected.category==='식사'?'Meal':selected.category==='간식'?'Snack':selected.category==='관광'?'Sightseeing':selected.category==='숙소'?'Stay':selected.category==='교통'?'Transport':'Other')}</div><SheetTitle>{selected.name}</SheetTitle><SheetDescription>{selected.address}</SheetDescription></SheetHeader><div className="sheet-body"><div className="section-title"><span>{text('거리뷰','Street view')}</span><small>{mapProviderName(tripSettings.mapProvider,language)}</small></div>{tripSettings.mapProvider==='naver'?<PanoramaView stop={selected} clientId={clientId}/>:<a className="panorama-external-link" href={googleStreetViewUrl(selected)} target="_blank" rel="noreferrer"><Navigation/><span><strong>{text('Google 지도에서 스트리트뷰 열기','Open Street View in Google Maps')}</strong><small>{text('촬영된 거리뷰가 없는 곳은 일반 지도로 열릴 수 있어요.','Places without Street View coverage may open as a regular map.')}</small></span><ExternalLink/></a>} {selected.memo&&<div className="place-note"><span>{text('메모','Note')}</span><p>{selected.memo}</p></div>}<a className={`naver-link ${tripSettings.mapProvider==='naver'?'':'google-link'}`} href={stopExternalUrl(selected,tripSettings.mapProvider)} target="_blank" rel="noreferrer"><span><b>{tripSettings.mapProvider==='naver'?'N':'G'}</b>{tripSettings.mapProvider==='naver'?text('네이버지도에서 상세보기','View on Naver Maps'):text('Google 지도에서 상세보기','View on Google Maps')}</span><ExternalLink/></a><Button variant="outline" className="location-edit-button" onClick={startLocationEdit}><MapPin/>{text('위치 임의 수정','Edit location')}</Button><Button variant="destructive" className="delete-button" onClick={removeSelected}><Trash2/>{text('이 장소 삭제','Delete place')}</Button></div></>}</SheetContent></Sheet>}
+    {(tripSettings.viewMode!=='distance'||distanceDetailOpen)&&<Sheet open={Boolean(selected)} onOpenChange={open=>{if(!open){setSelected(null);setDistanceDetailOpen(false)}}}><SheetContent className="place-sheet sm:max-w-[430px]">{selected&&<><SheetHeader><div className="sheet-eyebrow"><span style={{background:dayColor(selected.day,dayKeys)}}>{stops.filter(s=>s.day===selected.day).findIndex(s=>s.id===selected.id)+1}</span>{formatTripDate(dayDates[selected.day],false,language)} · {selected.time} · {text(selected.category,selected.category==='식사'?'Meal':selected.category==='간식'?'Snack':selected.category==='관광'?'Sightseeing':selected.category==='숙소'?'Stay':selected.category==='교통'?'Transport':'Other')}</div><SheetTitle>{selected.name}</SheetTitle><SheetDescription>{selected.address}</SheetDescription></SheetHeader><div className="sheet-body"><div className="section-title"><span>{text('거리뷰','Street view')}</span><small>{mapProviderName(tripSettings.mapProvider,language)}</small></div>{tripSettings.mapProvider==='naver'?<PanoramaView stop={selected} clientId={clientId}/>:<a className="panorama-external-link" href={googleStreetViewUrl(selected)} target="_blank" rel="noreferrer"><Navigation/><span><strong>{text('Google 지도에서 스트리트뷰 열기','Open Street View in Google Maps')}</strong><small>{text('촬영된 거리뷰가 없는 곳은 일반 지도로 열릴 수 있어요.','Places without Street View coverage may open as a regular map.')}</small></span><ExternalLink/></a>} {selected.memo&&<div className="place-note"><span>{text('메모','Note')}</span><p>{selected.memo}</p></div>}<a className={`naver-link ${tripSettings.mapProvider==='naver'?'':'google-link'}`} href={stopExternalUrl(selected,tripSettings.mapProvider)} target="_blank" rel="noreferrer"><span><b>{tripSettings.mapProvider==='naver'?'N':'G'}</b>{tripSettings.mapProvider==='naver'?text('네이버지도에서 상세보기','View on Naver Maps'):text('Google 지도에서 상세보기','View on Google Maps')}</span><ExternalLink/></a><Button variant="outline" className="location-edit-button" onClick={startLocationEdit}><MapPin/>{text('위치 임의 수정','Edit location')}</Button><Button variant="destructive" className="delete-button" onClick={removeSelected}><Trash2/>{text('이 장소 삭제','Delete place')}</Button></div></>}</SheetContent></Sheet>}
 
     <Dialog modal={false} disablePointerDismissal open={Boolean(editing)} onOpenChange={open=>{if(!open)closeEdit()}}><DialogContent customPosition showOverlay={false} className="edit-dialog edit-map-dialog sm:max-w-[500px]">{editDraft&&<><DialogHeader><DialogTitle>{text('장소 수정','Edit place')}</DialogTitle><DialogDescription>{text('검색 목록이나 지도에 표시된 초록 핀을 눌러 장소를 바꿀 수 있어요.','Choose a result from the list or a green pin on the map.')}</DialogDescription></DialogHeader><div className="edit-grid"><label>{text('장소','Place')} <PlacePicker numbered provider={tripSettings.mapProvider} query={editQuery} onQueryChange={(value,userInput)=>{setEditQuery(value);if(userInput){setEditPlaceLinked(false);setEditMapResults([]);if(tripSettings.mapProvider==='osm')setOsmEditQuery('')}}} onEnter={value=>{if(tripSettings.mapProvider==='osm')setOsmEditQuery(value)}} results={editSuggestions.results} value={null} onPick={pickEditPlace} searching={editSuggestions.searching} placeholder={text('장소 검색','Search places')} selected={editPlaceLinked}/></label>{editSuggestions.error&&editQuery.trim().length>=2&&!editPlaceLinked&&<div className="inline-notice"><CircleAlert/>{editSuggestions.error}</div>}<div className={`linked-place ${editPlaceLinked?'':'unlinked'}`}><MapPin/><span><strong>{editDraft.name}</strong><small>{editDraft.address}</small></span><em>{editPlaceLinked?text('선택됨','Selected'):editMapResults.length?text(`지도에 ${editMapResults.length}개 표시됨`,`${editMapResults.length} on map`):text('장소를 골라주세요','Choose a place')}</em></div><div className="form-grid two"><label>{text('시간(24시간)','Time (24-hour)')}<Time24Input value={editDraft.time} onChange={time=>setEditDraft({...editDraft,time})}/></label><label>{text('카테고리','Category')}<select value={editDraft.category} onChange={e=>setEditDraft({...editDraft,category:e.target.value as PlaceType})}>{PLACE_CATEGORIES.map(t=><option key={t}>{text(t, t==='식사'?'Meal':t==='간식'?'Snack':t==='관광'?'Sightseeing':t==='숙소'?'Stay':t==='교통'?'Transport':'Other')}</option>)}</select></label></div><label>{text('메모','Note')}<Textarea value={editDraft.memo} onChange={e=>setEditDraft({...editDraft,memo:e.target.value})} placeholder={text('메모를 남겨보세요','Leave a note')}/></label></div><DialogFooter><Button variant="outline" onClick={closeEdit}>{text('취소','Cancel')}</Button><Button onClick={saveEdit} disabled={!editPlaceLinked||!isValidTime(editDraft.time)}>{text('저장','Save')}</Button></DialogFooter></>}</DialogContent></Dialog>
 
