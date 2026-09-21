@@ -80,7 +80,7 @@ const EXTERNAL_SEARCH_TIMEOUT_MS = 5_000;
 // a city/town/county or country, not a neighborhood, apartment complex, or
 // landmark. Bump this when the filtering policy changes so old D1 results
 // cannot leak back into the suggestions.
-const CITY_SEARCH_CACHE_VERSION = 'city-v13';
+const CITY_SEARCH_CACHE_VERSION = 'city-v14';
 const PLACE_SEARCH_CACHE_VERSION = 'place-v4';
 let lastNominatimRequestAt = 0;
 
