@@ -2,6 +2,7 @@
 
 import { type DragEvent, type WheelEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { createPortal } from 'react-dom';
 import {
   ArrowDown, ArrowUp, CalendarDays, ChevronDown, ChevronUp, CircleAlert, Clock3,
   Copy, Eye, EyeOff, ExternalLink, GripVertical, House, LockKeyhole, Map, MapPin, Navigation, PanelLeftClose, PanelLeftOpen, Plus,
@@ -135,10 +136,22 @@ function categoryColor(day:DayKey,orderedDays:DayKey[],category:PlaceType,custom
   if(custom&&/^#[0-9a-f]{6}$/i.test(custom))return custom;
   const base=dayColor(day,orderedDays),value=base.slice(1),rgb=[0,2,4].map(index=>parseInt(value.slice(index,index+2),16));
   const mixes:Record<PlaceType,{color:[number,number,number];amount:number}>= {
-    '식사':{color:[255,255,255],amount:0},'간식':{color:[255,194,72],amount:.2},'관광':{color:[255,255,255],amount:.24},'숙소':{color:[76,139,255],amount:.22},'교통':{color:[30,30,30],amount:.2},'기타':{color:[30,30,30],amount:.08},
+    '식사':{color:[255,255,255],amount:0},'간식':{color:[255,170,24],amount:.48},'관광':{color:[255,255,255],amount:.55},'숙소':{color:[40,125,255],amount:.52},'교통':{color:[35,35,35],amount:.5},'기타':{color:[30,30,30],amount:.24},
   };
   const mix=mixes[category]||mixes['기타'];
   return '#'+rgb.map((channel,index)=>Math.round(channel+(mix.color[index]-channel)*mix.amount).toString(16).padStart(2,'0')).join('');
+}
+function EditPinTools({draft,dayKeys,text,onColorChange,onReset,onEditLocation}:{draft:Stop;dayKeys:DayKey[];text:(korean:string,english:string)=>string;onColorChange:(color:string)=>void;onReset:()=>void;onEditLocation:()=>void}){
+  const [target,setTarget]=useState<HTMLElement|null>(null);
+  useEffect(()=>{setTarget(document.querySelector<HTMLElement>('.edit-map-dialog .edit-grid'))},[]);
+  if(!target)return null;
+  return createPortal(<div className="edit-pin-tools"><div className="edit-pin-color-control"><label>{text('핀 색상','Pin color')}<span><input type="color" aria-label={text('핀 색상','Pin color')} value={draft.pinColor||categoryColor(draft.day,dayKeys,draft.category)} onChange={event=>onColorChange(event.target.value)}/><code>{draft.pinColor||text('날짜·카테고리 기본색','Date/category default')}</code></span></label><Button type="button" variant="ghost" onClick={onReset}>{text('기본색으로','Reset')}</Button></div><Button type="button" variant="outline" onClick={onEditLocation}><MapPin/>{text('위치 임의 수정','Edit location')}</Button></div>,target);
+}
+function SelectedPlaceEditButton({selected,text,onEdit}:{selected:Stop;text:(korean:string,english:string)=>string;onEdit:()=>void}){
+  const [target,setTarget]=useState<HTMLElement|null>(null);
+  useEffect(()=>{setTarget(document.querySelector<HTMLElement>('.place-sheet .sheet-body'))},[selected.id]);
+  if(!target)return null;
+  return createPortal(<Button variant="outline" className="place-edit-button" onClick={onEdit}><Pencil/>{text('장소 수정','Edit place')}</Button>,target);
 }
 function usePlaceSuggestions(query:string,enabled:boolean,context='',provider:MapProvider='naver',googleKey='',requestedQuery=''){
   const { language } = useLanguage();
@@ -1308,7 +1321,7 @@ export default function Home(){
   };
   const addStop=()=>{if(!picked)return;const provider=tripSettings.mapProvider;const stop:Stop={id:`${Date.now()}`,day:activeDay,time:newTime,name:placeTitle(picked,language),category:newCategory,memo:newMemo.trim(),address:placeAddress(picked,language),lat:Number(picked.mapy)/1e7,lng:Number(picked.mapx)/1e7,mapProvider:provider,placeId:picked.placeId,...(provider==='naver'?{naverLink:naverPlaceUrl({name:cleanTitle(picked.title),address:picked.roadAddress||picked.address})}:{})};setStops(current=>insertStopByTime(current,stop));setAddOpen(false);setQuery('');setPicked(null);setNewMemo('')};
   const closeEdit=()=>{setEditing(null);setEditDraft(null);setEditMapResults([]);setOsmEditQuery('')};
-  const openEdit=(stop:Stop)=>{setEditing(stop);setEditDraft({...stop});setEditQuery(stop.name);setEditMapResults([]);setOsmEditQuery('');setEditPlaceLinked(true)};
+  const openEdit=(stop:Stop)=>{setSelected(null);setEditing(stop);setEditDraft({...stop});setEditQuery(stop.name);setEditMapResults([]);setOsmEditQuery('');setEditPlaceLinked(true)};
   const saveEdit=()=>{if(!editing||!editDraft||!isValidTime(editDraft.time))return;const updated={...editDraft,name:editDraft.name.trim()||editing.name,memo:editDraft.memo.trim(),pinColor:editDraft.pinColor&&/^#[0-9a-f]{6}$/i.test(editDraft.pinColor)?editDraft.pinColor:undefined};setStops(current=>current.map(stop=>stop.id===editing.id?updated:stop));if(selected?.id===editing.id)setSelected(updated);closeEdit()};
   const moveStop=(id:string,direction:-1|1)=>setStops(current=>{const items=current.filter(s=>s.day===activeDay),i=items.findIndex(s=>s.id===id),t=i+direction;if(i<0||t<0||t>=items.length)return current;const next=[...items];[next[i],next[t]]=[next[t],next[i]];let cursor=0;return current.map(s=>s.day===activeDay?next[cursor++]:s)});
   const reorderByDrop=(targetId:string)=>{const activeDraggedId=draggedIdRef.current||draggedId;if(!activeDraggedId||activeDraggedId===targetId){draggedIdRef.current=null;stopDragAutoScroll();setDraggedId(null);setDragOverId(null);return}const movedId=activeDraggedId;setStops(current=>{const items=current.filter(s=>s.day===activeDay),from=items.findIndex(s=>s.id===movedId),to=items.findIndex(s=>s.id===targetId);if(from<0||to<0)return current;const next=[...items],[moved]=next.splice(from,1);next.splice(to,0,moved);let cursor=0;return current.map(s=>s.day===activeDay?next[cursor++]:s)});setJustMovedId(movedId);window.setTimeout(()=>setJustMovedId(current=>current===movedId?null:current),380);draggedIdRef.current=null;stopDragAutoScroll();setDraggedId(null);setDragOverId(null)};
@@ -1410,7 +1423,8 @@ export default function Home(){
   const mapViewProps={stops:dayStops,destination:activeDestinationName,onSelect:selectStop,placeResults:editing?editMapResults:mapResultPlaces,onPlaceSelect:editing?(place:SearchPlace)=>{void pickEditPlace(place)}:selectMapCandidate,dateLabels:dayDates,activeDay,onDayChange:setActiveDay,editableStopId:locationEditingId,onStopPositionChange:updateStopPosition,onCancelStopPositionEdit:()=>setLocationEditingId(null),customPin,customPinMode,onCustomLocationChange:updateCustomPin,onCustomAddressChange:setCustomAddress,onCustomPinContinue:continueCustomPin,onMapTap:toggleMapFocus,mapFocused,onToggleMapFocus:toggleMapFocus,plannerCollapsed,focusRequest};
 
   return <main className="app-shell">
-    {editing&&editDraft&&<div className="edit-pin-color-float"><label>{text('핀 색상','Pin color')}<span><input type="color" aria-label={text('핀 색상','Pin color')} value={editDraft.pinColor||categoryColor(editDraft.day,dayKeys,editDraft.category)} onChange={e=>setEditDraft({...editDraft,pinColor:e.target.value})}/><code>{editDraft.pinColor||text('날짜·카테고리 기본색','Date/category default')}</code></span></label><Button type="button" variant="ghost" onClick={()=>setEditDraft({...editDraft,pinColor:undefined})}>{text('기본색으로','Reset')}</Button></div>}
+    {editing&&editDraft&&<EditPinTools draft={editDraft} dayKeys={dayKeys} text={text} onColorChange={pinColor=>setEditDraft({...editDraft,pinColor})} onReset={()=>setEditDraft({...editDraft,pinColor:undefined})} onEditLocation={()=>{setLocationEditingId(editing.id);closeEdit()}}/>}
+    {selected&&<SelectedPlaceEditButton selected={selected} text={text} onEdit={()=>openEdit(selected)}/>}
     <header className="topbar">
       <Link className="brand" href="/"><span className="brand-mark"><Navigation/></span><span>{text('여행을 떠나요', 'Let’s Travel')}</span></Link>
       <div className="trip-title"><strong>{tripSettings.title}</strong><span>{formatTripDate(tripSettings.startDate,false,language)} — {formatTripDate(tripSettings.endDate,false,language)} · {tripSettings.people}{text('명', ' people')}</span></div>
