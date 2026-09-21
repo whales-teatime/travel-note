@@ -35,7 +35,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 type DayKey = string;
 type PlaceType = '식사' | '간식' | '관광' | '숙소' | '교통' | '기타';
 type MapProvider = 'naver' | 'google' | 'osm';
-type Stop = { id: string; day: DayKey; time: string; name: string; category: PlaceType; memo: string; address: string; lat: number; lng: number; customLocation?: boolean; naverLink?: string; mapProvider?: MapProvider; placeId?: string; costPerPerson?: number; costTotal?: number; costBasis?: 'person'|'total' };
+type Stop = { id: string; day: DayKey; time: string; name: string; category: PlaceType; memo: string; address: string; lat: number; lng: number; customLocation?: boolean; naverLink?: string; mapProvider?: MapProvider; placeId?: string; pinColor?: string; costPerPerson?: number; costTotal?: number; costBasis?: 'person'|'total' };
 type SearchPlace = { title: string; category: string; address: string; roadAddress: string; mapx: string; mapy: string; link?: string; description?: string; titleEnglish?: string; categoryEnglish?: string; addressEnglish?: string; roadAddressEnglish?: string; provider?: MapProvider; placeId?: string; region?: string; country?: string; googlePrediction?: any };
 type EditPolicy = 'owner' | 'all' | 'password';
 type TripDestination = { id: string; name: string; startDate: string; endDate: string; lat?: number; lng?: number; region?: string; country?: string };
@@ -131,6 +131,15 @@ function normalizeStoredDay(value:string,start:string,end:string){
   const parsed=dateDayKey(value),found=days.find(day=>day.key===parsed);return found?.key||days[0]?.key||dateDayKey(start)||value;
 }
 function dayColor(day:DayKey,orderedDays:DayKey[]){const index=orderedDays.indexOf(day);return DAY_COLORS[(index<0?0:index)%DAY_COLORS.length]}
+function categoryColor(day:DayKey,orderedDays:DayKey[],category:PlaceType,custom?:string){
+  if(custom&&/^#[0-9a-f]{6}$/i.test(custom))return custom;
+  const base=dayColor(day,orderedDays),value=base.slice(1),rgb=[0,2,4].map(index=>parseInt(value.slice(index,index+2),16));
+  const mixes:Record<PlaceType,{color:[number,number,number];amount:number}>= {
+    '식사':{color:[255,255,255],amount:0},'간식':{color:[255,194,72],amount:.2},'관광':{color:[255,255,255],amount:.24},'숙소':{color:[76,139,255],amount:.22},'교통':{color:[30,30,30],amount:.2},'기타':{color:[30,30,30],amount:.08},
+  };
+  const mix=mixes[category]||mixes['기타'];
+  return '#'+rgb.map((channel,index)=>Math.round(channel+(mix.color[index]-channel)*mix.amount).toString(16).padStart(2,'0')).join('');
+}
 function usePlaceSuggestions(query:string,enabled:boolean,context='',provider:MapProvider='naver',googleKey='',requestedQuery=''){
   const { language } = useLanguage();
   const text = useCallback((korean:string, english:string) => tr(language, korean, english), [language]);
@@ -572,7 +581,7 @@ function NaverMap({stops,clientId,destination,onSelect,placeResults,onPlaceSelec
     if(!map||!naver?.maps||status!=='ready')return;
     overlaysRef.current.forEach(o=>{try{o?.setMap(null)}catch{}}); overlaysRef.current=[];
     stops.forEach((stop,index)=>{
-      const position=new naver.maps.LatLng(stop.lat,stop.lng), color=dayColor(stop.day,orderedDays);
+      const position=new naver.maps.LatLng(stop.lat,stop.lng), color=categoryColor(stop.day,orderedDays,stop.category,stop.pinColor);
       const marker=new naver.maps.Marker({map,position,title:stop.name,clickable:true,draggable:editableStopId===stop.id,zIndex:100+index,icon:{content:`<button type="button" class="naver-marker${focusRequest?.id===stop.id?' is-focused':''}" style="--pin:${color}" aria-label="${escapeHtml(stop.name)} 정보 보기"><span>${index+1}</span></button>`,anchor:new naver.maps.Point(20,45)}});
       (marker as any).__stopId=stop.id;
       naver.maps.Event.addListener(marker,'click',()=>onSelect(stop));
@@ -708,8 +717,8 @@ function GoogleMap({stops,apiKey,destination,onSelect,placeResults,onPlaceSelect
     overlaysRef.current.forEach(overlay=>{try{overlay.setMap(null)}catch{}});overlaysRef.current=[];
     const focusTimers:number[]=[];
     stops.forEach((stop,index)=>{
-      const color=dayColor(stop.day,orderedDays);
       const isFocused=focusRequest?.id===stop.id;
+      const color=categoryColor(stop.day,orderedDays,stop.category,stop.pinColor);
       const marker=new google.maps.Marker({map,position:{lat:stop.lat,lng:stop.lng},title:stop.name,clickable:true,draggable:editableStopId===stop.id,zIndex:100+index,label:{text:String(index+1),color:'#fff',fontWeight:'800'},icon:{path:google.maps.SymbolPath.CIRCLE,scale:isFocused?22:17,fillColor:color,fillOpacity:1,strokeColor:isFocused?'#03a94d':'#fff',strokeWeight:isFocused?5:3},animation:isFocused?google.maps.Animation.BOUNCE:undefined});
       (marker as any).__stopId=stop.id;
       marker.addListener('click',()=>onSelect(stop));
@@ -926,7 +935,7 @@ function OsmMap({stops,destination,onSelect,placeResults,onPlaceSelect,dateLabel
     if(map.getLayer(sourceId))map.setPaintProperty(sourceId,'line-color',current.stops[0]?dayColor(current.stops[0].day,Object.keys(dateLabels)):'#03a94d');
     const Marker=maplibreRef.current?.Marker;if(!Marker)return;
     current.stops.forEach((stop,index)=>{
-      const element=document.createElement('div');element.className='osm-stop-icon-wrap';element.innerHTML=`<span class="osm-stop-icon${focusRequest?.id===stop.id?' is-focused':''}" style="--pin:${dayColor(stop.day,Object.keys(dateLabels))}">${index+1}</span>`;element.setAttribute('title',stop.name);element.setAttribute('aria-label',stop.name);
+      const element=document.createElement('div');element.className='osm-stop-icon-wrap';element.innerHTML=`<span class="osm-stop-icon${focusRequest?.id===stop.id?' is-focused':''}" style="--pin:${categoryColor(stop.day,Object.keys(dateLabels),stop.category,stop.pinColor)}">${index+1}</span>`;element.setAttribute('title',stop.name);element.setAttribute('aria-label',stop.name);
       element.addEventListener('click',event=>{event.stopPropagation();current.onSelect(stop)});
       // Urban sights often sit within a few blocks of one another. Spread
       // nearby pins by a small screen offset so every numbered stop remains
@@ -1300,7 +1309,7 @@ export default function Home(){
   const addStop=()=>{if(!picked)return;const provider=tripSettings.mapProvider;const stop:Stop={id:`${Date.now()}`,day:activeDay,time:newTime,name:placeTitle(picked,language),category:newCategory,memo:newMemo.trim(),address:placeAddress(picked,language),lat:Number(picked.mapy)/1e7,lng:Number(picked.mapx)/1e7,mapProvider:provider,placeId:picked.placeId,...(provider==='naver'?{naverLink:naverPlaceUrl({name:cleanTitle(picked.title),address:picked.roadAddress||picked.address})}:{})};setStops(current=>insertStopByTime(current,stop));setAddOpen(false);setQuery('');setPicked(null);setNewMemo('')};
   const closeEdit=()=>{setEditing(null);setEditDraft(null);setEditMapResults([]);setOsmEditQuery('')};
   const openEdit=(stop:Stop)=>{setEditing(stop);setEditDraft({...stop});setEditQuery(stop.name);setEditMapResults([]);setOsmEditQuery('');setEditPlaceLinked(true)};
-  const saveEdit=()=>{if(!editing||!editDraft||!isValidTime(editDraft.time))return;const updated={...editDraft,name:editDraft.name.trim()||editing.name,memo:editDraft.memo.trim()};setStops(current=>current.map(stop=>stop.id===editing.id?updated:stop));if(selected?.id===editing.id)setSelected(updated);closeEdit()};
+  const saveEdit=()=>{if(!editing||!editDraft||!isValidTime(editDraft.time))return;const updated={...editDraft,name:editDraft.name.trim()||editing.name,memo:editDraft.memo.trim(),pinColor:editDraft.pinColor&&/^#[0-9a-f]{6}$/i.test(editDraft.pinColor)?editDraft.pinColor:undefined};setStops(current=>current.map(stop=>stop.id===editing.id?updated:stop));if(selected?.id===editing.id)setSelected(updated);closeEdit()};
   const moveStop=(id:string,direction:-1|1)=>setStops(current=>{const items=current.filter(s=>s.day===activeDay),i=items.findIndex(s=>s.id===id),t=i+direction;if(i<0||t<0||t>=items.length)return current;const next=[...items];[next[i],next[t]]=[next[t],next[i]];let cursor=0;return current.map(s=>s.day===activeDay?next[cursor++]:s)});
   const reorderByDrop=(targetId:string)=>{const activeDraggedId=draggedIdRef.current||draggedId;if(!activeDraggedId||activeDraggedId===targetId){draggedIdRef.current=null;stopDragAutoScroll();setDraggedId(null);setDragOverId(null);return}const movedId=activeDraggedId;setStops(current=>{const items=current.filter(s=>s.day===activeDay),from=items.findIndex(s=>s.id===movedId),to=items.findIndex(s=>s.id===targetId);if(from<0||to<0)return current;const next=[...items],[moved]=next.splice(from,1);next.splice(to,0,moved);let cursor=0;return current.map(s=>s.day===activeDay?next[cursor++]:s)});setJustMovedId(movedId);window.setTimeout(()=>setJustMovedId(current=>current===movedId?null:current),380);draggedIdRef.current=null;stopDragAutoScroll();setDraggedId(null);setDragOverId(null)};
   const removeSelected=()=>{if(!selected)return;setStops(c=>c.filter(s=>s.id!==selected.id));setSelected(null)};
@@ -1401,6 +1410,7 @@ export default function Home(){
   const mapViewProps={stops:dayStops,destination:activeDestinationName,onSelect:selectStop,placeResults:editing?editMapResults:mapResultPlaces,onPlaceSelect:editing?(place:SearchPlace)=>{void pickEditPlace(place)}:selectMapCandidate,dateLabels:dayDates,activeDay,onDayChange:setActiveDay,editableStopId:locationEditingId,onStopPositionChange:updateStopPosition,onCancelStopPositionEdit:()=>setLocationEditingId(null),customPin,customPinMode,onCustomLocationChange:updateCustomPin,onCustomAddressChange:setCustomAddress,onCustomPinContinue:continueCustomPin,onMapTap:toggleMapFocus,mapFocused,onToggleMapFocus:toggleMapFocus,plannerCollapsed,focusRequest};
 
   return <main className="app-shell">
+    {editing&&editDraft&&<div className="edit-pin-color-float"><label>{text('핀 색상','Pin color')}<span><input type="color" aria-label={text('핀 색상','Pin color')} value={editDraft.pinColor||categoryColor(editDraft.day,dayKeys,editDraft.category)} onChange={e=>setEditDraft({...editDraft,pinColor:e.target.value})}/><code>{editDraft.pinColor||text('날짜·카테고리 기본색','Date/category default')}</code></span></label><Button type="button" variant="ghost" onClick={()=>setEditDraft({...editDraft,pinColor:undefined})}>{text('기본색으로','Reset')}</Button></div>}
     <header className="topbar">
       <Link className="brand" href="/"><span className="brand-mark"><Navigation/></span><span>{text('여행을 떠나요', 'Let’s Travel')}</span></Link>
       <div className="trip-title"><strong>{tripSettings.title}</strong><span>{formatTripDate(tripSettings.startDate,false,language)} — {formatTripDate(tripSettings.endDate,false,language)} · {tripSettings.people}{text('명', ' people')}</span></div>
@@ -1480,7 +1490,7 @@ export default function Home(){
               {gap!==null&&<div className="distance-chip"><span/>{text('직선 ','Straight line ')}{gap<1?`${Math.round(gap*1000)}m`:`${gap.toFixed(1)}km`}</div>}
               <article data-stop-id={stop.id} className={`stop-card ${draggedId===stop.id?'is-dragging':''} ${dragOverId===stop.id&&draggedId!==stop.id?'is-drag-over':''} ${justMovedId===stop.id?'just-moved':''}`} draggable={canDragCards} onContextMenu={event=>{if(!canDragCards)event.preventDefault()}} onDragStart={()=>{if(canDragCards){draggedIdRef.current=stop.id;setDraggedId(stop.id)}}} onDragOver={event=>{if(!canDragCards)return;event.preventDefault();if(draggedId!==stop.id)setDragOverId(stop.id)}} onDragLeave={()=>setDragOverId(current=>current===stop.id?null:current)} onDrop={()=>{if(canDragCards)reorderByDrop(stop.id)}} onDragEnd={()=>{draggedIdRef.current=null;stopDragAutoScroll();setDraggedId(null);setDragOverId(null)}}>
                 <div className="drag-handle" aria-hidden="true"><GripVertical/></div>
-                <div className="order-pin" style={{background:dayColor(activeDay,dayKeys)}}>{index+1}</div>
+                <div className="order-pin" style={{background:categoryColor(stop.day,dayKeys,stop.category,stop.pinColor)}}>{index+1}</div>
                 <div className="stop-main">
                   <div className="stop-time"><Clock3 className={reverse?'time-warning':''}/><span className={reverse?'time-warning':''} title={reverse?text('앞 장소보다 시간이 이릅니다.','This time is earlier than the previous stop.'):undefined}>{stop.time}</span><span className="stop-category">{text(stop.category,stop.category==='식사'?'Meal':stop.category==='간식'?'Snack':stop.category==='관광'?'Sightseeing':stop.category==='숙소'?'Stay':stop.category==='교통'?'Transport':'Other')}</span></div>
                   <strong>{stop.name}</strong>
