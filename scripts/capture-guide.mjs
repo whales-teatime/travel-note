@@ -14,12 +14,24 @@ const debugPort = 9338;
 mkdirSync(outputDir, { recursive: true });
 
 const tripSettings = {
-  title: '전주 친구 여행', destination: '전주', startDate: '2026-09-19', endDate: '2026-09-20', people: 5, editPolicy: 'owner',
+  title: '전주 친구 여행', destination: '전주', startDate: '2026-09-19', endDate: '2026-09-23', people: 5, editPolicy: 'owner',
+  mapProvider: 'naver', viewMode: 'route', distanceBaseIds: [], fuelEfficiency: 12, fuelPrice: 1700, destinations: [],
 };
 const stops = [
-  { id: 'guide-1', day: '2026-09-19', time: '09:00', name: '전주역', category: '기타', memo: '전주 도착', address: '전북특별자치도 전주시 덕진구 동부대로 680', lat: 35.84943, lng: 127.1618 },
+  { id: 'guide-1', day: '2026-09-19', time: '09:00', name: '전주역', category: '교통', memo: '전주 도착', address: '전북특별자치도 전주시 덕진구 동부대로 680', lat: 35.84943, lng: 127.1618 },
   { id: 'guide-2', day: '2026-09-19', time: '12:30', name: '전주한옥마을', category: '관광', memo: '한옥 골목 산책', address: '전북특별자치도 전주시 완산구 기린대로 99', lat: 35.8149, lng: 127.1527 },
   { id: 'guide-3', day: '2026-09-19', time: '18:30', name: '전주남부시장', category: '식사', memo: '야시장 구경', address: '전북특별자치도 전주시 완산구 풍남문1길 19-3', lat: 35.8122, lng: 127.1478 },
+  { id: 'guide-4', day: '2026-09-19', time: '20:00', name: '객리단길', category: '간식', memo: '카페와 밤 산책', address: '전북특별자치도 전주시 완산구 전주객사2길', lat: 35.8175, lng: 127.1405 },
+];
+
+const overseasSettings = {
+  title: '도쿄 3박 4일', destination: 'Tokyo, Japan', startDate: '2026-10-16', endDate: '2026-10-19', people: 2, editPolicy: 'owner',
+  mapProvider: 'osm', viewMode: 'route', distanceBaseIds: [], fuelEfficiency: 12, fuelPrice: 1700, destinations: [],
+};
+const overseasStops = [
+  { id: 'tokyo-1', day: '2026-10-16', time: '10:00', name: 'Tokyo Station', category: '교통', memo: '짐 보관 후 출발', address: 'Tokyo Station, Chiyoda City, Tokyo', lat: 35.68124, lng: 139.76712, mapProvider: 'osm' },
+  { id: 'tokyo-2', day: '2026-10-16', time: '13:00', name: 'Senso-ji', category: '관광', memo: '아사쿠사 산책', address: '2 Chome-3-1 Asakusa, Taito City, Tokyo', lat: 35.71476, lng: 139.79666, mapProvider: 'osm' },
+  { id: 'tokyo-3', day: '2026-10-16', time: '18:00', name: 'Shibuya Crossing', category: '관광', memo: '야경 보기', address: 'Shibuya City, Tokyo', lat: 35.65948, lng: 139.70056, mapProvider: 'osm' },
 ];
 
 const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
@@ -97,8 +109,8 @@ try {
   await Promise.all([client.send('Page.enable'), client.send('Runtime.enable'), client.send('Network.enable')]);
   await client.send('Page.addScriptToEvaluateOnNewDocument', { source: `
     try {
-      localStorage.setItem('route-note-trip-settings', ${JSON.stringify(JSON.stringify(tripSettings))});
-      localStorage.setItem('route-note-stops', ${JSON.stringify(JSON.stringify(stops))});
+      if (!localStorage.getItem('route-note-trip-settings')) localStorage.setItem('route-note-trip-settings', ${JSON.stringify(JSON.stringify(tripSettings))});
+      if (!localStorage.getItem('route-note-stops')) localStorage.setItem('route-note-stops', ${JSON.stringify(JSON.stringify(stops))});
     } catch {}
   ` });
 
@@ -127,6 +139,15 @@ try {
   const focusSelector = async (selector, index = 0) => run(`(() => {
     const node=document.querySelectorAll(${JSON.stringify(selector)})[${index}];
     if(!node)return false;node.focus();node.click();return true;
+  })()`);
+  const setFieldValue = async (selector, value, index = 0) => run(`(() => {
+    const node=document.querySelectorAll(${JSON.stringify(selector)})[${index}];
+    if(!node)return false;
+    const prototype=node instanceof HTMLSelectElement?HTMLSelectElement.prototype:node instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;
+    const setter=Object.getOwnPropertyDescriptor(prototype,'value')?.set;
+    setter?.call(node,${JSON.stringify(value)});
+    node.dispatchEvent(new Event(node instanceof HTMLSelectElement?'change':'input',{bubbles:true}));
+    return true;
   })()`);
   const typeCharacters = async (characters, frame) => {
     for (const character of characters) {
@@ -157,6 +178,17 @@ try {
     await sleep(2_000);
     await installPointer();
   };
+  const loadDraft = async (settings = tripSettings, items = stops, width = 1280, height = 800, mobile = false) => {
+    await client.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile });
+    await client.send('Page.navigate', { url: baseUrl });
+    await waitFor('body');
+    await sleep(350);
+    await run(`localStorage.setItem('route-note-trip-settings',${JSON.stringify(JSON.stringify(settings))});localStorage.setItem('route-note-stops',${JSON.stringify(JSON.stringify(items))});true`);
+    await client.send('Page.navigate', { url: `${baseUrl}/plan/new?draft=1` });
+    await waitFor('.workspace');
+    await sleep(2_000);
+    await installPointer();
+  };
   const recorder = name => {
     const framesDir = path.join(workDir, name);
     mkdirSync(framesDir, { recursive: true });
@@ -175,7 +207,7 @@ try {
     };
   };
 
-  if (captureMode !== 'mobile') {
+  if (captureMode === 'all' || captureMode === 'desktop') {
     console.log('Capturing PC guide animations...');
     await navigate(1280, 800, false);
 
@@ -264,7 +296,7 @@ try {
 
   }
 
-  if (captureMode !== 'desktop') {
+  if (captureMode === 'all' || captureMode === 'mobile') {
     console.log('Capturing mobile guide animations...');
     await navigate(430, 780, true);
 
@@ -291,6 +323,147 @@ try {
     video.finish(430);
   }
 
+  }
+
+  if (captureMode === 'all' || captureMode === 'updates') {
+    console.log('Capturing version 2.0 guide animations...');
+
+  {
+    await loadDraft();
+    const video = recorder('pc-edit-place');
+    const editRect = await rectFor('.edit-card-button');
+    await setPointer(editRect.x + editRect.width / 2, editRect.y + editRect.height / 2);
+    await video.frame(4);
+    await run(`document.querySelector('.edit-card-button')?.click()`);
+    await waitFor('.edit-dialog');
+    await sleep(350);
+    await video.frame(5);
+    const colorRect = await rectFor('.pin-hex-input');
+    await setPointer(colorRect.x + colorRect.width / 2, colorRect.y + colorRect.height / 2, true);
+    await video.frame(2);
+    await setFieldValue('.pin-hex-input', '#e85d75');
+    await sleep(350);
+    await video.frame(5);
+    const saveRect = await rectFor('.edit-dialog [data-slot="dialog-footer"] button', 1);
+    await setPointer(saveRect.x + saveRect.width / 2, saveRect.y + saveRect.height / 2, true);
+    await video.frame(2);
+    await run(`document.querySelectorAll('.edit-dialog [data-slot="dialog-footer"] button')[1]?.click()`);
+    await sleep(500);
+    await video.frame(6);
+    video.finish(960);
+  }
+
+  {
+    await loadDraft();
+    const video = recorder('pc-linked-destination');
+    const settingsRect = await rectFor('.settings-button');
+    await setPointer(settingsRect.x + settingsRect.width / 2, settingsRect.y + settingsRect.height / 2);
+    await video.frame(3);
+    await run(`document.querySelector('.settings-button')?.click()`);
+    await waitFor('.settings-dialog');
+    await video.frame(4);
+    const linkRect = await rectFor('.link-destination-button');
+    await setPointer(linkRect.x + linkRect.width / 2, linkRect.y + linkRect.height / 2, true);
+    await video.frame(2);
+    await run(`document.querySelector('.link-destination-button')?.click()`);
+    await waitFor('.linked-destination-editor');
+    await sleep(250);
+    await video.frame(5);
+    const linkedInput = await rectFor('.linked-destination-place input');
+    await setPointer(linkedInput.x + 90, linkedInput.y + linkedInput.height / 2);
+    await focusSelector('.linked-destination-place input');
+    await typeCharacters('홍천', video.frame.bind(video));
+    await sleep(1_100);
+    if (await run(`Boolean(document.querySelector('.linked-destination-suggestions .destination-suggestion'))`)) {
+      await video.frame(4);
+      const resultRect = await rectFor('.linked-destination-suggestions .destination-suggestion');
+      await setPointer(resultRect.x + 120, resultRect.y + resultRect.height / 2, true);
+      await video.frame(2);
+      await run(`document.querySelector('.linked-destination-suggestions .destination-suggestion')?.click()`);
+      await sleep(350);
+    }
+    await video.frame(6);
+    video.finish(960);
+  }
+
+  {
+    await loadDraft();
+    const video = recorder('pc-distance-compare');
+    await run(`document.querySelector('.settings-button')?.click()`);
+    await waitFor('.settings-dialog');
+    await run(`document.querySelector('.view-mode-setting')?.scrollIntoView({block:'center'})`);
+    await sleep(250);
+    const selectRect = await rectFor('.view-mode-setting select');
+    await setPointer(selectRect.x + selectRect.width / 2, selectRect.y + selectRect.height / 2, true);
+    await video.frame(4);
+    await setFieldValue('.view-mode-setting select', 'distance');
+    await waitFor('.distance-base-settings');
+    await run(`document.querySelector('.distance-base-settings summary')?.click()`);
+    await sleep(300);
+    await video.frame(5);
+    for (const index of [0, 1]) {
+      const baseRect = await rectFor('.distance-base-button', index);
+      await setPointer(baseRect.x + baseRect.width * .7, baseRect.y + baseRect.height / 2, true);
+      await video.frame(2);
+      await run(`document.querySelectorAll('.distance-base-button')[${index}]?.click()`);
+      await sleep(220);
+      await video.frame(2);
+    }
+    await run(`(() => {const dialog=document.querySelector('.settings-dialog');if(dialog)dialog.scrollTop=dialog.scrollHeight;return true})()`);
+    await sleep(200);
+    await run(`document.querySelector('.settings-dialog [data-slot="dialog-footer"] button:last-child')?.click()`);
+    await waitFor('.distance-comparison');
+    await sleep(700);
+    await video.frame(7);
+    const candidateRect = await rectFor('.stop-card', 2);
+    await setPointer(candidateRect.x + candidateRect.width / 2, candidateRect.y + candidateRect.height / 2, true);
+    await video.frame(2);
+    await run(`document.querySelectorAll('.stop-card')[2]?.click()`);
+    await sleep(400);
+    await video.frame(7);
+    video.finish(960);
+  }
+
+  {
+    await loadDraft(overseasSettings, overseasStops);
+    const video = recorder('pc-overseas');
+    await video.frame(5);
+    const searchRect = await rectFor('.map-place-search .place-combobox-input');
+    await setPointer(searchRect.x + 120, searchRect.y + searchRect.height / 2);
+    await focusSelector('.map-place-search .place-combobox-input');
+    await typeCharacters('Tokyo Station', video.frame.bind(video));
+    await sleep(1_300);
+    if (await run(`Boolean(document.querySelector('.place-combobox-item'))`)) {
+      await video.frame(4);
+      const resultRect = await rectFor('.place-combobox-item');
+      await setPointer(resultRect.x + 130, resultRect.y + resultRect.height / 2, true);
+      await video.frame(2);
+      await run(`document.querySelector('.place-combobox-item')?.click()`);
+      await sleep(650);
+    }
+    await video.frame(7);
+    video.finish(960);
+  }
+
+  {
+    await loadDraft(tripSettings, stops, 430, 780, true);
+    const video = recorder('mobile-edit');
+    const editRect = await rectFor('.edit-card-button');
+    await setPointer(editRect.x + editRect.width / 2, editRect.y + editRect.height / 2);
+    await video.frame(4);
+    await run(`document.querySelector('.edit-card-button')?.click()`);
+    await waitFor('.edit-dialog');
+    await sleep(350);
+    await video.frame(6);
+    await run(`(() => {const dialog=document.querySelector('.edit-dialog');if(dialog)dialog.scrollTop=dialog.scrollHeight;return true})()`);
+    await sleep(350);
+    await video.frame(7);
+    video.finish(430);
+  }
+
+  }
+
+  if (captureMode === 'all' || captureMode === 'mobile') {
   {
     await client.send('Page.navigate', { url: `${baseUrl}/plan/new?draft=1` });
     await waitFor('.workspace');
