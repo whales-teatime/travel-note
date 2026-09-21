@@ -136,7 +136,7 @@ function categoryColor(day:DayKey,orderedDays:DayKey[],category:PlaceType,custom
   if(custom&&/^#[0-9a-f]{6}$/i.test(custom))return custom;
   const base=dayColor(day,orderedDays),value=base.slice(1),rgb=[0,2,4].map(index=>parseInt(value.slice(index,index+2),16));
   const mixes:Record<PlaceType,{color:[number,number,number];amount:number}>= {
-    '식사':{color:[255,255,255],amount:0},'간식':{color:[255,170,24],amount:.48},'관광':{color:[255,255,255],amount:.55},'숙소':{color:[40,125,255],amount:.52},'교통':{color:[35,35,35],amount:.5},'기타':{color:[30,30,30],amount:.24},
+    '식사':{color:[255,255,255],amount:0},'간식':{color:[255,255,255],amount:.2},'관광':{color:[35,35,35],amount:.25},'숙소':{color:[255,255,255],amount:.38},'교통':{color:[35,35,35],amount:.45},'기타':{color:[35,35,35],amount:.12},
   };
   const mix=mixes[category]||mixes['기타'];
   return '#'+rgb.map((channel,index)=>Math.round(channel+(mix.color[index]-channel)*mix.amount).toString(16).padStart(2,'0')).join('');
