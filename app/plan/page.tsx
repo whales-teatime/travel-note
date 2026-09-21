@@ -143,13 +143,25 @@ function categoryColor(day:DayKey,orderedDays:DayKey[],category:PlaceType,custom
 }
 function EditPinTools({draft,dayKeys,text,onColorChange,onReset,onEditLocation}:{draft:Stop;dayKeys:DayKey[];text:(korean:string,english:string)=>string;onColorChange:(color:string)=>void;onReset:()=>void;onEditLocation:()=>void}){
   const [target,setTarget]=useState<HTMLElement|null>(null);
-  useEffect(()=>{setTarget(document.querySelector<HTMLElement>('.edit-map-dialog .edit-grid'))},[]);
+  useEffect(()=>{
+    const findTarget=()=>{const next=document.querySelector<HTMLElement>('.edit-map-dialog .edit-grid');if(next){setTarget(next);observer.disconnect();return true}return false};
+    const observer=new MutationObserver(findTarget);
+    findTarget();
+    observer.observe(document.body,{childList:true,subtree:true});
+    return()=>observer.disconnect();
+  },[]);
   if(!target)return null;
   return createPortal(<div className="edit-pin-tools"><div className="edit-pin-color-control"><label>{text('핀 색상','Pin color')}<span><input type="color" aria-label={text('핀 색상','Pin color')} value={draft.pinColor||categoryColor(draft.day,dayKeys,draft.category)} onChange={event=>onColorChange(event.target.value)}/><code>{draft.pinColor||text('날짜·카테고리 기본색','Date/category default')}</code></span></label><Button type="button" variant="ghost" onClick={onReset}>{text('기본색으로','Reset')}</Button></div><Button type="button" variant="outline" onClick={onEditLocation}><MapPin/>{text('위치 임의 수정','Edit location')}</Button></div>,target);
 }
 function SelectedPlaceEditButton({selected,text,onEdit}:{selected:Stop;text:(korean:string,english:string)=>string;onEdit:()=>void}){
   const [target,setTarget]=useState<HTMLElement|null>(null);
-  useEffect(()=>{setTarget(document.querySelector<HTMLElement>('.place-sheet .sheet-body'))},[selected.id]);
+  useEffect(()=>{
+    const findTarget=()=>{const next=document.querySelector<HTMLElement>('.place-sheet .sheet-body');if(next){setTarget(next);observer.disconnect();return true}return false};
+    const observer=new MutationObserver(findTarget);
+    findTarget();
+    observer.observe(document.body,{childList:true,subtree:true});
+    return()=>observer.disconnect();
+  },[selected.id]);
   if(!target)return null;
   return createPortal(<Button variant="outline" className="place-edit-button" onClick={onEdit}><Pencil/>{text('장소 수정','Edit place')}</Button>,target);
 }
