@@ -305,7 +305,7 @@ export function sanitizePlan(value: unknown): PlanInput | null {
   if (!stops) return null;
   const validStopIds = new Set(stops.map(stop => stop.id));
   const distanceBaseIds = Array.isArray(source.distanceBaseIds)
-    ? [...new Set(source.distanceBaseIds.filter(value => typeof value === 'string').map(value => value.slice(0, 100)).filter(id => validStopIds.has(id)))].slice(0, 4)
+    ? [...new Set(source.distanceBaseIds.filter(value => typeof value === 'string').map(value => value.slice(0, 100)).filter(id => validStopIds.has(id)))].slice(0, 500)
     : [];
   return { title, destination, startDate, endDate, people, editPolicy, mapProvider, viewMode, distanceBaseIds, destinations, stops };
 }
@@ -323,7 +323,7 @@ export function publicPlan(row: Record<string, unknown>) {
     distanceBaseIds: (() => {
       try {
         const parsed = JSON.parse(textValue(row.distance_base_ids_json, '[]')) as unknown;
-        return Array.isArray(parsed) ? parsed.filter(value => typeof value === 'string').map(value => value.slice(0, 100)).slice(0, 4) : [];
+        return Array.isArray(parsed) ? parsed.filter(value => typeof value === 'string').map(value => value.slice(0, 100)).slice(0, 500) : [];
       } catch { return []; }
     })(),
     editPolicy: row.edit_policy === 'all' ? 'all' : row.edit_policy === 'password' ? 'password' : 'owner',
