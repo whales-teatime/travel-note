@@ -80,7 +80,7 @@ const EXTERNAL_SEARCH_TIMEOUT_MS = 5_000;
 // a city/town/county or country, not a neighborhood, apartment complex, or
 // landmark. Bump this when the filtering policy changes so old D1 results
 // cannot leak back into the suggestions.
-const CITY_SEARCH_CACHE_VERSION = 'city-v14';
+const CITY_SEARCH_CACHE_VERSION = 'city-v15';
 const PLACE_SEARCH_CACHE_VERSION = 'place-v4';
 let lastNominatimRequestAt = 0;
 
@@ -518,46 +518,56 @@ async function nominatimSearch(query: string, near: string, language: 'ko' | 'en
   // Keep the provider query global. Appending the trip city can turn a valid
   // cross-city search ("오송역" during a Jeonju trip) into an empty exact
   // phrase. `near` is used below for ranking instead of hard filtering.
-  const searchQuery = query;
-  const endpoint = new URL('https://nominatim.openstreetmap.org/search');
-  endpoint.searchParams.set('q', searchQuery);
-  endpoint.searchParams.set('format', 'jsonv2');
-  endpoint.searchParams.set('limit', cityOnly ? '20' : '8');
-  endpoint.searchParams.set('addressdetails', '1');
-  endpoint.searchParams.set('accept-language', language);
-  if (cityOnly && !includeCountry) {
-    endpoint.searchParams.set('featureType', 'city');
-    endpoint.searchParams.set('layer', 'address');
-  }
+  const queryVariants = cityOnly && /[가-힣]/u.test(query) && !/[시군구도국]$/u.test(query) ? [query, `${query}시`] : [query];
+  const items: FreeSearchItem[] = [];
   try {
-    const response = await fetch(endpoint, {
-      headers: {
-        Accept: 'application/json',
-        'User-Agent': 'travel-note/2.0 (https://travel.whales-teatime.workers.dev)',
-        Referer: 'https://travel.whales-teatime.workers.dev/',
-      },
-      signal: AbortSignal.timeout(EXTERNAL_SEARCH_TIMEOUT_MS),
-      cf: { cacheTtl: 300, cacheEverything: true },
-    } as RequestInit & { cf: Record<string, number | boolean> });
-    if (!response.ok) return null;
-    const data = await response.json() as NominatimItem[];
-    const items = data.filter(item => Number.isFinite(Number(item.lat)) && Number.isFinite(Number(item.lon))).map(item => {
-      const address = nominatimAddress(item);
-      const details = item.address || {};
-      return {
-        title: nominatimTitle(item, query),
-        category: cleanText(item.addresstype).toLocaleLowerCase('en-US') === 'country' ? 'country' : nominatimType(item),
-        address,
-        roadAddress: address,
-        mapx: String(Math.round(Number(item.lon) * 1e7)),
-        mapy: String(Math.round(Number(item.lat) * 1e7)),
-        provider: 'osm' as const,
-        placeId: item.place_id ? `osm:${item.osm_type || 'n'}:${item.osm_id || item.place_id}` : undefined,
-        osmType: cleanText(item.osm_type).toUpperCase() || undefined,
-        region: cleanText(details.state || details.province || details.county),
-        country: cleanText(details.country),
-      };
-    });
+    for (let index = 0; index < queryVariants.length; index += 1) {
+      if (index > 0) {
+        // Nominatim asks clients to keep roughly one request per second. The
+        // suffix retry is only used for ambiguous Korean city names (광주 →
+        // 광주시), so the normal autocomplete path remains one request.
+        await new Promise(resolve => setTimeout(resolve, 1050));
+        if (!await nominatimRequestAllowed()) break;
+      }
+      const endpoint = new URL('https://nominatim.openstreetmap.org/search');
+      endpoint.searchParams.set('q', queryVariants[index]);
+      endpoint.searchParams.set('format', 'jsonv2');
+      endpoint.searchParams.set('limit', cityOnly ? '20' : '8');
+      endpoint.searchParams.set('addressdetails', '1');
+      endpoint.searchParams.set('accept-language', language);
+      if (cityOnly && !includeCountry) {
+        endpoint.searchParams.set('featureType', 'city');
+        endpoint.searchParams.set('layer', 'address');
+      }
+      const response = await fetch(endpoint, {
+        headers: {
+          Accept: 'application/json',
+          'User-Agent': 'travel-note/2.0 (https://travel.whales-teatime.workers.dev)',
+          Referer: 'https://travel.whales-teatime.workers.dev/',
+        },
+        signal: AbortSignal.timeout(EXTERNAL_SEARCH_TIMEOUT_MS),
+        cf: { cacheTtl: 300, cacheEverything: true },
+      } as RequestInit & { cf: Record<string, number | boolean> });
+      if (!response.ok) continue;
+      const data = await response.json() as NominatimItem[];
+      items.push(...data.filter(item => Number.isFinite(Number(item.lat)) && Number.isFinite(Number(item.lon))).map(item => {
+        const address = nominatimAddress(item);
+        const details = item.address || {};
+        return {
+          title: nominatimTitle(item, query),
+          category: cleanText(item.addresstype).toLocaleLowerCase('en-US') === 'country' ? 'country' : nominatimType(item),
+          address,
+          roadAddress: address,
+          mapx: String(Math.round(Number(item.lon) * 1e7)),
+          mapy: String(Math.round(Number(item.lat) * 1e7)),
+          provider: 'osm' as const,
+          placeId: item.place_id ? `osm:${item.osm_type || 'n'}:${item.osm_id || item.place_id}` : undefined,
+          osmType: cleanText(item.osm_type).toUpperCase() || undefined,
+          region: cleanText(details.state || details.province || details.county),
+          country: cleanText(details.country),
+        };
+      }));
+    }
     return cityOnly ? normalizeCityResults(items, query, includeCountry) : items;
   } catch {
     return null;
