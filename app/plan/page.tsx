@@ -289,12 +289,15 @@ function coordinateDistanceKm(a:{lat:number;lng:number},b:{lat:number;lng:number
   const h=Math.sin(dLat/2)**2+Math.sin(dLng/2)**2*Math.cos(lat1)*Math.cos(lat2);
   return r*2*Math.atan2(Math.sqrt(h),Math.sqrt(1-h));
 }
-function searchFitPlaces(places:SearchPlace[],center:{lat:number;lng:number}) {
+function searchFitPlaces(places:SearchPlace[]) {
   const points=places.map(place=>({place,lat:Number(place.mapy)/1e7,lng:Number(place.mapx)/1e7})).filter(point=>Number.isFinite(point.lat)&&Number.isFinite(point.lng));
   if(points.length<=1)return points;
-  const nearest=points.reduce((best,current)=>coordinateDistanceKm(current,center)<coordinateDistanceKm(best,center)?current:best,points[0]);
-  const nearby=points.filter(point=>coordinateDistanceKm(point,nearest)<=120);
-  return nearby.length>1?nearby:[nearest];
+  // Search APIs already return candidates by relevance. Anchor the camera on
+  // the first result so an intentional cross-city query (e.g. “오송역” from
+  // a Jeonju trip) is not pulled back toward a similarly named local POI.
+  const anchor=points[0];
+  const nearby=points.filter(point=>coordinateDistanceKm(point,anchor)<=120);
+  return nearby.length>1?nearby:[anchor];
 }
 function timeMinutes(value:string){const [hours,minutes]=value.split(':').map(Number);return Number.isFinite(hours)&&Number.isFinite(minutes)?hours*60+minutes:Infinity}
 function insertStopByTime(current:Stop[],stop:Stop){
@@ -633,9 +636,9 @@ function NaverMap({stops,clientId,destination,onSelect,placeResults,onPlaceSelec
       const marker=new naver.maps.Marker({map,position,title:name,clickable:true,zIndex:250+index,icon:{content:`<button type="button" class="place-result-marker" aria-label="${escapeHtml(name)} 정보 보기"><span>${index+1}</span></button>`,anchor:new naver.maps.Point(17,40)}});
       naver.maps.Event.addListener(marker,'click',()=>onPlaceSelect(place));placeOverlaysRef.current.push(marker);
     });
-    const fitPlaces=searchFitPlaces(placeResults,cityCenter);
+    const fitPlaces=searchFitPlaces(placeResults);
     if(fitPlaces.length===1)map.panTo(new naver.maps.LatLng(fitPlaces[0].lat,fitPlaces[0].lng));else {const fitBounds=new naver.maps.LatLngBounds();fitPlaces.forEach(point=>fitBounds.extend(new naver.maps.LatLng(point.lat,point.lng)));map.fitBounds(fitBounds,{top:120,right:70,bottom:110,left:70})}
-  },[placeResults,status,onPlaceSelect,language,cityCenter]);
+  },[placeResults,status,onPlaceSelect,language]);
   return <div className="map-stage">
     <div ref={containerRef} className="map-canvas" aria-label={text('네이버 지도','Naver Map')} />
     {status!=='ready'&&<div className="map-gate"><div className="map-gate-card">
@@ -759,9 +762,9 @@ function GoogleMap({stops,apiKey,destination,onSelect,placeResults,onPlaceSelect
     placeOverlaysRef.current.forEach(overlay=>{try{overlay.setMap(null)}catch{}});placeOverlaysRef.current=[];
     const valid=placeResults.filter(place=>Number.isFinite(Number(place.mapx))&&Number.isFinite(Number(place.mapy)));if(!valid.length)return;
     valid.forEach((place,index)=>{const position={lat:Number(place.mapy)/1e7,lng:Number(place.mapx)/1e7};const marker=new google.maps.Marker({map,position,title:placeTitle(place,language),clickable:true,zIndex:250+index,label:{text:String(index+1),color:'#fff',fontWeight:'800'},icon:{path:google.maps.SymbolPath.CIRCLE,scale:15,fillColor:'#03a94d',fillOpacity:1,strokeColor:'#fff',strokeWeight:3}});marker.addListener('click',()=>onPlaceSelect(place));placeOverlaysRef.current.push(marker)});
-    const fitPlaces=searchFitPlaces(valid,cityCenter);
+    const fitPlaces=searchFitPlaces(valid);
     if(fitPlaces.length===1){map.panTo({lat:fitPlaces[0].lat,lng:fitPlaces[0].lng});map.setZoom(15)}else {const bounds=new google.maps.LatLngBounds();fitPlaces.forEach(point=>bounds.extend({lat:point.lat,lng:point.lng}));map.fitBounds(bounds,80)}
-  },[placeResults,status,onPlaceSelect,language,cityCenter]);
+  },[placeResults,status,onPlaceSelect,language]);
   return <div className="map-stage">
     <div ref={containerRef} className="map-canvas" aria-label={text('Google 지도','Google Map')}/>
     {status!=='ready'&&<div className="map-gate"><div className="map-gate-card">{status==='loading'?<><div className="loading-orbit"/><strong>{text('Google 지도를 연결하는 중','Connecting to Google Maps')}</strong><span>{text('잠시만 기다려주세요.','Just a moment.')}</span></>:status==='error'?<><CircleAlert/><strong>{text('Google 지도 인증에 실패했습니다','Google Maps authentication failed')}</strong><span>{text('API 키와 허용된 웹사이트 주소를 확인해주세요.','Check the API key and allowed website addresses.')}</span></>:<><Map className="text-[#4285f4]"/><strong>{text('해외 지도를 준비 중이에요','International maps are not connected yet')}</strong><span>{text('Google Maps API 키를 연결하면 해외 장소를 검색할 수 있어요.','Connect a Google Maps API key to search places worldwide.')}</span></>}</div></div>}
