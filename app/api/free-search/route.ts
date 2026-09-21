@@ -80,7 +80,7 @@ const EXTERNAL_SEARCH_TIMEOUT_MS = 5_000;
 // landmark. Bump this when the filtering policy changes so old D1 results
 // cannot leak back into the suggestions.
 const CITY_SEARCH_CACHE_VERSION = 'city-v11';
-const PLACE_SEARCH_CACHE_VERSION = 'place-v3';
+const PLACE_SEARCH_CACHE_VERSION = 'place-v4';
 let lastNominatimRequestAt = 0;
 
 /**
@@ -514,7 +514,10 @@ async function geoapifyReverse(lat: number, lon: number, language: 'ko' | 'en') 
 
 async function nominatimSearch(query: string, near: string, language: 'ko' | 'en', cityOnly = false, includeCountry = false) {
   if (!await nominatimRequestAllowed()) return null;
-  const searchQuery = near && !normalized(query).includes(normalized(near)) ? `${query}, ${near}` : query;
+  // Keep the provider query global. Appending the trip city can turn a valid
+  // cross-city search ("오송역" during a Jeonju trip) into an empty exact
+  // phrase. `near` is used below for ranking instead of hard filtering.
+  const searchQuery = query;
   const endpoint = new URL('https://nominatim.openstreetmap.org/search');
   endpoint.searchParams.set('q', searchQuery);
   endpoint.searchParams.set('format', 'jsonv2');
