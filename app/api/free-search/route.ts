@@ -76,9 +76,9 @@ const SEARCH_CACHE_MS = 30 * 24 * 60 * 60 * 1000;
 const REVERSE_CACHE_MS = 90 * 24 * 60 * 60 * 1000;
 const EXTERNAL_SEARCH_TIMEOUT_MS = 5_000;
 // Keep destination autocomplete intentionally narrow: the trip destination is
-// a city/town/county, not a neighborhood, apartment complex, or landmark.
-// Bump this when the filtering policy changes so old D1 results cannot leak
-// back into the suggestions.
+// a city/town/county or country, not a neighborhood, apartment complex, or
+// landmark. Bump this when the filtering policy changes so old D1 results
+// cannot leak back into the suggestions.
 const CITY_SEARCH_CACHE_VERSION = 'city-v11';
 const PLACE_SEARCH_CACHE_VERSION = 'place-v2';
 let lastNominatimRequestAt = 0;
@@ -234,11 +234,12 @@ function asSearchItem(item: GeoapifyItem, fallback: string): FreeSearchItem | nu
   };
 }
 
-const SETTLEMENT_TYPES = new Set(['city', 'town', 'municipality', 'county']);
+const SETTLEMENT_TYPES = new Set(['city', 'town', 'municipality', 'county', 'country']);
 
-function isCityLevelItem(item: FreeSearchItem) {
+function isCityLevelItem(item: FreeSearchItem, includeCountry = false) {
   const category = normalized(item.category);
   if (!SETTLEMENT_TYPES.has(category)) return false;
+  if (category === 'country' && !includeCountry) return false;
   // A county is useful for Korean destinations (군), but an English county is
   // an administrative area rather than the city a traveller is choosing.
   if (category === 'county' && !cleanText(item.title).endsWith('군')) return false;
@@ -309,9 +310,9 @@ function photonStateCityRecommendations(features: PhotonFeature[], query: string
   return [...byCity.values()].sort((a, b) => b.count - a.count || a.index - b.index).map(entry => entry.item).slice(0, 5);
 }
 
-function normalizeCityResults(items: FreeSearchItem[], query: string) {
+function normalizeCityResults(items: FreeSearchItem[], query: string, includeCountry = false) {
   const queryBase = cityBaseName(query);
-  const candidates = items.filter(isCityLevelItem);
+  const candidates = items.filter(item => isCityLevelItem(item, includeCountry));
   // Photon can tag a small named place as `city` when it is represented by a
   // node. If a top-level relation with the same name exists, prefer it over
   // those regional duplicates (for example Beijing vs. Beijing in Guangxi).
@@ -337,7 +338,7 @@ function normalizeCityResults(items: FreeSearchItem[], query: string) {
   }).slice(0, 5);
 }
 
-async function photonCitySearch(query: string, language: 'ko' | 'en') {
+async function photonCitySearch(query: string, language: 'ko' | 'en', includeCountry = false) {
   const endpoint = new URL('https://photon.komoot.io/api/');
   endpoint.searchParams.set('q', query);
   endpoint.searchParams.set('limit', '30');
@@ -375,14 +376,14 @@ async function photonCitySearch(query: string, language: 'ko' | 'en') {
     });
     const stateCities = photonStateCityRecommendations(body.features || [], query);
     if (stateCities.length) return stateCities;
-    const normalizedItems = normalizeCityResults(items, query);
+    const normalizedItems = normalizeCityResults(items, query, includeCountry);
     return normalizedItems.length ? normalizedItems : null;
   } catch {
     return null;
   }
 }
 
-async function photonPlaceSearch(query: string, near: string, language: 'ko' | 'en') {
+async function photonPlaceSearch(query: string, near: string, language: 'ko' | 'en'): Promise<FreeSearchItem[] | null> {
   const endpoint = new URL('https://photon.komoot.io/api/');
   const searchText = near && !normalized(query).includes(normalized(near)) ? `${query}, ${near}` : query;
   endpoint.searchParams.set('q', searchText);
@@ -428,27 +429,47 @@ async function photonPlaceSearch(query: string, near: string, language: 'ko' | '
       }];
     });
     if (!items.length) return null;
-    // Photon can return a globally famous place when the requested business
-    // name is not indexed in the selected city. Keep the fallback local to
-    // the trip destination instead of showing a plausible but distant match.
     const context = normalized(near);
-    if (!context) return items;
-    const contextTokens = context.split(/[\s,]+/u).filter(token => token.length >= 2);
-    const scoped = items.filter(item => {
-      const haystack = normalized([item.title, item.address, item.region, item.country].filter(Boolean).join(' '));
-      return haystack.includes(context) || contextTokens.some(token => haystack.includes(token));
-    });
-    return scoped.length ? scoped : null;
+    if (!context || normalized(searchText) === normalized(query)) return rankSearchItems(items, query, near);
+    // Query both the trip area and the plain text. The latter matters for an
+    // intentional cross-city search such as “오송역” while the trip is in
+    // Jeonju: Photon may otherwise return the similarly named local “오송제”.
+    const broad: FreeSearchItem[] | null = await photonPlaceSearch(query, '', language);
+    const merged: FreeSearchItem[] = [...items, ...(broad || [])];
+    const mergedSeen = new Set<string>();
+    return rankSearchItems(merged.filter(item => {
+      const key = `${normalized(item.title)}|${item.mapx}|${item.mapy}`;
+      if (mergedSeen.has(key)) return false;
+      mergedSeen.add(key);
+      return true;
+    }), query, near);
   } catch {
     return null;
   }
+}
+
+function rankSearchItems(items: FreeSearchItem[], query: string, near: string) {
+  const queryValue = normalized(query);
+  const context = normalized(near);
+  const tokens = context.split(/[\s,]+/u).filter(token => token.length >= 2);
+  const score = (item: FreeSearchItem) => {
+    const haystack = normalized([item.title, item.address, item.roadAddress, item.region, item.country].filter(Boolean).join(' '));
+    const title = normalized(item.title);
+    let value = 0;
+    if (title === queryValue) value += 8;
+    else if (title.startsWith(queryValue) || queryValue.startsWith(title)) value += 4;
+    if (context && haystack.includes(context)) value += 2;
+    else if (tokens.some(token => haystack.includes(token))) value += 1;
+    return value;
+  };
+  return [...items].sort((a, b) => score(b) - score(a));
 }
 
 function geoapifyKey() {
   return cleanText(process.env.GEOAPIFY_API_KEY);
 }
 
-async function geoapifySearch(query: string, near: string, language: 'ko' | 'en', cityOnly = false) {
+async function geoapifySearch(query: string, near: string, language: 'ko' | 'en', cityOnly = false, includeCountry = false) {
   const apiKey = geoapifyKey();
   if (!apiKey) return null;
   const searchText = near && !normalized(query).includes(normalized(near)) ? `${query}, ${near}` : query;
@@ -457,7 +478,7 @@ async function geoapifySearch(query: string, near: string, language: 'ko' | 'en'
   endpoint.searchParams.set('format', 'json');
   endpoint.searchParams.set('limit', '8');
   endpoint.searchParams.set('lang', language);
-  if (cityOnly) endpoint.searchParams.set('type', 'city');
+  if (cityOnly && !includeCountry) endpoint.searchParams.set('type', 'city');
   endpoint.searchParams.set('apiKey', apiKey);
   try {
     const response = await fetch(endpoint, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(EXTERNAL_SEARCH_TIMEOUT_MS) });
@@ -491,7 +512,7 @@ async function geoapifyReverse(lat: number, lon: number, language: 'ko' | 'en') 
   }
 }
 
-async function nominatimSearch(query: string, near: string, language: 'ko' | 'en', cityOnly = false) {
+async function nominatimSearch(query: string, near: string, language: 'ko' | 'en', cityOnly = false, includeCountry = false) {
   if (!await nominatimRequestAllowed()) return null;
   const searchQuery = near && !normalized(query).includes(normalized(near)) ? `${query}, ${near}` : query;
   const endpoint = new URL('https://nominatim.openstreetmap.org/search');
@@ -500,7 +521,7 @@ async function nominatimSearch(query: string, near: string, language: 'ko' | 'en
   endpoint.searchParams.set('limit', cityOnly ? '20' : '8');
   endpoint.searchParams.set('addressdetails', '1');
   endpoint.searchParams.set('accept-language', language);
-  if (cityOnly) {
+  if (cityOnly && !includeCountry) {
     endpoint.searchParams.set('featureType', 'city');
     endpoint.searchParams.set('layer', 'address');
   }
@@ -533,7 +554,7 @@ async function nominatimSearch(query: string, near: string, language: 'ko' | 'en
         country: cleanText(details.country),
       };
     });
-    return cityOnly ? normalizeCityResults(items, query) : items;
+    return cityOnly ? normalizeCityResults(items, query, includeCountry) : items;
   } catch {
     return null;
   }
@@ -570,7 +591,9 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   const language = url.searchParams.get('lang') === 'en' ? 'en' : 'ko';
-  const cityOnly = url.searchParams.get('mode') === 'city';
+  const mode = url.searchParams.get('mode');
+  const cityOnly = mode === 'city' || mode === 'destination';
+  const includeCountry = mode === 'destination';
   if (url.searchParams.get('mode') === 'reverse') {
     const lat = Number(url.searchParams.get('lat'));
     const lon = Number(url.searchParams.get('lon'));
@@ -602,7 +625,7 @@ export async function GET(request: Request) {
   if (query.length > 120) return Response.json({ message: '검색어가 너무 깁니다.' }, { status: 400 });
 
   const cacheValue = `${near}|${query}`;
-  const cacheVersion = cityOnly ? CITY_SEARCH_CACHE_VERSION : PLACE_SEARCH_CACHE_VERSION;
+  const cacheVersion = cityOnly ? `${CITY_SEARCH_CACHE_VERSION}-${includeCountry ? 'country' : 'city'}` : PLACE_SEARCH_CACHE_VERSION;
   const key = await lookupCacheKey('search', language, `${cacheVersion}|${cacheValue}`);
   const memory = memoryCached<SearchPayload>(key);
   if (memory) return Response.json({ ...memory, source: 'cache' }, { headers: { 'Cache-Control': 'private, max-age=300' } });
@@ -612,13 +635,13 @@ export async function GET(request: Request) {
     return Response.json({ ...persistent, source: 'cache' }, { headers: { 'Cache-Control': 'private, max-age=300' } });
   }
 
-  const photonItems = cityOnly ? await photonCitySearch(query, language) : null;
-  const geoItems = photonItems ? null : await geoapifySearch(query, near, language, cityOnly);
-  const nominatimItems = photonItems || geoItems ? null : await nominatimSearch(query, near, language, cityOnly);
+  const photonItems = cityOnly ? await photonCitySearch(query, language, includeCountry) : null;
+  const geoItems = photonItems ? null : await geoapifySearch(query, near, language, cityOnly, includeCountry);
+  const nominatimItems = photonItems || geoItems ? null : await nominatimSearch(query, near, language, cityOnly, includeCountry);
   // Nominatim is a good address geocoder but can return no named POIs for
   // businesses. Photon is used as a bounded fallback so one missing index
   // does not make a valid OSM place impossible to find.
-  const photonPlaceItems = !cityOnly && near && !photonItems && !geoItems && (!nominatimItems || !nominatimItems.length)
+  const photonPlaceItems = !cityOnly && near && !photonItems && !geoItems
     ? await photonPlaceSearch(query, near, language)
     : null;
   const provider = photonItems ? 'photon' as const : geoItems ? 'geoapify' as const : photonPlaceItems ? 'photon' as const : 'nominatim' as const;
@@ -627,7 +650,11 @@ export async function GET(request: Request) {
   // particular, state searches may return synthetic city recommendations
   // whose names intentionally do not contain the state name, so running the
   // multi-word guard a second time would erase them.
-  const items = rawItems && cityOnly && !photonItems ? normalizeCityResults(rawItems, query) : rawItems;
+  const items = rawItems && cityOnly && !photonItems
+    ? normalizeCityResults(rawItems, query, includeCountry)
+    : rawItems && !cityOnly
+      ? rankSearchItems(rawItems, query, near)
+      : rawItems;
   if (!items) return Response.json({ message: '지도 검색이 잠시 바빠요. 잠시 뒤 다시 시도해주세요.' }, { status: 503 });
   const payload: SearchPayload = { items, source: provider };
   remember(key, payload);

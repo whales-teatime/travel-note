@@ -165,16 +165,10 @@ export async function GET(request: Request) {
     seen.add(key);
     return true;
   });
-  // The unscoped fallback query is useful when Naver does not understand a
-  // short business name, but it can also return the same name in Seoul (or
-  // another city) while the trip is set to Jeonju. Keep the result list tied
-  // to the selected destination whenever a city context is available. This
-  // is intentionally a hard filter: showing a distant same-name place is
-  // more confusing than showing an empty list the user can refine.
-  const localItems = nearToken
-    ? items.filter(item => `${item.address ?? ''}${item.roadAddress ?? ''}`.replace(/\s+/g, '').toLocaleLowerCase('ko-KR').includes(nearToken))
-    : items;
-  const itemsForResponse = (nearToken ? localItems : items).sort((a,b)=>{
+  // Keep places near the selected trip destination at the top, while still
+  // retaining distant matches. A traveller may intentionally search another
+  // city (for example, "현대옥 서울") during a trip whose base is Jeonju.
+  const itemsForResponse = items.sort((a,b)=>{
     if(!nearToken)return 0;
     const score=(item:SearchItem)=>`${item.address??''}${item.roadAddress??''}`.replace(/\s+/g,'').toLocaleLowerCase('ko-KR').includes(nearToken)?1:0;
     return score(b)-score(a);

@@ -211,13 +211,15 @@ function useDestinationSuggestions(query:string,enabled:boolean){
     const value=query.trim();
     if(!enabled||value.length<2){setResults([]);setSearching(false);return}
     const requestLanguage=destinationSearchLanguage(value,language);
-    const cacheKey=`destination|${requestLanguage}|${value}`.toLocaleLowerCase('ko-KR'),cached=suggestionCache.get(cacheKey);
+    // Destination search rules are broader than the legacy city-only cache.
+    // Keep a versioned key so an already-open planner cannot reuse stale results.
+    const cacheKey=`destination-v2|${requestLanguage}|${value}`.toLocaleLowerCase('ko-KR'),cached=suggestionCache.get(cacheKey);
     if(cached){setResults(cached);setSearching(false);return}
     const controller=new AbortController();
     const timer=window.setTimeout(async()=>{
       setSearching(true);
       try{
-        const response=await fetch(`/api/free-search?q=${encodeURIComponent(value)}&mode=city&lang=${requestLanguage}&v=5`,{signal:controller.signal}),body=await readJsonResponse<{items?:SearchPlace[];message?:string}>(response);
+        const response=await fetch(`/api/free-search?q=${encodeURIComponent(value)}&mode=destination&lang=${requestLanguage}&v=6`,{signal:controller.signal}),body=await readJsonResponse<{items?:SearchPlace[];message?:string}>(response);
         if(!response.ok)throw new Error(body.message||text('도시 검색에 실패했습니다.','City search failed.'));
         const items=(body.items||[]).map(item=>({...item,provider:'osm' as const}));
         const seen=new Set<string>(),deduped=items.filter(item=>{const key=destinationLabel(item,language).toLocaleLowerCase();if(seen.has(key))return false;seen.add(key);return true}).slice(0,8);
@@ -281,6 +283,18 @@ function distanceKm(a: Stop, b: Stop) {
   const dLat = rad(b.lat-a.lat), dLng = rad(b.lng-a.lng), lat1=rad(a.lat), lat2=rad(b.lat);
   const h = Math.sin(dLat/2)**2 + Math.sin(dLng/2)**2*Math.cos(lat1)*Math.cos(lat2);
   return r*2*Math.atan2(Math.sqrt(h), Math.sqrt(1-h));
+}
+function coordinateDistanceKm(a:{lat:number;lng:number},b:{lat:number;lng:number}) {
+  const r=6371,rad=(value:number)=>value*Math.PI/180, dLat=rad(b.lat-a.lat), dLng=rad(b.lng-a.lng), lat1=rad(a.lat), lat2=rad(b.lat);
+  const h=Math.sin(dLat/2)**2+Math.sin(dLng/2)**2*Math.cos(lat1)*Math.cos(lat2);
+  return r*2*Math.atan2(Math.sqrt(h),Math.sqrt(1-h));
+}
+function searchFitPlaces(places:SearchPlace[],center:{lat:number;lng:number}) {
+  const points=places.map(place=>({place,lat:Number(place.mapy)/1e7,lng:Number(place.mapx)/1e7})).filter(point=>Number.isFinite(point.lat)&&Number.isFinite(point.lng));
+  if(points.length<=1)return points;
+  const nearest=points.reduce((best,current)=>coordinateDistanceKm(current,center)<coordinateDistanceKm(best,center)?current:best,points[0]);
+  const nearby=points.filter(point=>coordinateDistanceKm(point,nearest)<=120);
+  return nearby.length>1?nearby:[nearest];
 }
 function timeMinutes(value:string){const [hours,minutes]=value.split(':').map(Number);return Number.isFinite(hours)&&Number.isFinite(minutes)?hours*60+minutes:Infinity}
 function insertStopByTime(current:Stop[],stop:Stop){
@@ -613,15 +627,15 @@ function NaverMap({stops,clientId,destination,onSelect,placeResults,onPlaceSelec
     if(!map||!naver?.maps||status!=='ready')return;
     placeOverlaysRef.current.forEach(o=>{try{o?.setMap(null)}catch{}});placeOverlaysRef.current=[];
     if(!placeResults.length)return;
-    const bounds=new naver.maps.LatLngBounds();
     placeResults.forEach((place,index)=>{
       const position=new naver.maps.LatLng(Number(place.mapy)/1e7,Number(place.mapx)/1e7);
       const name=placeTitle(place,language);
       const marker=new naver.maps.Marker({map,position,title:name,clickable:true,zIndex:250+index,icon:{content:`<button type="button" class="place-result-marker" aria-label="${escapeHtml(name)} 정보 보기"><span>${index+1}</span></button>`,anchor:new naver.maps.Point(17,40)}});
-      naver.maps.Event.addListener(marker,'click',()=>onPlaceSelect(place));placeOverlaysRef.current.push(marker);bounds.extend(position);
+      naver.maps.Event.addListener(marker,'click',()=>onPlaceSelect(place));placeOverlaysRef.current.push(marker);
     });
-    if(placeResults.length===1)map.panTo(bounds.getCenter());else map.fitBounds(bounds,{top:120,right:70,bottom:110,left:70});
-  },[placeResults,status,onPlaceSelect,language]);
+    const fitPlaces=searchFitPlaces(placeResults,cityCenter);
+    if(fitPlaces.length===1)map.panTo(new naver.maps.LatLng(fitPlaces[0].lat,fitPlaces[0].lng));else {const fitBounds=new naver.maps.LatLngBounds();fitPlaces.forEach(point=>fitBounds.extend(new naver.maps.LatLng(point.lat,point.lng)));map.fitBounds(fitBounds,{top:120,right:70,bottom:110,left:70})}
+  },[placeResults,status,onPlaceSelect,language,cityCenter]);
   return <div className="map-stage">
     <div ref={containerRef} className="map-canvas" aria-label={text('네이버 지도','Naver Map')} />
     {status!=='ready'&&<div className="map-gate"><div className="map-gate-card">
@@ -744,10 +758,10 @@ function GoogleMap({stops,apiKey,destination,onSelect,placeResults,onPlaceSelect
     const map=mapRef.current,google=window.google;if(!map||!google?.maps||status!=='ready')return;
     placeOverlaysRef.current.forEach(overlay=>{try{overlay.setMap(null)}catch{}});placeOverlaysRef.current=[];
     const valid=placeResults.filter(place=>Number.isFinite(Number(place.mapx))&&Number.isFinite(Number(place.mapy)));if(!valid.length)return;
-    const bounds=new google.maps.LatLngBounds();
-    valid.forEach((place,index)=>{const position={lat:Number(place.mapy)/1e7,lng:Number(place.mapx)/1e7};const marker=new google.maps.Marker({map,position,title:placeTitle(place,language),clickable:true,zIndex:250+index,label:{text:String(index+1),color:'#fff',fontWeight:'800'},icon:{path:google.maps.SymbolPath.CIRCLE,scale:15,fillColor:'#03a94d',fillOpacity:1,strokeColor:'#fff',strokeWeight:3}});marker.addListener('click',()=>onPlaceSelect(place));placeOverlaysRef.current.push(marker);bounds.extend(position)});
-    if(valid.length===1){map.panTo(bounds.getCenter());map.setZoom(15)}else map.fitBounds(bounds,80);
-  },[placeResults,status,onPlaceSelect,language]);
+    valid.forEach((place,index)=>{const position={lat:Number(place.mapy)/1e7,lng:Number(place.mapx)/1e7};const marker=new google.maps.Marker({map,position,title:placeTitle(place,language),clickable:true,zIndex:250+index,label:{text:String(index+1),color:'#fff',fontWeight:'800'},icon:{path:google.maps.SymbolPath.CIRCLE,scale:15,fillColor:'#03a94d',fillOpacity:1,strokeColor:'#fff',strokeWeight:3}});marker.addListener('click',()=>onPlaceSelect(place));placeOverlaysRef.current.push(marker)});
+    const fitPlaces=searchFitPlaces(valid,cityCenter);
+    if(fitPlaces.length===1){map.panTo({lat:fitPlaces[0].lat,lng:fitPlaces[0].lng});map.setZoom(15)}else {const bounds=new google.maps.LatLngBounds();fitPlaces.forEach(point=>bounds.extend({lat:point.lat,lng:point.lng}));map.fitBounds(bounds,80)}
+  },[placeResults,status,onPlaceSelect,language,cityCenter]);
   return <div className="map-stage">
     <div ref={containerRef} className="map-canvas" aria-label={text('Google 지도','Google Map')}/>
     {status!=='ready'&&<div className="map-gate"><div className="map-gate-card">{status==='loading'?<><div className="loading-orbit"/><strong>{text('Google 지도를 연결하는 중','Connecting to Google Maps')}</strong><span>{text('잠시만 기다려주세요.','Just a moment.')}</span></>:status==='error'?<><CircleAlert/><strong>{text('Google 지도 인증에 실패했습니다','Google Maps authentication failed')}</strong><span>{text('API 키와 허용된 웹사이트 주소를 확인해주세요.','Check the API key and allowed website addresses.')}</span></>:<><Map className="text-[#4285f4]"/><strong>{text('해외 지도를 준비 중이에요','International maps are not connected yet')}</strong><span>{text('Google Maps API 키를 연결하면 해외 장소를 검색할 수 있어요.','Connect a Google Maps API key to search places worldwide.')}</span></>}</div></div>}
@@ -952,15 +966,16 @@ function OsmMap({stops,destination,onSelect,placeResults,onPlaceSelect,dateLabel
     resultMarkersRef.current.forEach(marker=>marker.remove());resultMarkersRef.current=[];
     const Marker=maplibreRef.current?.Marker;if(!Marker)return;
     const valid=current.placeResults.filter(place=>Number.isFinite(Number(place.mapx))&&Number.isFinite(Number(place.mapy)));
-    const bounds=new maplibreRef.current.LngLatBounds();
     valid.forEach((place,index)=>{
       const lat=Number(place.mapy)/1e7,lng=Number(place.mapx)/1e7;
       const element=document.createElement('div');element.className='osm-result-icon-wrap';element.innerHTML=`<span class="osm-result-icon">${index+1}</span>`;element.setAttribute('title',placeTitle(place,language));element.setAttribute('aria-label',placeTitle(place,language));
       element.addEventListener('click',event=>{event.stopPropagation();latestRef.current.onPlaceSelect(place)});
-      const marker=new Marker({element}).setLngLat([lng,lat]).addTo(map);resultMarkersRef.current.push(marker);bounds.extend([lng,lat]);
+      const marker=new Marker({element}).setLngLat([lng,lat]).addTo(map);resultMarkersRef.current.push(marker);
     });
-    if(valid.length===1)map.flyTo({center:[Number(valid[0].mapx)/1e7,Number(valid[0].mapy)/1e7],zoom:15,duration:450});
-    else if(valid.length>1)map.fitBounds(bounds,{padding:70,maxZoom:15,duration:450});
+    const mapCenter=map.getCenter();
+    const fitPlaces=searchFitPlaces(valid,{lat:mapCenter.lat,lng:mapCenter.lng});
+    if(fitPlaces.length===1)map.flyTo({center:[fitPlaces[0].lng,fitPlaces[0].lat],zoom:15,duration:450});
+    else if(fitPlaces.length>1){const bounds=new maplibreRef.current.LngLatBounds();fitPlaces.forEach(point=>bounds.extend([point.lng,point.lat]));map.fitBounds(bounds,{padding:70,maxZoom:15,duration:450});}
   },[placeResults,status,onPlaceSelect,language]);
 
   useEffect(()=>{
@@ -1262,7 +1277,7 @@ export default function Home(){
     });
     setLinkedDestinationQuery(value);setLinkedDestinationIndex(null);setLinkedDestinationSuggestionsOpen(false);
   };
-  const chooseDestination=(place:SearchPlace)=>{const value=destinationLabel(place,language);setSettingsDraft(current=>({...current,destination:value,destinations:current.destinations?.map((segment,index)=>index===0?{...segment,name:value}:segment)}));setDestinationSuggestionsOpen(false)};
+  const chooseDestination=(place:SearchPlace)=>{const value=destinationLabel(place,language),lat=Number(place.mapy)/1e7,lng=Number(place.mapx)/1e7;setSettingsDraft(current=>({...current,destination:value,destinations:current.destinations?.map((segment,index)=>index===0?{...segment,name:value,...(Number.isFinite(lat)?{lat}:{}),...(Number.isFinite(lng)?{lng}:{}),...(place.region?{region:place.region}:{}),...(place.country?{country:place.country}:{})}:segment)}));setDestinationSuggestionsOpen(false)};
   const saveTripSettings=()=>{
     const rawSegments=destinationSegments(settingsDraft), hasLinked=rawSegments.length>1;
     const next={...settingsDraft,title:settingsDraft.title.trim()||text('나의 여행','My trip'),destination:settingsDraft.destination.trim(),people:Math.max(1,Math.round(Number(settingsDraft.people)||1)),editPolicy:settingsDraft.editPolicy==='all'?'all':settingsDraft.editPolicy==='password'?'password':'owner' as EditPolicy,mapProvider:settingsDraft.mapProvider==='google'?'google' as MapProvider:settingsDraft.mapProvider==='osm'?'osm' as MapProvider:'naver' as MapProvider};
