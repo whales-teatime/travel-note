@@ -1333,7 +1333,15 @@ export default function Home(){
     setDistanceDetailOpen(false);
     setSelected(stop);
   },[selected,tripSettings.viewMode]);
-  const focusStopOnMap=useCallback((stop:Stop)=>{setSelected(null);setDistanceDetailOpen(false);setFocusRequest({id:stop.id,nonce:Date.now()})},[]);
+  const focusStopOnMap=useCallback((stop:Stop)=>{
+    setSelected(null);
+    setDistanceDetailOpen(false);
+    const nonce=Date.now();
+    setFocusRequest({id:stop.id,nonce});
+    // The highlight is a one-shot response to the double-click. Clear the
+    // request after the short animation so later renders cannot replay it.
+    window.setTimeout(()=>setFocusRequest(current=>current?.nonce===nonce?null:current),700);
+  },[]);
   useEffect(()=>{
     // Distance comparison uses the selected stop only to focus its distance
     // lines on the map. Do not leave a route-mode detail sheet open when the
