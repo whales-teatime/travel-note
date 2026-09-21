@@ -15,6 +15,7 @@ export type PlanStop = {
   naverLink?: string;
   mapProvider?: 'naver' | 'google' | 'osm';
   placeId?: string;
+  pinColor?: string;
   costPerPerson?: number;
   costTotal?: number;
   costBasis?: 'person' | 'total';
@@ -41,6 +42,7 @@ export type PlanInput = {
   editPolicy: 'owner' | 'all' | 'password';
   mapProvider: 'naver' | 'google' | 'osm';
   viewMode: 'route' | 'distance';
+  distanceBaseIds: string[];
   destinations: PlanDestination[];
   stops: PlanStop[];
 };
@@ -247,6 +249,7 @@ export function sanitizeStops(value: unknown, startDate = '', endDate = ''): Pla
     if (typeof source.naverLink === 'string') stop.naverLink = source.naverLink.slice(0, 500);
     if (source.mapProvider === 'google' || source.mapProvider === 'naver' || source.mapProvider === 'osm') stop.mapProvider = source.mapProvider;
     if (typeof source.placeId === 'string' && source.placeId.trim()) stop.placeId = source.placeId.trim().slice(0, 300);
+    if (typeof source.pinColor === 'string' && /^#[0-9a-f]{6}$/i.test(source.pinColor.trim())) stop.pinColor = source.pinColor.trim().toLowerCase();
     if (Number.isFinite(costPerPerson)) stop.costPerPerson = costPerPerson;
     if (Number.isFinite(costTotal)) stop.costTotal = costTotal;
     if (source.costBasis === 'person' || source.costBasis === 'total') stop.costBasis = source.costBasis;
@@ -300,7 +303,11 @@ export function sanitizePlan(value: unknown): PlanInput | null {
   if (!destinations) return null;
   const stops = sanitizeStops(source.stops, startDate, endDate);
   if (!stops) return null;
-  return { title, destination, startDate, endDate, people, editPolicy, mapProvider, viewMode, destinations, stops };
+  const validStopIds = new Set(stops.map(stop => stop.id));
+  const distanceBaseIds = Array.isArray(source.distanceBaseIds)
+    ? [...new Set(source.distanceBaseIds.filter(value => typeof value === 'string').map(value => value.slice(0, 100)).filter(id => validStopIds.has(id)))].slice(0, 4)
+    : [];
+  return { title, destination, startDate, endDate, people, editPolicy, mapProvider, viewMode, distanceBaseIds, destinations, stops };
 }
 
 export function publicPlan(row: Record<string, unknown>) {
@@ -313,6 +320,12 @@ export function publicPlan(row: Record<string, unknown>) {
     people: Number(row.people) || 1,
     mapProvider: row.map_provider === 'google' ? 'google' : row.map_provider === 'osm' ? 'osm' : 'naver',
     viewMode: row.view_mode === 'distance' ? 'distance' : 'route',
+    distanceBaseIds: (() => {
+      try {
+        const parsed = JSON.parse(textValue(row.distance_base_ids_json, '[]')) as unknown;
+        return Array.isArray(parsed) ? parsed.filter(value => typeof value === 'string').map(value => value.slice(0, 100)).slice(0, 4) : [];
+      } catch { return []; }
+    })(),
     editPolicy: row.edit_policy === 'all' ? 'all' : row.edit_policy === 'password' ? 'password' : 'owner',
     passwordProtected: Boolean(Number(row.password_protected ?? (row.password_hash ? 1 : 0))),
     editPasswordProtected: Boolean(Number(row.edit_password_protected ?? (row.edit_password_hash ? 1 : 0))),
