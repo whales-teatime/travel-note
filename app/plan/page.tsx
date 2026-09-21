@@ -41,8 +41,8 @@ type SearchPlace = { title: string; category: string; address: string; roadAddre
 type EditPolicy = 'owner' | 'all' | 'password';
 type TripDestination = { id: string; name: string; startDate: string; endDate: string; lat?: number; lng?: number; region?: string; country?: string };
 type ViewMode = 'route' | 'distance';
-type TripSettings = { title: string; destination: string; startDate: string; endDate: string; people: number; editPolicy: EditPolicy; mapProvider: MapProvider; viewMode: ViewMode; distanceBaseIds?: string[]; destinations?: TripDestination[] };
-type StoredPlan = { id: string; title: string; destination: string; startDate: string; endDate: string; people: number; editPolicy?: EditPolicy; mapProvider?: MapProvider; viewMode?: ViewMode; distanceBaseIds?: string[]; destinations?: TripDestination[]; passwordProtected?: boolean; editPasswordProtected?: boolean; updatedAt?: string; version?: number; stops: Stop[] };
+type TripSettings = { title: string; destination: string; startDate: string; endDate: string; people: number; editPolicy: EditPolicy; mapProvider: MapProvider; viewMode: ViewMode; distanceBaseIds?: string[]; fuelEfficiency: number; fuelPrice: number; destinations?: TripDestination[] };
+type StoredPlan = { id: string; title: string; destination: string; startDate: string; endDate: string; people: number; editPolicy?: EditPolicy; mapProvider?: MapProvider; viewMode?: ViewMode; distanceBaseIds?: string[]; fuelEfficiency?: number; fuelPrice?: number; destinations?: TripDestination[]; passwordProtected?: boolean; editPasswordProtected?: boolean; updatedAt?: string; version?: number; stops: Stop[] };
 type SavedDraft = { settings: TripSettings; stops: Stop[]; savedAt: string };
 type MapFocusRequest = { id: string; nonce: number };
 
@@ -53,7 +53,10 @@ declare global {
 const DAY_COLORS = ['#ff5b35', '#2279f2', '#7257d9', '#0c9b75', '#d15d9a', '#db8b18'];
 const DEFAULT_MAP_CENTER = { lat:35.8242, lng:127.1534 };
 const DEFAULT_WORLD_CENTER = { lat:20, lng:0 };
-const DEFAULT_TRIP: TripSettings = { title:'전주 맛집 여행', destination:'전주', startDate:'2026-09-19', endDate:'2026-09-20', people:5, editPolicy:'owner', mapProvider:'naver', viewMode:'route' };
+const DEFAULT_FUEL_EFFICIENCY=12;
+const DEFAULT_FUEL_PRICE=1700;
+const ROAD_DISTANCE_FACTOR=1.4;
+const DEFAULT_TRIP: TripSettings = { title:'전주 맛집 여행', destination:'전주', startDate:'2026-09-19', endDate:'2026-09-20', people:5, editPolicy:'owner', mapProvider:'naver', viewMode:'route', fuelEfficiency:DEFAULT_FUEL_EFFICIENCY, fuelPrice:DEFAULT_FUEL_PRICE };
 const PLACE_CATEGORIES: PlaceType[] = ['식사','간식','관광','숙소','교통','기타'];
 const suggestionCache = new globalThis.Map<string, SearchPlace[]>();
 
@@ -306,6 +309,7 @@ function costValues(stop:Pick<Stop,'costPerPerson'|'costTotal'>,people:number){
 }
 function currencyUnit(currency:'KRW'|'USD'){return currency==='USD'?'$':'₩'}
 function formatMoney(value:number,language:'ko'|'en'='ko',currency:'KRW'|'USD'='KRW'){const amount=Math.round(value).toLocaleString(language==='en'?'en-US':'ko-KR');return `${currencyUnit(currency)}${amount}`}
+function formatFuelMoney(value:number,language:'ko'|'en'='ko'){return `₩${Math.round(value).toLocaleString(language==='en'?'en-US':'ko-KR')}`}
 function mapProviderName(provider:MapProvider,_language:'ko'|'en'='ko'){return provider==='google'?'Google Maps':provider==='osm'?'OpenStreetMap':'NAVER Maps'}
 function mapProviderDescription(provider:MapProvider,language:'ko'|'en'='ko'){return provider==='google'?tr(language,'해외 여행 지도','International trip map'):provider==='osm'?'':tr(language,'국내 여행 지도','Korea trip map')}
 function normalizeTimeInput(raw:string){
@@ -329,6 +333,12 @@ function distanceKm(a: Stop, b: Stop) {
   const h = Math.sin(dLat/2)**2 + Math.sin(dLng/2)**2*Math.cos(lat1)*Math.cos(lat2);
   return r*2*Math.atan2(Math.sqrt(h), Math.sqrt(1-h));
 }
+function routeDistanceKm(stops:Stop[],dayKeys:DayKey[]) {
+  return dayKeys.reduce((total,day)=>{
+    const dayStops=stops.filter(stop=>stop.day===day);
+    return total+dayStops.slice(1).reduce((dayTotal,stop,index)=>dayTotal+distanceKm(dayStops[index],stop),0);
+  },0);
+}
 function formatDistance(value:number, language:'ko'|'en') {
   if (value < 1) return `${Math.round(value * 1000)}${language === 'en' ? ' m' : 'm'}`;
   return `${value.toFixed(value < 10 ? 1 : 0)}${language === 'en' ? ' km' : 'km'}`;
@@ -351,6 +361,18 @@ function DistanceBaseSettings({stops,dayKeys,baseIds,text,onToggleBase,canEdit}:
       {!stops.length&&<div className="distance-comparison-empty"><CircleAlert/><span>{text('장소를 먼저 추가해주세요.','Add places first.')}</span></div>}
     </div>
   </details>;
+}
+function FuelEstimate({distanceKmValue,fuelEfficiency,fuelPrice,text,language}:{distanceKmValue:number;fuelEfficiency:number;fuelPrice:number;text:(korean:string,english:string)=>string;language:'ko'|'en'}) {
+  const [helpOpen,setHelpOpen]=useState(false);
+  const safeEfficiency=Number.isFinite(fuelEfficiency)&&fuelEfficiency>0?fuelEfficiency:DEFAULT_FUEL_EFFICIENCY;
+  const safePrice=Number.isFinite(fuelPrice)&&fuelPrice>=0?fuelPrice:DEFAULT_FUEL_PRICE;
+  const adjustedDistance=distanceKmValue*ROAD_DISTANCE_FACTOR;
+  const liters=adjustedDistance/safeEfficiency;
+  const estimatedCost=liters*safePrice;
+  return <section className="fuel-estimate" aria-label={text('예상 유류비','Estimated fuel cost')}>
+    <div className="fuel-estimate-heading"><div><span><span className="fuel-estimate-icon">₩</span>{text('예상 유류비','Estimated fuel cost')}</span><small>{text(`직선거리 ${formatDistance(distanceKmValue,language)} · 도로 보정 ${ROAD_DISTANCE_FACTOR}배`,`Straight-line ${formatDistance(distanceKmValue,language)} · ${ROAD_DISTANCE_FACTOR}× road factor`)}</small></div><strong>{formatFuelMoney(estimatedCost,language)}<button type="button" className="fuel-help-button" onClick={()=>setHelpOpen(current=>!current)} aria-expanded={helpOpen} aria-label={text('유류비 계산식 보기','Show fuel cost formula')} title={text('계산식 보기','Show formula')}>?</button></strong></div>
+    {helpOpen&&<div className="fuel-estimate-help"><p>{text('유류비는 총 예상경비와 따로 계산해요.','Fuel is shown separately from the trip budget.')}</p><code>{formatDistance(distanceKmValue,language)} × {ROAD_DISTANCE_FACTOR} ÷ {safeEfficiency.toFixed(1)}km/L × ₩{Math.round(safePrice).toLocaleString(language==='en'?'en-US':'ko-KR')}/L = {formatFuelMoney(estimatedCost,language)}</code><small>{text('직선거리의 실제 도로 이동을 고려해 1.4배 보정한 뒤, 평균 연비와 유류비를 적용합니다.','The straight-line total is adjusted by 1.4× for roads, then divided by fuel efficiency and multiplied by fuel price.')}</small></div>}
+  </section>;
 }
 function coordinateDistanceKm(a:{lat:number;lng:number},b:{lat:number;lng:number}) {
   const r=6371,rad=(value:number)=>value*Math.PI/180, dLat=rad(b.lat-a.lat), dLng=rad(b.lng-a.lng), lat1=rad(a.lat), lat2=rad(b.lat);
@@ -1194,7 +1216,7 @@ export default function Home(){
   const applyStoredPlan=useCallback((data:StoredPlan,editToken?:string,permission?:boolean,adminAuthenticated=false)=>{
     const mapProvider:MapProvider=data.mapProvider==='google'?'google':data.mapProvider==='osm'?'osm':'naver';
     const storedDestinations=Array.isArray(data.destinations)&&data.destinations.length?data.destinations:undefined;
-    const settings={title:data.title,destination:storedDestinations?.[0]?.name||data.destination,startDate:data.startDate,endDate:data.endDate,people:data.people,editPolicy:data.editPolicy==='all'?'all':data.editPolicy==='password'?'password':'owner' as EditPolicy,mapProvider,viewMode:data.viewMode==='distance'?'distance' as ViewMode:'route' as ViewMode,distanceBaseIds:Array.isArray(data.distanceBaseIds)?data.distanceBaseIds.map(String):[],destinations:storedDestinations};
+    const settings={title:data.title,destination:storedDestinations?.[0]?.name||data.destination,startDate:data.startDate,endDate:data.endDate,people:data.people,editPolicy:data.editPolicy==='all'?'all':data.editPolicy==='password'?'password':'owner' as EditPolicy,mapProvider,viewMode:data.viewMode==='distance'?'distance' as ViewMode:'route' as ViewMode,distanceBaseIds:Array.isArray(data.distanceBaseIds)?data.distanceBaseIds.map(String):[],fuelEfficiency:Number.isFinite(Number(data.fuelEfficiency))&&Number(data.fuelEfficiency)>0?Number(data.fuelEfficiency):DEFAULT_FUEL_EFFICIENCY,fuelPrice:Number.isFinite(Number(data.fuelPrice))&&Number(data.fuelPrice)>=0?Number(data.fuelPrice):DEFAULT_FUEL_PRICE,destinations:storedDestinations};
     const normalizedStops=(data.stops||[]).map(stop=>({...stop,day:normalizeStoredDay(String(stop.day),data.startDate,data.endDate),category:normalizeCategory(String(stop.category)),mapProvider:stop.mapProvider||mapProvider}));
     const editable=permission??Boolean(editToken);rememberPlanVisit(data);setPlanId(data.id);setPlanUpdatedAt(data.updatedAt||'');setPlanVersion(Math.max(1,Number(data.version)||1));setIsLocalDraft(false);setCanEdit(editable);setAdminMode(adminAuthenticated);setTripSettings(settings);setSettingsDraft(settings);setStops(normalizedStops);setActiveDay(dateDayKey(data.startDate)||firstDefaultDay);setCustomDay(dateDayKey(data.startDate)||firstDefaultDay);setPlanPassword('');setPlanPasswordAuth('');setPasswordConfigured(Boolean(data.passwordProtected));setPlanPasswordTouched(false);setShowPlanPassword(false);setEditPassword('');setEditPasswordAuth('');setEditPasswordConfigured(Boolean(data.editPasswordProtected));setEditPasswordTouched(false);setShowEditPassword(false);setPlanLoading(false);savedSnapshotRef.current=itinerarySnapshot(settings,normalizedStops);
     if(editToken)localStorage.setItem(`route-note-edit-token-${data.id}`,editToken);
@@ -1302,6 +1324,7 @@ export default function Home(){
   const peopleCount=Math.max(1,tripSettings.people||1);
   const dayCostSummary=useMemo(()=>dayStops.reduce((summary,stop)=>{const cost=costValues(stop,peopleCount);return {personal:summary.personal+cost.personal,total:summary.total+cost.total}},{personal:0,total:0}),[dayStops,peopleCount]);
   const tripCostSummary=useMemo(()=>stops.reduce((summary,stop)=>{const cost=costValues(stop,peopleCount);return {personal:summary.personal+cost.personal,total:summary.total+cost.total}},{personal:0,total:0}),[stops,peopleCount]);
+  const routeDistanceTotalKm=useMemo(()=>routeDistanceKm(stops,dayKeys),[stops,dayKeys]);
   const selectStop=useCallback((stop:Stop)=>{
     if(tripSettings.viewMode==='distance'&&selected?.id===stop.id){
       setDistanceDetailOpen(true);
@@ -1401,7 +1424,8 @@ export default function Home(){
   const chooseDestination=(place:SearchPlace)=>{const value=destinationLabel(place,language),lat=Number(place.mapy)/1e7,lng=Number(place.mapx)/1e7;setSettingsDraft(current=>({...current,destination:value,destinations:current.destinations?.map((segment,index)=>index===0?{...segment,name:value,...(Number.isFinite(lat)?{lat}:{}),...(Number.isFinite(lng)?{lng}:{}),...(place.region?{region:place.region}:{}),...(place.country?{country:place.country}:{})}:segment)}));setDestinationSuggestionsOpen(false)};
   const saveTripSettings=()=>{
     const rawSegments=destinationSegments(settingsDraft), hasLinked=rawSegments.length>1;
-    const next={...settingsDraft,title:settingsDraft.title.trim()||text('나의 여행','My trip'),destination:settingsDraft.destination.trim(),people:Math.max(1,Math.round(Number(settingsDraft.people)||1)),editPolicy:settingsDraft.editPolicy==='all'?'all':settingsDraft.editPolicy==='password'?'password':'owner' as EditPolicy,mapProvider:settingsDraft.mapProvider==='google'?'google' as MapProvider:settingsDraft.mapProvider==='osm'?'osm' as MapProvider:'naver' as MapProvider,viewMode:settingsDraft.viewMode==='distance'?'distance' as ViewMode:'route' as ViewMode};
+    const efficiencyValue=Number(settingsDraft.fuelEfficiency), priceValue=Number(settingsDraft.fuelPrice);
+    const next={...settingsDraft,title:settingsDraft.title.trim()||text('나의 여행','My trip'),destination:settingsDraft.destination.trim(),people:Math.max(1,Math.round(Number(settingsDraft.people)||1)),editPolicy:settingsDraft.editPolicy==='all'?'all':settingsDraft.editPolicy==='password'?'password':'owner' as EditPolicy,mapProvider:settingsDraft.mapProvider==='google'?'google' as MapProvider:settingsDraft.mapProvider==='osm'?'osm' as MapProvider:'naver' as MapProvider,viewMode:settingsDraft.viewMode==='distance'?'distance' as ViewMode:'route' as ViewMode,fuelEfficiency:Number.isFinite(efficiencyValue)?Math.min(100,Math.max(1,Math.round(efficiencyValue*10)/10)):DEFAULT_FUEL_EFFICIENCY,fuelPrice:Number.isFinite(priceValue)?Math.min(100000,Math.max(0,Math.round(priceValue))):DEFAULT_FUEL_PRICE};
     if(hasLinked){
       const segments=rawSegments.map(segment=>({...segment,name:segment.name.trim()}));
       segments[0]={...segments[0],name:next.destination,startDate:next.startDate};
@@ -1460,7 +1484,7 @@ export default function Home(){
     if(tripSettings.editPolicy==='password'&&((!editPasswordConfigured&&!editPassword)||(editPasswordTouched&&!editPassword))){if(silent)setPlanSaveMessage('자동저장하지 못했어요. 편집 비밀번호는 빈칸으로 저장할 수 없습니다.');else{setEditPasswordWarningOpen(true);setSettingsOpen(true)}return}
     if(silent&&savedSnapshotRef.current===itinerarySnapshot(tripSettings,stops,planPassword,planPasswordTouched,editPassword,editPasswordTouched))return;
     saveInFlightRef.current=true;if(!silent){setPlanSaving(true);setPlanSaveMessage('')}
-    const payload={title:tripSettings.title,destination:destinationSummary(tripSettings)||tripSettings.destination,startDate:tripSettings.startDate,endDate:tripSettings.endDate,people:tripSettings.people,editPolicy:tripSettings.editPolicy,mapProvider:tripSettings.mapProvider,viewMode:tripSettings.viewMode==='distance'?'distance':'route',distanceBaseIds:(tripSettings.distanceBaseIds||[]),destinations:tripSettings.destinations||[],stops};
+    const payload={title:tripSettings.title,destination:destinationSummary(tripSettings)||tripSettings.destination,startDate:tripSettings.startDate,endDate:tripSettings.endDate,people:tripSettings.people,editPolicy:tripSettings.editPolicy,mapProvider:tripSettings.mapProvider,viewMode:tripSettings.viewMode==='distance'?'distance':'route',distanceBaseIds:(tripSettings.distanceBaseIds||[]),fuelEfficiency:tripSettings.fuelEfficiency,fuelPrice:tripSettings.fuelPrice,destinations:tripSettings.destinations||[],stops};
     try{
       const existing=Boolean(planId),token=planId?localStorage.getItem(`route-note-edit-token-${planId}`):null;
       const viewPasswordPayload=!existing?{password:planPassword}:planPasswordTouched?{password:planPassword,...(planPasswordAuth?{passwordAuth:planPasswordAuth}:{})}:(tripSettings.editPolicy==='all'&&passwordConfigured&&planPassword)?{password:planPassword,passwordAuth:planPasswordAuth||planPassword}:{};
@@ -1621,6 +1645,7 @@ export default function Home(){
           })}
         </div>
         <div className="day-cost-summary" aria-label={`${formatTripDate(dayDates[activeDay],false,language)} ${text('예상 경비 총합','estimated budget total')}`}><div><span>{formatTripDate(dayDates[activeDay],false,language)} {text('예상 경비 총합','estimated budget total')}</span><small>{text('입력한 장소 비용 기준','Based on entered place costs')}</small></div><strong><span><em>{text('개인별','Per person')}</em>{formatMoney(dayCostSummary.personal,language,currency)}</span><span><em>{text('총 비용','Total')}</em>{formatMoney(dayCostSummary.total,language,currency)}</span></strong></div>
+        {tripSettings.mapProvider==='naver'&&<FuelEstimate distanceKmValue={routeDistanceTotalKm} fuelEfficiency={tripSettings.fuelEfficiency} fuelPrice={tripSettings.fuelPrice} text={text} language={language}/>}
         <div className="planner-add-actions"><Button variant="outline" className="wide-add" onClick={()=>setAddOpen(true)}><Plus/>{text('이 날짜에 장소 추가','Add a place to this day')}</Button><Button variant="ghost" className="custom-add-button" onClick={openCustomPin}><MapPin/>{text('지도에 임의 핀 추가','Add a custom map pin')}</Button></div>
       </aside>
       <section className="map-panel">
@@ -1666,6 +1691,14 @@ export default function Home(){
           <div className={`map-provider-setting ${settingsDraft.mapProvider==='google'?'is-google':settingsDraft.mapProvider==='osm'?'is-osm':''}`}><Map/><span><strong>{mapProviderName(settingsDraft.mapProvider,language)}</strong><small>{mapProviderDescription(settingsDraft.mapProvider,language)}</small></span></div>
           <label className="view-mode-setting">{text('보기 방식','View mode')}<select value={settingsDraft.viewMode||'route'} onChange={e=>setSettingsDraft({...settingsDraft,viewMode:e.target.value==='distance'?'distance':'route'})}><option value="route">{text('동선 순서','Route order')}</option><option value="distance">{text('각 장소별 거리 비교','Compare straight-line distances')}</option></select><small>{text('거리 비교를 고르면 아래에서 기준 거점을 직접 선택할 수 있어요.','When distance mode is selected, choose your own base places below.')}</small></label>
           {settingsDraft.viewMode==='distance'&&<DistanceBaseSettings stops={stops} dayKeys={dayKeys} baseIds={(settingsDraft.distanceBaseIds||[]).filter(id=>stops.some(stop=>stop.id===id))} text={text} onToggleBase={toggleDistanceBase} canEdit={canEdit}/>}
+          {settingsDraft.mapProvider==='naver'&&<div className="fuel-settings">
+            <div className="fuel-settings-heading"><span>{text('유류비 예상','Fuel estimate')}</span><small>{text('동선 직선거리 기준 · 총 예상경비와 별도','Based on route distance · separate from trip budget')}</small></div>
+            <div className="form-grid two">
+              <label>{text('평균 연비 (km/L)','Average fuel efficiency (km/L)')}<Input type="number" min="1" max="100" step="0.1" value={settingsDraft.fuelEfficiency} onChange={e=>setSettingsDraft({...settingsDraft,fuelEfficiency:Number(e.target.value)})}/></label>
+              <label>{text('유류비 (원/L)','Fuel price (KRW/L)')}<Input type="number" min="0" max="100000" step="10" value={settingsDraft.fuelPrice} onChange={e=>setSettingsDraft({...settingsDraft,fuelPrice:Number(e.target.value)})}/></label>
+            </div>
+            <small className="fuel-settings-note">{text('직선거리 합계 × 1.4 ÷ 평균 연비 × 유류비','Straight-line total × 1.4 ÷ average efficiency × fuel price')}</small>
+          </div>}
           <div className="date-fields"><label>{text('출발일','Start date')}<Input type="date" value={settingsDraft.startDate} onChange={e=>updateTripRange('startDate',e.target.value)}/></label><label>{text('돌아오는 날','End date')}<Input type="date" min={settingsDraft.startDate} value={settingsDraft.endDate} onChange={e=>updateTripRange('endDate',e.target.value)}/></label></div>
           <label>{text('인원','Travelers')}<div className="people-input"><Users/><Input type="number" min="1" max="99" value={settingsDraft.people} onChange={e=>setSettingsDraft({...settingsDraft,people:Number(e.target.value)})}/><span>{text('명','people')}</span></div></label>
           <label>{text('편집 권한','Edit access')}<select value={settingsDraft.editPolicy} onChange={e=>setSettingsDraft({...settingsDraft,editPolicy:e.target.value as EditPolicy})}><option value="owner">{text('작성자만','Author only')}</option><option value="all">{text('모두가','Everyone')}</option><option value="password">{text('편집 비밀번호 설정','Editing password')}</option></select></label>

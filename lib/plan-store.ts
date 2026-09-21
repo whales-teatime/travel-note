@@ -43,9 +43,14 @@ export type PlanInput = {
   mapProvider: 'naver' | 'google' | 'osm';
   viewMode: 'route' | 'distance';
   distanceBaseIds: string[];
+  fuelEfficiency: number;
+  fuelPrice: number;
   destinations: PlanDestination[];
   stops: PlanStop[];
 };
+
+export const DEFAULT_FUEL_EFFICIENCY = 12;
+export const DEFAULT_FUEL_PRICE = 1700;
 
 const MAX_PLAN_BODY_BYTES = 900_000;
 const ADMIN_SESSION_COOKIE = 'travel_admin_session';
@@ -298,6 +303,9 @@ export function sanitizePlan(value: unknown): PlanInput | null {
   const editPolicy = source.editPolicy === 'all' ? 'all' : source.editPolicy === 'password' ? 'password' : 'owner';
   const mapProvider = source.mapProvider === 'google' ? 'google' : source.mapProvider === 'osm' ? 'osm' : 'naver';
   const viewMode = source.viewMode === 'distance' ? 'distance' : 'route';
+  const fuelEfficiencyValue = Number(source.fuelEfficiency), fuelPriceValue = Number(source.fuelPrice);
+  const fuelEfficiency = Number.isFinite(fuelEfficiencyValue) ? Math.min(100, Math.max(1, Math.round(fuelEfficiencyValue * 10) / 10)) : DEFAULT_FUEL_EFFICIENCY;
+  const fuelPrice = Number.isFinite(fuelPriceValue) ? Math.min(100_000, Math.max(0, Math.round(fuelPriceValue))) : DEFAULT_FUEL_PRICE;
   if (!title || !destination || !validDate(startDate) || !validDate(endDate) || startDate > endDate || dateNumber(endDate) - dateNumber(startDate) > 366 * 24 * 60 * 60 * 1000) return null;
   const destinations = sanitizeDestinations(source.destinations, startDate, endDate);
   if (!destinations) return null;
@@ -307,7 +315,7 @@ export function sanitizePlan(value: unknown): PlanInput | null {
   const distanceBaseIds = Array.isArray(source.distanceBaseIds)
     ? [...new Set(source.distanceBaseIds.filter(value => typeof value === 'string').map(value => value.slice(0, 100)).filter(id => validStopIds.has(id)))].slice(0, 500)
     : [];
-  return { title, destination, startDate, endDate, people, editPolicy, mapProvider, viewMode, distanceBaseIds, destinations, stops };
+  return { title, destination, startDate, endDate, people, editPolicy, mapProvider, viewMode, distanceBaseIds, fuelEfficiency, fuelPrice, destinations, stops };
 }
 
 export function publicPlan(row: Record<string, unknown>) {
@@ -327,6 +335,8 @@ export function publicPlan(row: Record<string, unknown>) {
       } catch { return []; }
     })(),
     editPolicy: row.edit_policy === 'all' ? 'all' : row.edit_policy === 'password' ? 'password' : 'owner',
+    fuelEfficiency: Number.isFinite(Number(row.fuel_efficiency)) ? Math.min(100, Math.max(1, Number(row.fuel_efficiency))) : DEFAULT_FUEL_EFFICIENCY,
+    fuelPrice: Number.isFinite(Number(row.fuel_price)) ? Math.min(100_000, Math.max(0, Number(row.fuel_price))) : DEFAULT_FUEL_PRICE,
     passwordProtected: Boolean(Number(row.password_protected ?? (row.password_hash ? 1 : 0))),
     editPasswordProtected: Boolean(Number(row.edit_password_protected ?? (row.edit_password_hash ? 1 : 0))),
     version: Math.max(1, Number(row.version) || 1),
