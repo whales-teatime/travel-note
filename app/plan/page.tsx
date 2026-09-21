@@ -975,8 +975,7 @@ function OsmMap({stops,destination,onSelect,placeResults,onPlaceSelect,dateLabel
       element.addEventListener('click',event=>{event.stopPropagation();latestRef.current.onPlaceSelect(place)});
       const marker=new Marker({element}).setLngLat([lng,lat]).addTo(map);resultMarkersRef.current.push(marker);
     });
-    const mapCenter=map.getCenter();
-    const fitPlaces=searchFitPlaces(valid,{lat:mapCenter.lat,lng:mapCenter.lng});
+    const fitPlaces=searchFitPlaces(valid);
     if(fitPlaces.length===1)map.flyTo({center:[fitPlaces[0].lng,fitPlaces[0].lat],zoom:15,duration:450});
     else if(fitPlaces.length>1){const bounds=new maplibreRef.current.LngLatBounds();fitPlaces.forEach(point=>bounds.extend([point.lng,point.lat]));map.fitBounds(bounds,{padding:70,maxZoom:15,duration:450});}
   },[placeResults,status,onPlaceSelect,language]);
