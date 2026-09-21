@@ -1351,7 +1351,7 @@ export default function Home(){
   const toggleMapFocus=useCallback(()=>setMapFocused(current=>!current),[]);
   const handleMapTap=useCallback(()=>{
     if(tripSettings.viewMode==='distance'){setSelected(null);setDistanceDetailOpen(false);return}
-    setMapFocused(current=>!current);
+    if(window.matchMedia('(max-width: 820px)').matches)setMapFocused(current=>!current);
   },[tripSettings.viewMode]);
   const selectMapCandidate=useCallback((place:SearchPlace)=>setMapCandidate(place),[]);
   const updateCustomPin=useCallback((point:{lat:number;lng:number})=>setCustomPin(point),[]);
