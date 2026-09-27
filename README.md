@@ -1,6 +1,6 @@
 # 여행을 떠나요♬
 
-국내는 네이버 지도, 해외는 Google 지도를 사용하는 여행 일정 플래너입니다. 장소를 검색해 일정 카드로 추가하고, 지도에서 동선을 확인하며 계획을 저장할 수 있습니다.
+국내는 네이버 지도, 해외는 OpenFreeMap 지도를 사용하는 여행 일정 플래너입니다. 장소를 검색해 일정 카드로 추가하고, 지도에서 동선을 확인하며 계획을 저장할 수 있습니다. 해외 장소 상세보기는 Google 지도로 연결됩니다.
 
 ## 구성
 
@@ -37,7 +37,7 @@ GitHub는 소스 관리와 변경 이력에 사용하고, 실제 서비스는 �
 
 ## 변경 검증
 
-배포 전에는 `npm run lint`, `npm run build`, `npm run check:cloudflare`로 코드와 서버·클라이언트 번들, Cloudflare 배포 패키지를 확인합니다.
+배포 전에는 `npm run lint`, `npx tsc --noEmit`, `npm run test:regressions`, `npm run check:cloudflare`로 코드, 저장·권한 회귀검사, Cloudflare 배포 패키지를 확인합니다. 회귀검사는 임시 메모리 DB와 테스트용 비밀번호만 사용하며 운영 데이터에 쓰지 않습니다.
 
 ## 독립 호스팅
 

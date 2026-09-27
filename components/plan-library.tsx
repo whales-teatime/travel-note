@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { ArrowRight, CalendarDays, ExternalLink, LockKeyhole, MapPin, Search, Star, Trash2 } from 'lucide-react';
 import { readFavoritePlans, readRecentPlans, rememberPlanVisit, togglePlanFavorite, type LocalPlanSummary } from '@/lib/client-plan-history';
@@ -58,20 +58,24 @@ export function PlanLibrary({ compact = false, trash = false }: { compact?: bool
   const [adminBusy, setAdminBusy] = useState(false);
   const [recentPlans, setRecentPlans] = useState<LocalPlanSummary[]>([]);
   const [favoritePlans, setFavoritePlans] = useState<LocalPlanSummary[]>([]);
+  const searchRequestRef = useRef(0);
 
   const loadPlans = useCallback(async (value: string, append = false, offset = 0) => {
+    const requestId = ++searchRequestRef.current;
     if (append) setLoadingMore(true); else setLoading(true); setError('');
     try {
       const limit = compact ? 4 : 24;
       const response = await fetch(`/api/plans?search=${encodeURIComponent(value.trim())}${trash ? '&trash=1' : ''}&limit=${limit}&offset=${offset}`, { cache: 'no-store' });
       const body = await readJsonResponse<{ items?: PlanSummary[]; nextOffset?: number | null; message?: string }>(response);
+      if (requestId !== searchRequestRef.current) return;
       if (!response.ok) throw new Error(body.message || text('계획 목록을 불러오지 못했어요.', 'Could not load the plans.'));
       setPlans(current => append ? [...current, ...(body.items || [])] : body.items || []);
       if (!append) setSelectedIds(new Set());
       setNextOffset(body.nextOffset ?? null);
     } catch (reason) {
+      if (requestId !== searchRequestRef.current) return;
       setError(reason instanceof Error ? reason.message : text('계획 목록을 불러오지 못했어요.', 'Could not load the plans.'));
-    } finally { setLoading(false); setLoadingMore(false); }
+    } finally { if (requestId === searchRequestRef.current) { setLoading(false); setLoadingMore(false); } }
   }, [trash, compact, text]);
 
   const restorePlan = async (plan: PlanSummary) => {
@@ -130,7 +134,7 @@ export function PlanLibrary({ compact = false, trash = false }: { compact?: bool
   const rememberVisit = (plan: LocalPlanSummary) => rememberPlanVisit(plan);
   const toggleFavorite = (plan: LocalPlanSummary) => { togglePlanFavorite(plan); setFavoritePlans(readFavoritePlans()); };
 
-  useEffect(() => { void loadPlans(''); }, [loadPlans]);
+  useEffect(() => { if (compact) void loadPlans(''); }, [loadPlans, compact]);
   useEffect(() => { setRecentPlans(readRecentPlans()); setFavoritePlans(readFavoritePlans()); }, [text]);
   useEffect(() => { void fetch('/api/admin/session', {cache:'no-store'}).then(response=>readJsonResponse<{adminAuthenticated?:boolean}>(response)).then(body=>setAdminAuthenticated(Boolean(body.adminAuthenticated))).catch(()=>{}); }, []);
   useEffect(() => {
