@@ -75,6 +75,21 @@ await test('empty editing password rejected without changing the plan',async()=>
  assert.equal((await call('PUT',p.id,{...base,editPolicy:'password',baseVersion:1,editPasswordAuth:'audit-edit',editPassword:''})).status,400);
  assert.equal((await call('POST',p.id,{action:'edit-auth',editPassword:'audit-edit'})).status,200);
 });
+await test('verified editor can remove the edit password without removing viewing protection',async()=>{
+ const p=await create('password','audit-view');
+ const update={...base,editPolicy:'all',baseVersion:1};
+ assert.equal((await call('PUT',p.id,{...update,passwordAuth:'audit-view',editPassword:''})).status,403);
+ const fields=uiPayload(planAuthPayload,{...afterAdminUnlock('all'),planPasswordAuth:'audit-view',editPasswordAuth:'audit-edit',editPasswordConfigured:true});
+ const saved=await call('PUT',p.id,{...update,...fields});
+ assert.equal(saved.status,200);
+ assert.equal(saved.body.plan.editPolicy,'all');
+ assert.equal(saved.body.plan.editPasswordProtected,false);
+ assert.equal(saved.body.plan.passwordProtected,true);
+ assert.equal((await call('GET',p.id)).status,401);
+ const viewer=await call('POST',p.id,{password:'audit-view'});
+ assert.equal(viewer.status,200);
+ assert.equal(viewer.body.canEdit,true);
+});
 await test('pin color, distance bases, fuel and multi-destination survive save and duplicate',async()=>{
  const input={...base,editPolicy:'all',viewMode:'distance',distanceBaseIds:['one'],fuelEfficiency:15.5,fuelPrice:1650,stops:[{...base.stops[0],pinColor:'#aBc123',costBasis:'person',costPerPerson:15000,costTotal:75000}],destinations:[{id:'seoul',name:'서울',startDate:base.startDate,endDate:base.startDate},{id:'busan',name:'부산',startDate:base.endDate,endDate:base.endDate}]};
  const p=(await call('POST',null,input)).body;
